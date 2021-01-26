@@ -1260,8 +1260,8 @@ class QuickViewer:
                 self.images.append(im)
 
             else:
-                self.logger.warning(f"File {im.path} not found! Image will not"
-                                    "be plotted.")
+                self.logger.warning(f"File {im.path} not found! Image will "
+                                    "not be plotted.")
 
         # Return if no valid images found
         if not len(self.images):
