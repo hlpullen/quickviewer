@@ -16,6 +16,12 @@ A package for interactively viewing medical image data.
      ```
      pip install git+ssh://git@codeshare.phy.cam.ac.uk:/hp346/quickviewer
      ```
+
+   - With [gitlab access via token](https://docs.gitlab.com/ee/user/profile/personal_access_tokens.html):
+     ```
+     pip install git+https://codeshare.phy.cam.ac.uk/hp346/quickviewer.git
+     ```
+    
    - Any updates can later be installed by running: 
      ```
      pip install --upgrade git+ssh://git@codeshare.phy.cam.ac.uk:/hp346/quickviewer
