@@ -16,6 +16,7 @@ setuptools.setup(
     install_requires=[
                       'future_fstrings',
                       'ipywidgets',
+                      'jupyter',
                       'matplotlib',
                       'nibabel',
                       'numpy',
