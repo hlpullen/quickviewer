@@ -17,6 +17,13 @@ import skimage.measure
 import matplotlib.patches as mpatches
 
 
+# Matplotlib settings
+matplotlib.rcParams["figure.figsize"] = (7.4, 4.8)
+matplotlib.rcParams["font.serif"] = "Times New Roman"
+matplotlib.rcParams["font.family"] = "serif"
+matplotlib.rcParams["font.size"] = 14.0
+
+
 _style = {"description_width": "initial"}
 _axes = ["x", "y", "z"]
 _slider_axes = {"x-y": "z", "x-z": "y", "y-z": "x"}
