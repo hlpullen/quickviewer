@@ -14,12 +14,12 @@ setuptools.setup(
     url="",
     packages=setuptools.find_packages(),
     install_requires=[
-                      'ipywidgets',
                       'future_fstrings',
-                      'pydicom',
+                      'ipywidgets',
+                      'matplotlib',
                       'nibabel',
                       'numpy',
-                      'matplotlib',
+                      'pydicom',
                       'scikit-image',
                      ],
     classifiers=[

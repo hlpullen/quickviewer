@@ -5,6 +5,7 @@ import glob
 import numpy as np
 import pydicom
 import nibabel
+import matplotlib
 import matplotlib.pyplot as plt
 import os
 import re

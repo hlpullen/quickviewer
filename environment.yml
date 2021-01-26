@@ -1,0 +1,7 @@
+name: quickviewer
+dependencies:
+  - ipython
+  - pip
+  - python >=3.8.0,<3.9
+  - pip:
+    - -e .
