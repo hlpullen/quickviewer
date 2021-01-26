@@ -16,6 +16,12 @@ A package for interactively viewing medical image data.
      ```
      pip install git+ssh://git@codeshare.phy.cam.ac.uk:/hp346/quickviewer
      ```
+
+  or via token:
+  ```
+  https://codeshare.phy.cam.ac.uk/hp346/voxtox
+  ```
+    
    - Any updates can later be installed by running: 
      ```
      pip install --upgrade git+ssh://git@codeshare.phy.cam.ac.uk:/hp346/quickviewer
