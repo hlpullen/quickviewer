@@ -26,7 +26,7 @@ _slider_axes = {"x-y": "z", "x-z": "y", "y-z": "x"}
 _plot_axes = {"x-y": ("x", "y"), "x-z": ("z", "x"), "y-z": ("z", "y")}
 _view_map = {"y-x": "x-y", "z-x": "x-z", "z-y": "y-z"}
 _orthog = {'x-y': 'y-z', 'y-z': 'x-z', 'x-z': 'y-z'}
-plt.rcParams['axes.facecolor'] = 'black'
+_shrunk_to_aspect = matplotlib.transforms.Bbox.shrunk_to_aspect
 
 
 def in_notebook():
@@ -1181,6 +1181,10 @@ class QuickViewer:
                 " Default view (x-y) will be used."
             )
             self.init_view = "x-y"
+        if self.colorbar:
+            matplotlib.transforms.Bbox.shrunk_to_aspect = new_shrunk_to_aspect
+        else:
+            matplotlib.transforms.Bbox.shrunk_to_aspect = _shrunk_to_aspect
 
         # Load images
         self.load_scans()
