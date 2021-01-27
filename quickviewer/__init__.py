@@ -1,3 +1,4 @@
+# File: quickviewer/__init__.py
 # -*- coding: future_fstrings -*-
 
 import ipywidgets as ipyw
@@ -18,13 +19,7 @@ import skimage.measure
 import matplotlib.patches as mpatches
 
 
-# Matplotlib settings
-matplotlib.rcParams["figure.figsize"] = (7.4, 4.8)
-matplotlib.rcParams["font.serif"] = "Times New Roman"
-matplotlib.rcParams["font.family"] = "serif"
-matplotlib.rcParams["font.size"] = 14.0
-
-
+# Global properties
 _style = {"description_width": "initial"}
 _axes = ["x", "y", "z"]
 _slider_axes = {"x-y": "z", "x-z": "y", "y-z": "x"}
@@ -1151,6 +1146,7 @@ class QuickViewer:
         self.structs_as_mask = structs_as_mask
         self.interp = interpolation
         self.orthog_view = orthog_view
+        self.orthog = {'x-y': 'y-z', 'y-z': 'x-z', 'x-z': 'y-z'}
         self.annotate_slice = annotate_slice
         self.plots_per_row = plots_per_row
         self.no_show = no_show
@@ -1869,7 +1865,6 @@ class QuickViewer:
 
         # Plot images
         ims_to_show = []
-        orthog_view = self.orthog_view and view == "x-y"
         for i, im in enumerate(self.images):
 
             # Convert slice position to voxel if needed
@@ -1910,22 +1905,31 @@ class QuickViewer:
             im.ax.set_title(title)
 
             # Plot orthogonal view
-            if orthog_view:
-                mid_x = int(im.n_voxels["x"] / 2)
-                orthog_im = get_image_slice(im.image, "y-z", mid_x)
+            if self.orthog_view:
+                orthog = self.orthog[view]
+                mid_slice = int(im.n_voxels[_slider_axes[orthog]] / 2)
+                orthog_im = get_image_slice(im.image, orthog, mid_slice)
                 im.orthog_ax.set_visible(True)
                 im.orthog_ax.imshow(
                     orthog_im, cmap=cmap, vmin=v[i][0], vmax=v[i][1],
-                    aspect=im.aspect["y-z"], interpolation=interp,
-                    extent=im.extent["y-z"]
+                    aspect=im.aspect[orthog], interpolation=interp,
+                    extent=im.extent[orthog]
                 )
                 if self.scale_in_mm:
-                    z_pos = [z[i], z[i]]
-                    y_pos = im.extent["x-y"][2:]
+                    if view == "x-y":
+                        x_pos = [z[i], z[i]]
+                        y_pos = im.extent[orthog][2:]
+                    else:
+                        x_pos = im.extent[orthog][:2]
+                        y_pos = [z[i], z[i]]
                 else:
-                    z_pos = [sl, sl]
-                    y_pos = [0, im.n_voxels["y"] - 1]
-                im.orthog_ax.plot(z_pos, y_pos, 'r')
+                    if view == "x-y":
+                        x_pos = [sl, sl]
+                        y_pos = [0, im.n_voxels[_plot_axes[orthog][1]] - 1]
+                    else:
+                        x_pos = [0, im.n_voxels[_plot_axes[orthog][0]] - 1]
+                        y_pos = [sl, sl]
+                im.orthog_ax.plot(x_pos, y_pos, 'r')
 
             # Turn off orthogonal axes if outside notebook
             else:
@@ -1933,7 +1937,7 @@ class QuickViewer:
                     im.orthog_ax.set_visible(False)
 
             # Add colorbar
-            ax_for_clb = im.ax if not orthog_view else im.orthog_ax
+            ax_for_clb = im.ax if not self.orthog_view else im.orthog_ax
             if im.colorbar:
                 clb = self.fig.colorbar(im_mesh, ax=ax_for_clb)
                 clb.solids.set_edgecolor("face")
@@ -2134,11 +2138,11 @@ class QuickViewer:
                     facecolor="white", framealpha=1)
 
         # Label all axes
-        orthog_axes = [] if not orthog_view else [im.orthog_ax for im in
-                                                  self.images]
+        orthog_axes = [] if not self.orthog_view else [im.orthog_ax for im in
+                                                       self.images]
         for ax in self.axlist:
             if ax in orthog_axes:
-                self.label_axes(ax, "y-z", no_y=True)
+                self.label_axes(ax, self.orthog[view], no_y=False)
             else:
                 self.label_axes(ax, view)
 
@@ -2190,7 +2194,7 @@ class QuickViewer:
         for im in self.images:
             im.ax = axlist[count]
             count += 1
-            if self.orthog_view and (view == "x-y" or not self.in_notebook):
+            if self.orthog_view:
                 im.orthog_ax = axlist[count]
                 count += 1
 
@@ -2369,15 +2373,16 @@ class QuickViewer:
         width_ratios = []
         fig_height = self.figsize
         x, y = _plot_axes[view]
-        orthog_view = self.orthog_view \
-                and (view == "x-y" or not self.in_notebook)
         extra = 1 + 0.25 * (not self.in_notebook)
         for im in self.images:
             width_ratios.append(fig_height * im.length[x] / im.length[y] 
                                 * extra)
-            if orthog_view:
-                width_ratios.append(fig_height * im.length["z"] 
-                                    / im.length["y"] * extra)
+            if self.orthog_view:
+                orthog = self.orthog[view]
+                width_ratios.append(fig_height 
+                                    * im.length[_plot_axes[orthog][0]]
+                                    / im.length[_plot_axes[orthog][1]]
+                                    * extra * 1.1)
 
         # Adjust width ratios if axes are going to be rescaled
         if self.match_axes is not None:
@@ -2393,7 +2398,7 @@ class QuickViewer:
         cb_extra_hu = 0.2 * extra
         cb_extra = 0.25 * extra
         for i, im in enumerate(self.images):
-            ax_to_pad = i if not orthog_view else 2 * i
+            ax_to_pad = i if not self.orthog_view else 2 * i
             width_ratios[ax_to_pad] *= 1 + im.colorbar * cb_extra_hu \
                     + (im.jac_colorbar + im.dose_colorbar) * cb_extra
 
@@ -2405,7 +2410,8 @@ class QuickViewer:
 
         # Add extra figure size for comparison images
         n_images = (
-            (not self.comparison_only) * len(self.images) * (1 + orthog_view)
+            (not self.comparison_only) * len(self.images) 
+            * (1 + self.orthog_view)
             + self.show_cb
             + self.overlay
             + self.show_diff
@@ -2789,3 +2795,34 @@ def write_translation_to_file(
         print("Overwrote translation file:", output_file)
     else:
         print("Wrote new translation file:", output_file)
+
+
+def new_shrunk_to_aspect(self, box_aspect, container=None, fig_aspect=1.0):
+    """
+    Return a copy of the :class:`Bbox`, shrunk so that it is as
+    large as it can be while having the desired aspect ratio,
+    *box_aspect*.  If the box coordinates are relative---that
+    is, fractions of a larger box such as a figure---then the
+    physical aspect ratio of that figure is specified with
+    *fig_aspect*, so that *box_aspect* can also be given as a
+    ratio of the absolute dimensions, not the relative dimensions.
+    """
+    if box_aspect <= 0 or fig_aspect <= 0:
+        raise ValueError("'box_aspect' and 'fig_aspect' must be positive")
+    if container is None:
+        container = self
+    w, h = container.size
+    H = w * box_aspect / fig_aspect
+    W = h * fig_aspect / box_aspect
+    H = h
+    return matplotlib.transforms.Bbox([self._points[0],
+                                       self._points[0] + (W, H)])
+
+
+# Matplotlib settings
+matplotlib.rcParams["figure.figsize"] = (7.4, 4.8)
+matplotlib.rcParams["font.serif"] = "Times New Roman"
+matplotlib.rcParams["font.family"] = "serif"
+matplotlib.rcParams["font.size"] = 14.0
+matplotlib.transforms.Bbox.shrunk_to_aspect = new_shrunk_to_aspect
+
