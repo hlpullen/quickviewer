@@ -2165,6 +2165,7 @@ class QuickViewer:
         # Apply tight layout
         if self.in_notebook:
             plt.tight_layout()
+            self.fig.set_tight_layout(True)
         if self.orthog_view:
             plt.subplots_adjust(wspace=0.1)
 
@@ -2385,7 +2386,7 @@ class QuickViewer:
                 width_ratios.append(fig_height 
                                     * im.length[_plot_axes[orthog][0]]
                                     / im.length[_plot_axes[orthog][1]]
-                                    * extra * 1.1)
+                                    * extra)
 
         # Adjust width ratios if axes are going to be rescaled
         if self.match_axes is not None:
@@ -2852,11 +2853,9 @@ def new_shrunk_to_aspect(self, box_aspect, container=None, fig_aspect=1.0):
     return matplotlib.transforms.Bbox([self._points[0],
                                        self._points[0] + (W, H)])
 
-
 # Matplotlib settings
 matplotlib.rcParams["figure.figsize"] = (7.4, 4.8)
 matplotlib.rcParams["font.serif"] = "Times New Roman"
 matplotlib.rcParams["font.family"] = "serif"
 matplotlib.rcParams["font.size"] = 14.0
-matplotlib.transforms.Bbox.shrunk_to_aspect = new_shrunk_to_aspect
-
+#  matplotlib.transforms.Bbox.shrunk_to_aspect = new_shrunk_to_aspect
