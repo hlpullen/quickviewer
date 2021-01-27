@@ -1088,6 +1088,7 @@ class QuickViewer:
         self.n = len(self.paths)
 
         # Assign settings
+        self.first = True
         self.in_notebook = in_notebook()
         self.init_idx = init_idx
         self.init_pos = init_pos
@@ -2149,7 +2150,8 @@ class QuickViewer:
                                                        self.images]
         for ax in self.axlist:
             if ax in orthog_axes:
-                self.label_axes(ax, _orthog[view], no_y=False)
+                self.label_axes(ax, _orthog[view], rhs=(not self.colorbar),
+                                no_y=(view == "x-y" or self.colorbar))
             else:
                 self.label_axes(ax, view)
 
@@ -2167,10 +2169,9 @@ class QuickViewer:
             ax.set_visible(False)
 
         # Apply tight layout
-        if self.in_notebook:
+        if self.in_notebook or view_changed or self.first:
             plt.tight_layout()
-        if self.orthog_view:
-            plt.subplots_adjust(wspace=0.1)
+            self.first = False
 
         # Redraw
         if not self.in_notebook:
@@ -2348,12 +2349,15 @@ class QuickViewer:
                     / self.extent_to_match[view][1]
             self.zoom_axes(ax, (zoom_x, zoom_y))
 
-    def label_axes(self, ax, view, no_y=False):
+    def label_axes(self, ax, view, no_y=False, rhs=False):
         """Give appropriate labels to a given axis."""
 
         units = self.scale_in_mm * " (mm)"
         axis_labels = {"x-y": ("x", "y"), "y-z": ("z", "y"), "x-z": ("z", "x")}
         ax.set_xlabel(axis_labels[view][0] + units)
+        if rhs:
+            ax.yaxis.set_label_position("right")
+            ax.yaxis.tick_right()
         if not no_y:
             ax.set_ylabel(axis_labels[view][1] + units)
         else:
@@ -2394,16 +2398,13 @@ class QuickViewer:
         width_ratios = []
         fig_height = self.figsize
         x, y = _plot_axes[view]
-        extra = 1 + 0.25 * (not self.in_notebook)
         for im in self.images:
-            width_ratios.append(fig_height * im.length[x] / im.length[y] 
-                                * extra)
+            width_ratios.append(fig_height * im.length[x] / im.length[y])
             if self.orthog_view:
                 orthog = _orthog[view]
                 width_ratios.append(fig_height 
                                     * im.length[_plot_axes[orthog][0]]
-                                    / im.length[_plot_axes[orthog][1]]
-                                    * extra)
+                                    / im.length[_plot_axes[orthog][1]])
 
         # Adjust width ratios if axes are going to be rescaled
         if self.match_axes is not None:
@@ -2411,13 +2412,12 @@ class QuickViewer:
             y_extents = [im.length[y] for im in self.images]
             func = max if self.match_axes == "largest" else min
             self.extent_to_match[view] = (func(x_extents), func(y_extents))
-            width_to_use = fig_height * func(x_extents) / func(y_extents) \
-                    * extra
+            width_to_use = fig_height * func(x_extents) / func(y_extents)
             width_ratios = [width_to_use for w in width_ratios]
 
         # Add extra padding for colorbars
-        cb_extra_hu = 0.2 * extra
-        cb_extra = 0.25 * extra
+        cb_extra_hu = 0.2
+        cb_extra = 0.25
         for i, im in enumerate(self.images):
             ax_to_pad = i if not self.orthog_view else 2 * i
             width_ratios[ax_to_pad] *= 1 + im.colorbar * cb_extra_hu \
