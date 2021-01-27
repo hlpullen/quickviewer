@@ -25,6 +25,7 @@ _axes = ["x", "y", "z"]
 _slider_axes = {"x-y": "z", "x-z": "y", "y-z": "x"}
 _plot_axes = {"x-y": ("x", "y"), "x-z": ("z", "x"), "y-z": ("z", "y")}
 _view_map = {"y-x": "x-y", "z-x": "x-z", "z-y": "y-z"}
+_orthog = {'x-y': 'y-z', 'y-z': 'x-z', 'x-z': 'y-z'}
 plt.rcParams['axes.facecolor'] = 'black'
 
 
@@ -163,6 +164,12 @@ class QuickViewerImage():
             self.logger.debug(f"Plot settings for view {view}:")
             self.logger.debug(f"    Aspect ratio = {self.aspect[view]}")
             self.logger.debug(f"    Axis extent = {self.extent[view]}")
+
+        # Set initial positions for orthogonal views
+        self.orthog_slice = {
+            view: int(self.n_voxels[_slider_axes[_orthog[view]]] / 2) 
+            for view in _slider_axes
+        }
 
         # Create mappings between voxels and positions
         self.make_slice_voxel_maps()
@@ -700,7 +707,7 @@ class QuickViewerImage():
         else:
             self.slice_slider.value = self.slice_slider.min
 
-    def jump_to_struct(self):
+    def jump_to_struct(self, include_orthog=False):
         """Jump to the midpoint of a structure for a given image."""
 
         # Get full key of structure to jump
@@ -722,6 +729,12 @@ class QuickViewerImage():
         else:
             new_slice = self.idx_to_slider(_slider_axes[self.view], mid_slice)
         self.slice_slider.value = new_slice
+
+        # Set slice number of orthogonal view
+        if include_orthog:
+            orthog = _orthog[self.view]
+            slices_orthog = list(self.contours[orthog][s_key].keys())
+            self.orthog_slice[self.view] = int(np.mean(slices_orthog))
 
 
 class QuickViewer:
@@ -1146,7 +1159,6 @@ class QuickViewer:
         self.structs_as_mask = structs_as_mask
         self.interp = interpolation
         self.orthog_view = orthog_view
-        self.orthog = {'x-y': 'y-z', 'y-z': 'x-z', 'x-z': 'y-z'}
         self.annotate_slice = annotate_slice
         self.plots_per_row = plots_per_row
         self.no_show = no_show
@@ -1770,7 +1782,7 @@ class QuickViewer:
             if im.has_structs:
                 if jump_to[i] != im.current_struct:
                     self.no_update = True
-                    im.jump_to_struct()
+                    im.jump_to_struct(self.orthog_view)
                     z[i] = im.slice_slider.value
                     im.struct_jump_menu.value = ""
                     self.no_update = False
@@ -1906,9 +1918,9 @@ class QuickViewer:
 
             # Plot orthogonal view
             if self.orthog_view:
-                orthog = self.orthog[view]
-                mid_slice = int(im.n_voxels[_slider_axes[orthog]] / 2)
-                orthog_im = get_image_slice(im.image, orthog, mid_slice)
+                orthog = _orthog[view]
+                orthog_im = get_image_slice(im.image, orthog, 
+                                            im.orthog_slice[view])
                 im.orthog_ax.set_visible(True)
                 im.orthog_ax.imshow(
                     orthog_im, cmap=cmap, vmin=v[i][0], vmax=v[i][1],
@@ -1929,7 +1941,6 @@ class QuickViewer:
                     else:
                         x_pos = [0, im.n_voxels[_plot_axes[orthog][0]] - 1]
                         y_pos = [sl, sl]
-                im.orthog_ax.plot(x_pos, y_pos, 'r')
 
             # Turn off orthogonal axes if outside notebook
             else:
@@ -1997,35 +2008,27 @@ class QuickViewer:
 
                     # Plot as mask
                     if struct_plot_type == "Mask":
-
-                        # Get the structure image
-                        struct_to_show = get_image_slice(struct_img, view, sl)
-
-                        # Make colormap
-                        norm = colors.Normalize()
-                        cmap = cm.hsv
-                        s_colors = cmap(norm(struct_to_show))
-                        s_colors[struct_to_show > 0, :] = color
-                        s_colors[struct_to_show == 0, :] = (0, 0, 0, 0)
-
-                        # Display the mask
-                        struct_mask = im.ax.imshow(
-                            s_colors, aspect=im.aspect[view], 
-                            alpha=self.struct_opacity, interpolation='nearest',
-                            extent=im.extent[view]
-                        )
+                        self.plot_struct_mask(im.ax, struct_img, im, view,
+                                              sl, color)
+                        if self.orthog_view:
+                            self.plot_struct_mask(im.orthog_ax, struct_img,
+                                                  im, _orthog[view], 
+                                                  im.orthog_slice[view],
+                                                  color)
 
                     # Plot as contour
                     elif struct_plot_type == "Contour":
+                        self.plot_contours(im.ax, im.contours[view][struct], 
+                                           sl, color)
+                        if self.orthog_view:
+                            self.plot_contours(im.orthog_ax, 
+                                               im.contours[orthog][struct],
+                                               im.orthog_slice[view],
+                                               color)
 
-                        if sl not in im.contours[view][struct]:
-                            continue
-                        for points in im.contours[view][struct][sl]:
-                            points_x = [p[0] for p in points]
-                            points_y = [p[1] for p in points]
-                            struct_line = im.ax.plot(
-                                points_x, points_y, color=color,
-                                linewidth=self.struct_linewidth)
+            # Plot indicator line on orthogonal view
+            if self.orthog_view:
+                im.orthog_ax.plot(x_pos, y_pos, 'r')
 
             # Add structure legend
             if self.struct_legend and len(struct_handles):
@@ -2142,7 +2145,7 @@ class QuickViewer:
                                                        self.images]
         for ax in self.axlist:
             if ax in orthog_axes:
-                self.label_axes(ax, self.orthog[view], no_y=False)
+                self.label_axes(ax, _orthog[view], no_y=False)
             else:
                 self.label_axes(ax, view)
 
@@ -2378,7 +2381,7 @@ class QuickViewer:
             width_ratios.append(fig_height * im.length[x] / im.length[y] 
                                 * extra)
             if self.orthog_view:
-                orthog = self.orthog[view]
+                orthog = _orthog[view]
                 width_ratios.append(fig_height 
                                     * im.length[_plot_axes[orthog][0]]
                                     / im.length[_plot_axes[orthog][1]]
@@ -2554,6 +2557,37 @@ class QuickViewer:
             delta_mm["y"],
             delta_mm["z"],
         )
+
+    def plot_struct_mask(self, ax, struct_img, im, view, sl, color):
+        """Plot a structure mask on some axes."""
+
+        # Get the structure mask
+        struct_to_show = get_image_slice(struct_img, view, sl)
+
+        # Make colormap
+        norm = colors.Normalize()
+        cmap = cm.hsv
+        s_colors = cmap(norm(struct_to_show))
+        s_colors[struct_to_show > 0, :] = color
+        s_colors[struct_to_show == 0, :] = (0, 0, 0, 0)
+
+        # Display the mask
+        ax.imshow(
+            s_colors, aspect=im.aspect[view], 
+            alpha=self.struct_opacity, interpolation='nearest',
+            extent=im.extent[view]
+        )
+
+    def plot_contours(self, ax, contours, sl, color):
+        """Plot a structure's contours for a given slice on some axes."""
+
+        if sl not in contours:
+            return
+        for points in contours[sl]:
+            points_x = [p[0] for p in points]
+            points_y = [p[1] for p in points]
+            ax.plot(points_x, points_y, color=color,
+                    linewidth=self.struct_linewidth)
 
     def plot_df(self, ax, im, view, sl, plot_type):
         """Plot a deformation field on a given axis."""
