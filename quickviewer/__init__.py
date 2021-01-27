@@ -2169,7 +2169,6 @@ class QuickViewer:
         # Apply tight layout
         if self.in_notebook:
             plt.tight_layout()
-            self.fig.set_tight_layout(True)
         if self.orthog_view:
             plt.subplots_adjust(wspace=0.1)
 
@@ -2271,6 +2270,20 @@ class QuickViewer:
                 diffs = [abs(op - self.overlay_slider.value) for op in ops]
                 current = ops[diffs.index(min(diffs))]
                 self.overlay_slider.value = next_op[current]
+
+        # Press j to jump between structures
+        elif event.key == "j":
+            for im in self.images:
+                if not im.has_structs:
+                    continue
+                current_idx = im.structs_for_jump.index(im.current_struct)
+                new_idx = current_idx + 1
+                if new_idx == len(im.structs_for_jump):
+                    new_idx = 0
+                self.no_update = True
+                new_struct = im.structs_for_jump[new_idx]
+                im.struct_jump_menu.value = new_struct
+            self.no_update = False
 
         # Press arrow keys to scroll through many slices
         elif event.key == "left":
