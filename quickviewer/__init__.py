@@ -750,6 +750,52 @@ class QuickViewerImage():
             slices_orthog = list(self.contours[orthog][s_key].keys())
             self.orthog_slice[self.view] = int(np.mean(slices_orthog))
 
+    def struct_info_on_checkboxes(self):
+        """Adjust structure checkbox labels to contain dimensional info
+        about the structures."""
+
+        # Get index of current slice
+        x, y = _plot_axes[self.view]
+        z = _slider_axes[self.view]
+        if self.scale_in_mm:
+            sl = self.pos_to_voxel(z, self.current_pos[z], take_nearest=True)
+        else:
+            sl = self.slider_to_idx[x][self.current_pos[z]]
+        
+        # Loop through structures
+        for struct in self.structs:
+
+            # Get volume
+            vol = self.structs[struct].astype(bool).sum()
+            info = f"V = {vol}"
+            
+            # Convert to desired units?
+
+            # Get extent of contours
+            if sl in self.contours[self.view][struct]:
+                all_points = []
+                for c in self.contours[self.view][struct][sl]:
+                    all_points.extend(c)
+                xs = [p[0] for p in all_points]
+                ys = [p[1] for p in all_points]
+                if self.scale_in_mm:
+                    x_lims = (self.position_fmt[x].format(min(xs)), 
+                              self.position_fmt[x].format(max(xs)))
+                    y_lims = (self.position_fmt[y].format(min(ys)), 
+                              self.position_fmt[y].format(max(ys)))
+                    units = " mm"
+                else:
+                    x_lims = min(xs), max(xs)
+                    y_lims = min(ys), max(ys)
+                    units = ""
+                x_info = f"{x} = {x_lims[0]} -- {x_lims[1]}{units}"
+                y_info = f"{y} = {y_lims[0]} -- {y_lims[1]}{units}"
+                info += f"; {x_info}; {y_info}"
+
+            # Adjust the description of the checkbox
+            self.struct_checkboxes[struct].description = \
+                    f"{self.struct_names_nice[struct]} ({info})"
+
 
 class QuickViewer:
     def __init__(
@@ -781,6 +827,7 @@ class QuickViewer:
         struct_plot_type="contour",
         struct_colours=None,
         struct_legend=True,
+        struct_info=True,
         legend_loc='lower left',
         zoom=None,
         downsample=None,
@@ -951,7 +998,11 @@ class QuickViewer:
             colour. (Note: structure names are case insensitive).
 
         struct_legend : bool, default=True
-            If true, a legend will be displayed for any plot with structures.
+            If True, a legend will be displayed for any plot with structures.
+
+        struct_info : bool, default=True
+            If True, extra information about the structures (dimensions and 
+            volume) will be shown on the structure UI.
 
         legend_loc : str, default='lower left'
             Location for any legends (structure/overlay), if used.
@@ -1136,6 +1187,7 @@ class QuickViewer:
         self.share_slider = share_slider
         self.structs = self.get_arg_list(structs)
         self.struct_legend = struct_legend
+        self.struct_info = struct_info
         self.legend_loc = legend_loc
         self.valid_struct_plot_types = ["Mask", "Contour", "None"]
         struct_plot_type = str(struct_plot_type).capitalize()
@@ -1359,7 +1411,8 @@ class QuickViewer:
         if self.n_masks:
             mask_desc = f'Apply mask{(self.n_masks > 1) * "s"}'
             self.mask_checkbox = ipyw.Checkbox(value=True, 
-                                               description=mask_desc)
+                                               description=mask_desc,
+                                              width=200)
             self.horizontal_ui[0].append(self.mask_checkbox)
             self.plot_kw["mask"] = self.mask_checkbox
 
@@ -1470,6 +1523,8 @@ class QuickViewer:
                 self.plot_kw[f"show_struct{i}_{struct}"] \
                     = im.struct_checkboxes[struct]
                 self.struct_checkboxes.append(im.struct_checkboxes[struct])
+            if self.struct_info:
+                im.struct_info_on_checkboxes()
 
             # Add checkboxes to UI
             n_cols = np.ceil(len(im.structs) / 10)
@@ -1810,6 +1865,8 @@ class QuickViewer:
         for i, im in enumerate(self.images):
             if not im.has_structs:
                 continue
+            if self.struct_info:
+                im.struct_info_on_checkboxes()
             prev_show_struct = im.show_struct
             im.show_struct = {struct: kwargs.get(f'show_struct{i}_{struct}')
                               for struct in im.structs}
