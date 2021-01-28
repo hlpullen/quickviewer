@@ -750,9 +750,8 @@ class QuickViewerImage():
             slices_orthog = list(self.contours[orthog][s_key].keys())
             self.orthog_slice[self.view] = int(np.mean(slices_orthog))
 
-    def struct_info_on_checkboxes(self):
-        """Adjust structure checkbox labels to contain dimensional info
-        about the structures."""
+    def get_struct_info(self):
+        """Get dictionary of structure info at current position."""
 
         # Get index of current slice
         x, y = _plot_axes[self.view]
@@ -763,11 +762,13 @@ class QuickViewerImage():
             sl = self.slider_to_idx[x][self.current_pos[z]]
         
         # Loop through structures
+        info = {}
         for struct in self.structs:
 
             # Get volume
+            info[struct] = {}
             vol = self.structs[struct].astype(bool).sum()
-            info = f"V = {vol}"
+            info[struct]["volume"] = f"{vol}"
             
             # Convert to desired units?
 
@@ -788,13 +789,22 @@ class QuickViewerImage():
                     x_lims = min(xs), max(xs)
                     y_lims = min(ys), max(ys)
                     units = ""
-                x_info = f"{x} = {x_lims[0]} -- {x_lims[1]}{units}"
-                y_info = f"{y} = {y_lims[0]} -- {y_lims[1]}{units}"
-                info += f"; {x_info}; {y_info}"
+                info[struct]["x"] = f"{x_lims[0]} -- {x_lims[1]}"
+                info[struct]["y"] = f"{y_lims[0]} -- {y_lims[1]}"
+            else:
+                info[struct]["x"] = ""
+                info[struct]["y"] = ""
 
-            # Adjust the description of the checkbox
-            self.struct_checkboxes[struct].description = \
-                    f"{self.struct_names_nice[struct]} ({info})"
+        # Add column titles
+        vol_units = "voxels"
+        info["_volume_title"] = f"Volume / {vol_units}" + " " * 10
+        title_len = len(info["_volume_title"])
+        units = "mm" if self.scale_in_mm else "voxels"
+        info["_x_title"] = f"{x} / {units}"
+        info["_x_title"] += " " * (title_len - len(info["_x_title"]))
+        info["_y_title"] = f"{y} / {units}"
+        info["_y_title"] += " " * (title_len - len(info["_y_title"]))
+        return info
 
 
 class QuickViewer:
@@ -1293,7 +1303,10 @@ class QuickViewer:
 
         if self.in_notebook:
             from IPython.display import display
-            display(self.ui, self.out)
+            if hasattr(self, "ui_lower"):
+                display(self.ui, self.out, self.ui_lower)
+            else:
+                display(self.ui, self.out)
         else:
             plt.show()
 
@@ -1491,6 +1504,7 @@ class QuickViewer:
             return
 
         # Make structure UI
+        struct_ui_top = []
         self.struct_menu = ipyw.Dropdown(
             options=self.valid_struct_plot_types,
             value=self.struct_plot_type,
@@ -1503,17 +1517,51 @@ class QuickViewer:
         self.update_struct_slider()
         self.plot_kw["struct_plot_type"] = self.struct_menu
         self.plot_kw["struct_property"] = self.struct_slider
-        self.horizontal_ui[0].append(self.struct_menu)
-        self.horizontal_ui[0].append(self.struct_slider)
+        struct_ui_top.append(self.struct_menu)
+        struct_ui_top.append(self.struct_slider)
+
+        # Add dropdown menus for jumping to structures
+        for i, im in enumerate(self.images):
+            im.structs_for_jump = [""] + list(im.struct_names_nice.values())
+            im.struct_jump_menu = ipyw.Dropdown(
+                options=im.structs_for_jump,
+                value="",
+                description="Jump to",
+                style=_style,
+            )
+            self.plot_kw[f"jump{i}"] = im.struct_jump_menu
+            im.current_struct = ""
+            if self.n > 1:
+                struct_ui_top.append(ipyw.HTML(
+                    value=f"<b>{im.title + ':'}</b>"))
+            struct_ui_top.append(im.struct_jump_menu)
+
+        # Add structure UI to horizontal UI
+        self.horizontal_ui.append(struct_ui_top)
 
         # Make checkboxes for each scan image
         self.struct_checkboxes = []
+        checkbox_ui = []
+        vol_ui = []
+        x_ui = []
+        y_ui = []
         for i, im in enumerate(self.images):
 
             if not im.has_structs:
                 continue
 
-            # Make checkbox for each structure
+            # Include image title if there's more than one image
+            info = im.get_struct_info()
+            if self.n > 1:
+                checkbox_ui.append(ipyw.HTML(value=f"<b>{im.title + ':'}</b>"))
+                vol_ui.append(ipyw.HTML(
+                    value=f"<b>{info['_volume_title']}</b>"))
+                x_ui.append(ipyw.HTML(
+                    value=f"<b>{info['_x_title']}</b>"))
+                y_ui.append(ipyw.HTML(
+                    value=f"<b>{info['_y_title']}</b>"))
+
+            # Loop through structures
             im.struct_checkboxes = {}
             for struct in im.structs:
 
@@ -1523,35 +1571,20 @@ class QuickViewer:
                 self.plot_kw[f"show_struct{i}_{struct}"] \
                     = im.struct_checkboxes[struct]
                 self.struct_checkboxes.append(im.struct_checkboxes[struct])
-            if self.struct_info:
-                im.struct_info_on_checkboxes()
+                checkbox_ui.append(im.struct_checkboxes[struct])
 
-            # Add checkboxes to UI
-            n_cols = np.ceil(len(im.structs) / 10)
-            current_ui = []
-            if len(self.images) > 1 or n_cols == 1:
-                self.horizontal_ui.append(list(im.struct_checkboxes.values()))
-            else:
-                max_per_col = np.ceil(len(im.structs) / n_cols)
-                for box in im.struct_checkboxes.values():
-                    current_ui.append(box)
-                    if len(current_ui) == max_per_col:
-                        self.horizontal_ui.append(current_ui)
-                        current_ui = []
-                if len(current_ui):
-                    self.horizontal_ui.append(current_ui)
+                # Add info for each structure
+                if self.struct_info:
+                    vol_ui.append(ipyw.Label(value=info[struct]["volume"]))
+                    x_ui.append(ipyw.Label(value=info[struct]["x"]))
+                    y_ui.append(ipyw.Label(value=info[struct]["y"]))
 
-            # Add dropdown for jumping to a structure
-            im.structs_for_jump = [""] + list(im.struct_names_nice.values())
-            im.struct_jump_menu = ipyw.Dropdown(
-                options=im.structs_for_jump,
-                value="",
-                description="Jump to:",
-                style=_style,
-            )
-            self.horizontal_ui[-1].append(im.struct_jump_menu)
-            self.plot_kw[f"jump{i}"] = im.struct_jump_menu
-            im.current_struct = ""
+        # Assemble lower UI
+        if self.struct_info:
+            self.ui_lower = ipyw.HBox([ipyw.VBox(ui) for ui in 
+                                       [checkbox_ui, vol_ui, x_ui, y_ui]])
+        else:
+            self.ui_lower = ipyw.VBox(checkbox_ui)
 
     def update_struct_slider(self):
         """Update struct slider to show opacity for mask plotting, or line
@@ -1865,8 +1898,6 @@ class QuickViewer:
         for i, im in enumerate(self.images):
             if not im.has_structs:
                 continue
-            if self.struct_info:
-                im.struct_info_on_checkboxes()
             prev_show_struct = im.show_struct
             im.show_struct = {struct: kwargs.get(f'show_struct{i}_{struct}')
                               for struct in im.structs}
