@@ -4,50 +4,40 @@ A package for interactively viewing medical image data.
 
 ## Installation
 
-### Install a local copy of the code using [git](https://git-scm.com) and [conda](https://docs.conda.io/):
-   1. Clone repository:
-     - With [gitlab access via ssh keys](https://docs.gitlab.com/ee/ssh/):
-       ```
-       git clone git@codeshare.phy.cam.ac.uk:/hp346/quickviewer
-       ```
-     - With [gitlab access via token](https://docs.gitlab.com/ee/user/profile/personal_access_tokens.html):
-       ```
-       git clone https://codeshare.phy.cam.ac.uk/hp346/quickviewer
-       ```
-       Note that this may not work with older versions of git.  It has
-       been tested successfully with git version 2.21.1.
-   2. From the top-level directory of the cloned repository, create the `quickviewer` environment:
-     ```
-     conda env create --file environment.yml
-     ```
-   3. Activate the `quickviewer` environment:
-     ```
-     conda activate quickviewer
-     ```
-
-### Install using [pip](https://pip.pypa.io/en/stable/):
-   1. Optionally create a virtual environment, for example:
+1. Install using [pip](https://pip.pypa.io/en/stable/):
+   - Optionally create virtual environment, for example:
      ```
      mkdir test_area
      cd test_area
      virtualenv .
      source bin/activate
      ```
-   2. Install from git via pip:
    - With [gitlab access via ssh keys](https://docs.gitlab.com/ee/ssh/):
      ```
      pip install git+ssh://git@codeshare.phy.cam.ac.uk:/hp346/quickviewer
      ```
 
-   - With [gitlab access via token](https://docs.gitlab.com/ee/user/profile/personal_access_tokens.html):
+2. Install using [git](https://git-scm.com) and [conda](https://docs.conda.io/):
+   - Clone repository:
+     - With [gitlab access via ssh keys](https://docs.gitlab.com/ee/ssh/):
+       ```
+       git clone --recurse-submodules git@codeshare.phy.cam.ac.uk:/hp346/quickviewer
+       ```
+     - With [gitlab access via token](https://docs.gitlab.com/ee/user/profile/personal_access_tokens.html):
+       ```
+       git clone --recurse-submodules https://codeshare.phy.cam.ac.uk/hp346/quickviewer
+       ```
+       Note that this may not work with older versions of git.  It has
+       been tested successfully with git version 2.21.1.
+   - From top-level directory of cloned repository, create **quickviewer**
+     environment:
      ```
-     pip install git+https://codeshare.phy.cam.ac.uk/hp346/quickviewer.git
+     conda env create --file environment.yml
      ```
-    
-   3. Any updates to `quickviewer` can later be installed by running: 
-     ```pip install --upgrade git+ssh://git@codeshare.phy.cam.ac.uk:/hp346/quickviewer```
-     or
-     ```pip install --upgrade git+https://codeshare.phy.cam.ac.uk/hp346/quickviewer.git```
+   - Activate **quickviewer** environment:
+     ```
+     conda activate quickviewer
+     ```
 
 
 ## Usage
