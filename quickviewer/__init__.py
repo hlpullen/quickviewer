@@ -491,22 +491,36 @@ class QuickViewerImage():
     def update_slice_slider(self, ax):
         """Update the slice slider to match a given axis."""
 
-        # Set max, min, and step
+        # Get new min and max
         if self.scale_in_mm:
-            self.slice_slider.min = self.axis_min[ax]
-            self.slice_slider.max = self.axis_max[ax]
+            new_min = self.axis_min[ax]
+            new_max = self.axis_max[ax]
+        else:
+            new_min = 1
+            new_max = self.n_voxels[ax]
+
+        # Set to widest range of new and old values
+        if new_min < self.slice_slider.min:
+            self.slice_slider.min = new_min
+        if new_max > self.slice_slider.max:
+            self.slice_slider.max = new_max
+
+        # Set new value
+        self.slice_slider.value = self.current_pos[ax]
+
+        # Set to final axis limits
+        if self.slice_slider.min != new_min:
+            self.slice_slider.min = new_min
+        if self.slice_slider.max != new_max:
+            self.slice_slider.max = new_max
+
+        # Set step and description
+        if self.scale_in_mm:
             self.slice_slider.step = abs(self.voxel_sizes[ax])
             self.slice_slider.description = f"{ax} (mm)"
         else:
-            self.slice_slider.min = 1
-            self.slice_slider.max = self.n_voxels[ax]
             self.slice_slider.step = 1
-            pos = self.voxel_to_pos(
-                ax, self.slider_to_idx[ax][self.current_pos[ax]])
             self.slice_slider.description = f"{ax} ({pos} mm)"
-
-        # Set current value
-        self.slice_slider.value = self.current_pos[ax]
 
     def load_structs(self, structs, struct_colours={}):
         """Load a dictionary of structures from files matching a pattern.
