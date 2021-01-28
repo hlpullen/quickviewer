@@ -2199,12 +2199,13 @@ class QuickViewer:
 
         # Assign axes to images
         count = 0
-        for im in self.images:
-            im.ax = axlist[count]
-            count += 1
-            if self.orthog_view:
-                im.orthog_ax = axlist[count]
+        if not self.comparison_only:
+            for im in self.images:
+                im.ax = axlist[count]
                 count += 1
+                if self.orthog_view:
+                    im.orthog_ax = axlist[count]
+                    count += 1
 
         # Seperate empty plots
         self.axlist = axlist[:fs["n_images"]]
@@ -2875,4 +2876,4 @@ matplotlib.rcParams["figure.figsize"] = (7.4, 4.8)
 matplotlib.rcParams["font.serif"] = "Times New Roman"
 matplotlib.rcParams["font.family"] = "serif"
 matplotlib.rcParams["font.size"] = 14.0
-#  matplotlib.transforms.Bbox.shrunk_to_aspect = new_shrunk_to_aspect
+matplotlib.rcParams["axes.facecolor"] = "black"
