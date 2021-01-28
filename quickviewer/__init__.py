@@ -2062,17 +2062,20 @@ class QuickViewer:
         # Plot chequerboard image
         if self.show_cb:
             i1, i2 = self.get_comparison_idx(invert_cb)
-            cb_image = self.get_chequerboard_image(
-                ims_to_show[i1], ims_to_show[i2], cb_splits
-            )
+            im1 = ims_to_show[i1]
+            im2 = self.get_chequerboard_image(ims_to_show[i2], cb_splits)
             ax_idx = -1 - self.overlay - self.show_diff
-            cb_mesh = self.axlist[ax_idx].imshow(
-                cb_image,
-                cmap=self.cmap,
-                vmin=v_default[0],
-                vmax=v_default[1],
+            cb_mesh = self.axlist[ax_idx].imshow(im1, cmap=self.cmap,
+                vmin=v_default[0], vmax=v_default[1],
                 aspect=self.images[i1].aspect[view],
                 extent=self.images[i1].extent[view]
+            )
+            cmap_masked = copy.copy(cm.get_cmap(self.cmap))
+            cmap_masked.set_bad(alpha=0)
+            cb_mesh = self.axlist[ax_idx].imshow(im2, cmap=cmap_masked,
+                vmin=v_default[0], vmax=v_default[1],
+                aspect=self.images[i2].aspect[view],
+                extent=self.images[i2].extent[view]
             )
             self.axlist[ax_idx].set_title("Chequerboard")
             if self.cb_colorbar:
@@ -2487,26 +2490,15 @@ class QuickViewer:
             i2, i1 = i1, i2
         return i1, i2
 
-    def get_chequerboard_image(self, im1, im2, n):
-        """Create a chequerboard of two images for a given number of 
-        sections, n."""
-
-        ni = int(im1.shape[0] / n)
-        nj = int(im1.shape[1] / n)
-        rows = []
-        for i in range(n):
-            cols = []
-            for j in range(n):
-                imin = i * ni
-                imax = im1.shape[0] if i == n - 1 else (i + 1) * ni
-                jmin = j * nj
-                jmax = im1.shape[1] if j == n - 1 else (j + 1) * nj
-                if (j + i) % 2 == 0:
-                    cols.append(im1[imin:imax, jmin:jmax])
-                else:
-                    cols.append(im2[imin:imax, jmin:jmax])
-            rows.append(np.concatenate(cols, axis=1))
-        return np.concatenate(rows, axis=0)
+    def get_chequerboard_image(self, im, n):
+        """Create a masked chequerboard version of an image with n splits."""
+        
+        size_x = int(np.ceil(im.shape[0] / n))
+        size_y = int(np.ceil(im.shape[1] / n))
+        cb_mask = np.kron([[1, 0] * n, [0, 1] * n] * n, 
+                          np.ones((size_x, size_y)))
+        cb_mask = cb_mask[:im.shape[0], :im.shape[1]]
+        return np.ma.masked_where(cb_mask < 0.5, im)
 
     def apply_translation(self, image, dx, dy, dz):
         """Apply a translation (dx, dy, dx) to an image array."""
