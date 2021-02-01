@@ -34,6 +34,7 @@ class StructMask:
     def assign_geometry(self):
         """Compute various geometric properties."""
 
+        # General properties
         self.voxel_sizes = {
             "x": self.affine[1, 1],
             "y": self.affine[0, 0],
@@ -49,15 +50,27 @@ class StructMask:
             "y": self.data.shape[0],
             "z": self.data.shape[2]
         }
-        self.volume_voxels = self.data.astype(bool).sum()
-        self.volume_mm = self.volume_voxels * abs(np.prod(
-            list(self.voxel_sizes.values())))
-        self.volume_ml = self.volume_mm * (0.1 ** 3)
         self.lims = {
             ax: (self.origin[ax], 
                  self.origin[ax] + self.n_voxels[ax] * self.voxel_sizes[ax])
             for ax in self.voxel_sizes
         }
+
+        # Structure volume
+        self.volume_voxels = self.data.astype(bool).sum()
+        self.volume_mm = self.volume_voxels * abs(np.prod(
+            list(self.voxel_sizes.values())))
+        self.volume_ml = self.volume_mm * (0.1 ** 3)
+
+        # Maximum extent in each direction
+        non_zero_indices = np.argwhere(self.data > 0.5)
+        min_indices = non_zero_indices.min(0)
+        max_indices = non_zero_indices.min(0)
+
+    def voxel_to_mm(self, vox, ax):
+        """Convert a voxel number to a position along a specific axis."""
+
+        return min(self.lims[ax]) + (vox + 0.5) * abs(self.voxel_sizes[ax])
 
     def make_contours(self):
         """Make contours in all three orientations."""
@@ -98,10 +111,8 @@ class StructMask:
                     contour_points_voxels = []
                     for (y, x) in contour:
                         contour_points_voxels.append((x, y))
-                        x_mm = min(self.lims[x_ax]) \
-                                + (x + 0.5) * abs(self.voxel_sizes[x_ax])
-                        y_mm = min(self.lims[y_ax]) \
-                                + (y + 0.5) * abs(self.voxel_sizes[y_ax])
+                        x_mm = self.voxel_to_mm(x, x_ax)
+                        y_mm = self.voxel_to_mm(y, y_ax)
                         contour_points.append((x_mm, y_mm))
                     points[i].append(contour_points)
                     points_voxels[i].append(contour_points_voxels)
@@ -137,14 +148,17 @@ class StructMask:
         """Get the extent along the x/y axes in the selected view on a given
         slice."""
 
-        contours = self.get_contours(scale_in_mm)[view]
-        if sl in contours:
-            all_points = []
-            for c in contours[sl]:
-                all_points.extend(c)
-            xs = [p[0] for p in all_points]
-            ys = [p[1] for p in all_points]
-            return (min(xs), max(xs)), (min(ys), max(ys))
+        im_slice = get_image_slice(self.data, view, sl)
+        non_zero = np.argwhere(im_slice > 0.5)
+        if len(non_zero):
+            mins = non_zero.min(0)
+            maxes = non_zero.max(0)
+            xs = [mins[1], maxes[1]]
+            ys = [mins[0], maxes[0]]
+            if scale_in_mm:
+                xs = [self.voxel_to_mm(x, _plot_axes[view][0]) for x in xs]
+                ys = [self.voxel_to_mm(y, _plot_axes[view][1]) for y in ys]
+            return xs, ys
 
     def get_extent_string(self, view, sl, scale_in_mm, fmt_x="{:.1f}",
                           fmt_y="{:.1f}"):
