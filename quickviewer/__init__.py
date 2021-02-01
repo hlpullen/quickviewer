@@ -1,5 +1,6 @@
 # File: quickviewer/__init__.py
 # -*- coding: future_fstrings -*-
+"""Code for displaying medical image data."""
 
 import ipywidgets as ipyw
 import glob
@@ -18,56 +19,10 @@ import copy
 import skimage.measure
 import matplotlib.patches as mpatches
 
+from quickviewer.structs import StructMask
+from quickviewer.core import *
 
-# Global properties
-_style = {"description_width": "initial"}
-_axes = ["x", "y", "z"]
-_slider_axes = {"x-y": "z", "x-z": "y", "y-z": "x"}
-_plot_axes = {"x-y": ("x", "y"), "x-z": ("z", "x"), "y-z": ("z", "y")}
-_view_map = {"y-x": "x-y", "z-x": "x-z", "z-y": "y-z"}
-_orthog = {'x-y': 'y-z', 'y-z': 'x-z', 'x-z': 'y-z'}
 _shrunk_to_aspect = matplotlib.transforms.Bbox.shrunk_to_aspect
-
-
-def in_notebook():
-    try:
-        if 'IPKernelApp' not in get_ipython().config:
-            return False
-    except NameError:
-        return False
-    return True
-
-
-def same_shape(imgs):
-    """Check whether images in a list all have the same shape (in the 
-    first 3 dimensions)."""
-
-    for i in range(len(imgs) - 1):
-        if imgs[i].shape[:3] != imgs[i + 1].shape[:3]:
-            return False
-    return True
-
-
-def get_image_slice(image, view, sl):
-    """Get 2D slice of an image in a given orienation."""
-
-    orient = {"y-z": [1, 2, 0], "x-z": [0, 2, 1], "x-y": [0, 1, 2]}
-    n_rot = {"y-z": 2, "x-z": 2, "x-y": 1}
-    if image.ndim == 3:
-        im_to_show = np.transpose(image, orient[view])[:, :, sl]
-        if view == "y-z":
-            im_to_show = im_to_show[:, ::-1]
-        elif view == "x-z":
-            im_to_show = im_to_show[::-1, ::-1]
-        return np.rot90(im_to_show, n_rot[view])
-    else:
-        transpose = orient[view] + [3]
-        im_to_show = np.transpose(image, transpose)[:, :, sl, :]
-        if view == "y-z":
-            im_to_show = im_to_show[:, ::-1, :]
-        elif view == "x-z":
-            im_to_show = im_to_show[::-1, ::-1, :]
-        return np.rot90(im_to_show, n_rot[view])
 
 
 class QuickViewerImage():
@@ -520,6 +475,8 @@ class QuickViewerImage():
             self.slice_slider.description = f"{ax} (mm)"
         else:
             self.slice_slider.step = 1
+            pos = self.voxel_to_pos(
+                ax, self.slider_to_idx[ax][self.current_pos[ax]])
             self.slice_slider.description = f"{ax} ({pos} mm)"
 
     def load_structs(self, structs, struct_colours={}):
@@ -532,9 +489,7 @@ class QuickViewerImage():
         self.structs = {}
         self.struct_names = {}
         self.struct_names_nice = {}
-        self.contours = {'x-y': {},
-                         'y-z': {},
-                         'x-z': {}}
+        self.contours = {}
         self.struct_checkboxes = {}
         if structs is None:
             return
@@ -578,13 +533,13 @@ class QuickViewerImage():
         for f in files:
 
             # Load NIfTI file and image
-            struct = self.load_image(f)
+            struct, nii = self.load_image(f, return_nii=True)
             if struct is None:
                 continue
 
             # Add to dictionary
             f_abs = os.path.abspath(f)
-            self.structs[f_abs] = struct
+            self.structs[f_abs] = StructMask(nii)
             basename = os.path.basename(f).strip(".gz").strip(".nii")
             struct_name = re.sub(
                 r"RTSTRUCT_[MVCT]+_\d+_\d+_\d+_", "", basename).replace(
@@ -594,9 +549,9 @@ class QuickViewerImage():
             nice_name = nice_name[0].upper() + nice_name[1:]
             self.struct_names_nice[f_abs] = nice_name
 
-            # Get contours in each plane
-            for view in self.contours:
-                self.contours[view][f_abs] = self.get_contours(struct, view)
+            # Get contours 
+            self.contours[f_abs] = self.structs[f_abs].get_contours(
+                self.scale_in_mm)
 
         self.has_structs = bool(len(self.structs))
         self.show_struct = {struct: True for struct in self.structs}
@@ -649,41 +604,6 @@ class QuickViewerImage():
                 self.logger.warning(f"Colour {colour} provided in "
                                     "struct_colours is not a valid colour.")
 
-    def get_contours(self, struct, view):
-        """Convert a structure mask to a dictionary of contours in a given 
-        orientation."""
-
-        # Loop through layers
-        points = {}
-        x_ax, y_ax = _plot_axes[view]
-        z_ax = _slider_axes[view]
-        for i in range(self.n_voxels[z_ax]):
-
-            # Get layer of image
-            im_slice = get_image_slice(struct, view, i)
-
-            # Ignore slices with no structure mask
-            if im_slice.max() < 0.5:
-                continue
-
-            # Find contours
-            contours = skimage.measure.find_contours(
-                im_slice, 0.5, "low", "low")
-            if contours:
-                points[i] = []
-                for contour in contours:
-                    contour_points = []
-                    for (y, x) in contour:
-                        if self.scale_in_mm:
-                            x = self.axis_min[x_ax] \
-                                    + (x + 0.5) * abs(self.voxel_sizes[x_ax])
-                            y = self.axis_min[y_ax] \
-                                    + (y + 0.5) * abs(self.voxel_sizes[y_ax])
-                        contour_points.append((x, y))
-                    points[i].append(contour_points)
-
-        return points
-
     def set_structs_as_mask(self):
         """Create masked image using loaded structures."""
 
@@ -696,8 +616,9 @@ class QuickViewerImage():
         # Set structs as mask
         self.logger.debug("Setting structures as masks")
         for view in _plot_axes:
-            self.apply_mask([struct for key, struct in self.structs.items() 
-                             if self.show_struct[key]], view)
+            self.apply_mask([struct.data for key, struct in 
+                             self.structs.items() if self.show_struct[key]], 
+                            view)
 
     def count_colorbars(self):
         return int(self.colorbar) + int(self.dose_colorbar) \
@@ -734,7 +655,7 @@ class QuickViewerImage():
         s_key = list(self.structs.keys())[idx]
 
         # Get midpoint in current orientation
-        slices = list(self.contours[self.view][s_key].keys())
+        slices = list(self.contours[s_key][self.view].keys())
         mid_slice = int(np.mean(slices))
 
         # Jump to the slice
@@ -747,7 +668,7 @@ class QuickViewerImage():
         # Set slice number of orthogonal view
         if include_orthog:
             orthog = _orthog[self.view]
-            slices_orthog = list(self.contours[orthog][s_key].keys())
+            slices_orthog = list(self.contours[s_key][orthog].keys())
             self.orthog_slice[self.view] = int(np.mean(slices_orthog))
 
     def get_struct_info(self):
@@ -763,48 +684,80 @@ class QuickViewerImage():
         
         # Loop through structures
         info = {}
-        for struct in self.structs:
+        units = "mm" if self.scale_in_mm else "voxels"
+        for name, struct in self.structs.items():
 
             # Get volume
-            info[struct] = {}
-            vol = self.structs[struct].astype(bool).sum()
-            info[struct]["volume"] = f"{vol}"
+            info[name] = {}
+            vol = struct.get_volume_string(self.vol_units)
+            vol_units_str = "mm<sup>3</sup>" if self.vol_units == "mm" \
+                    else self.vol_units 
+            info[name]["volume"] = f"{vol} {vol_units_str}"
             
-            # Convert to desired units?
-
             # Get extent of contours
-            if sl in self.contours[self.view][struct]:
-                all_points = []
-                for c in self.contours[self.view][struct][sl]:
-                    all_points.extend(c)
-                xs = [p[0] for p in all_points]
-                ys = [p[1] for p in all_points]
-                if self.scale_in_mm:
-                    x_lims = (self.position_fmt[x].format(min(xs)), 
-                              self.position_fmt[x].format(max(xs)))
-                    y_lims = (self.position_fmt[y].format(min(ys)), 
-                              self.position_fmt[y].format(max(ys)))
-                    units = " mm"
-                else:
-                    x_lims = min(xs), max(xs)
-                    y_lims = min(ys), max(ys)
-                    units = ""
-                info[struct]["x"] = f"{x_lims[0]} -- {x_lims[1]}"
-                info[struct]["y"] = f"{y_lims[0]} -- {y_lims[1]}"
+            lims = struct.get_extent_string(self.view, sl, self.scale_in_mm, 
+                                            fmt_x=self.position_fmt[x], 
+                                            fmt_y=self.position_fmt[y])
+            if lims is not None:
+                x_lims = lims[0]
+                y_lims = lims[1]
+                units = " mm" if self.scale_in_mm else ""
+                info[name]["x"] = f"{x_lims[0]}{units} — {x_lims[1]}{units}"
+                info[name]["y"] = f"{y_lims[0]}{units} — {y_lims[1]}{units}"
             else:
-                info[struct]["x"] = ""
-                info[struct]["y"] = ""
+                info[name]["x"] = "—"
+                info[name]["y"] = "—"
 
-        # Add column titles
-        vol_units = "voxels"
-        info["_volume_title"] = f"Volume / {vol_units}" + " " * 10
-        title_len = len(info["_volume_title"])
-        units = "mm" if self.scale_in_mm else "voxels"
-        info["_x_title"] = f"{x} / {units}"
-        info["_x_title"] += " " * (title_len - len(info["_x_title"]))
-        info["_y_title"] = f"{y} / {units}"
-        info["_y_title"] += " " * (title_len - len(info["_y_title"]))
+        info["_x_title"] = f"{x} extent"
+        info["_y_title"] = f"{y} extent"
         return info
+
+    def make_struct_ui(self, struct_info, vol_units):
+        """Create structure UI elements specific to a single image."""
+
+        # Dropdown menu for jumping to structures
+        self.structs_for_jump = [""] + list(self.struct_names_nice.values())
+        self.struct_jump_menu = ipyw.Dropdown(
+            options=self.structs_for_jump,
+            value="",
+            description="Jump to",
+            style=_style,
+        )
+        self.current_struct = ""
+
+        # Structure checkboxes
+        self.struct_checkboxes = {
+            s: ipyw.Checkbox(value=True, description=name) 
+            for s, name in self.struct_names_nice.items()
+        }
+
+        # Structure info UI
+        if struct_info:
+            self.vol_units = vol_units
+            info = self.get_struct_info()
+            self.vol_title = ipyw.HTML(value="<b>Volume</b>")
+            self.x_title = ipyw.HTML(value=f"<b>{info['_x_title']}</b>")
+            self.y_title = ipyw.HTML(value=f"<b>{info['_y_title']}</b>")
+            self.vol_ui = {}
+            self.x_ui = {}
+            self.y_ui = {}
+            for s in self.structs:
+                self.vol_ui[s] = ipyw.HTML(value=info[s]["volume"])
+                self.x_ui[s] = ipyw.Label(value=info[s]["x"])
+                self.y_ui[s] = ipyw.Label(value=info[s]["y"])
+
+    def update_struct_info(self):
+        """Update structure info UI to match a given view and slice."""
+
+        if not self.has_structs:
+            return
+        info = self.get_struct_info()
+        self.x_title.value = f"<b>{info['_x_title']}</b>"
+        self.y_title.value = f"<b>{info['_y_title']}</b>"
+        for s in self.structs:
+            self.vol_ui[s].value = info[s]["volume"]
+            self.x_ui[s].value = info[s]["x"]
+            self.y_ui[s].value = info[s]["y"]
 
 
 class QuickViewer:
@@ -837,7 +790,8 @@ class QuickViewer:
         struct_plot_type="contour",
         struct_colours=None,
         struct_legend=True,
-        struct_info=True,
+        struct_info=False,
+        vol_units=None,
         legend_loc='lower left',
         zoom=None,
         downsample=None,
@@ -1013,6 +967,12 @@ class QuickViewer:
         struct_info : bool, default=True
             If True, extra information about the structures (dimensions and 
             volume) will be shown on the structure UI.
+
+        vol_units : str, default=None
+            Units in which to display the volumes of structures. If None,
+            either voxels or mm^3 will be chosen depending on whether
+            scale_in_mm is False or True.
+            Options: "voxels", "mm", "ml".
 
         legend_loc : str, default='lower left'
             Location for any legends (structure/overlay), if used.
@@ -1198,6 +1158,10 @@ class QuickViewer:
         self.structs = self.get_arg_list(structs)
         self.struct_legend = struct_legend
         self.struct_info = struct_info
+        self.vol_units = vol_units
+        self.scale_in_mm = scale_in_mm
+        if vol_units is None:
+            self.vol_units = "mm" if self.scale_in_mm else "voxels"
         self.legend_loc = legend_loc
         self.valid_struct_plot_types = ["Mask", "Contour", "None"]
         struct_plot_type = str(struct_plot_type).capitalize()
@@ -1210,7 +1174,6 @@ class QuickViewer:
         self.struct_linewidth = struct_linewidth
         self.zoom = zoom
         self.downsample = self.get_downsample_settings(downsample)
-        self.scale_in_mm = scale_in_mm
         self.match_axes = match_axes if match_axes in ["largest", "smallest"] \
                 else None
         if not self.scale_in_mm and self.match_axes is not None:
@@ -1258,10 +1221,6 @@ class QuickViewer:
                 " Default view (x-y) will be used."
             )
             self.init_view = "x-y"
-        if self.colorbar:
-            matplotlib.transforms.Bbox.shrunk_to_aspect = new_shrunk_to_aspect
-        else:
-            matplotlib.transforms.Bbox.shrunk_to_aspect = _shrunk_to_aspect
 
         # Load images
         self.load_scans()
@@ -1274,7 +1233,7 @@ class QuickViewer:
         self.horizontal_ui = []
         self.check_ui_settings()
         self.make_main_ui()
-        self.make_structure_ui()
+        self.make_struct_ui()
         self.make_translation_ui()
         self.make_comparison_ui()
 
@@ -1283,6 +1242,12 @@ class QuickViewer:
         self.fig_settings = {
             view: self.get_fig_settings(view) for view in _plot_axes.keys()
         }
+
+        # Set axis scaling to be as large as possible
+        if self.colorbar or self.n == 1:
+            matplotlib.transforms.Bbox.shrunk_to_aspect = new_shrunk_to_aspect
+        else:
+            matplotlib.transforms.Bbox.shrunk_to_aspect = _shrunk_to_aspect
 
         # Make single figure if outside notebook
         if not self.in_notebook:
@@ -1495,7 +1460,7 @@ class QuickViewer:
             self.horizontal_ui[0].append(self.save_name)
             self.horizontal_ui[0].append(self.save_button)
 
-    def make_structure_ui(self):
+    def make_struct_ui(self):
         """Make structure opacity slider and list of checkboxes to turn each
         structure on/off."""
 
@@ -1522,15 +1487,14 @@ class QuickViewer:
 
         # Add dropdown menus for jumping to structures
         for i, im in enumerate(self.images):
-            im.structs_for_jump = [""] + list(im.struct_names_nice.values())
-            im.struct_jump_menu = ipyw.Dropdown(
-                options=im.structs_for_jump,
-                value="",
-                description="Jump to",
-                style=_style,
-            )
+
+            # Make UI for this image
+            if not im.has_structs:
+                continue
+            im.make_struct_ui(self.struct_info, self.vol_units)
+
+            # Deal with structure jumping menu
             self.plot_kw[f"jump{i}"] = im.struct_jump_menu
-            im.current_struct = ""
             if self.n > 1:
                 struct_ui_top.append(ipyw.HTML(
                     value=f"<b>{im.title + ':'}</b>"))
@@ -1551,23 +1515,19 @@ class QuickViewer:
                 continue
 
             # Include image title if there's more than one image
-            info = im.get_struct_info()
-            if self.n > 1:
-                checkbox_ui.append(ipyw.HTML(value=f"<b>{im.title + ':'}</b>"))
-                vol_ui.append(ipyw.HTML(
-                    value=f"<b>{info['_volume_title']}</b>"))
-                x_ui.append(ipyw.HTML(
-                    value=f"<b>{info['_x_title']}</b>"))
-                y_ui.append(ipyw.HTML(
-                    value=f"<b>{info['_y_title']}</b>"))
+            if self.struct_info:
+                if self.n > 1:
+                    checkbox_ui.append(
+                        ipyw.HTML(value=f"<b>{im.title + ':'}</b>"))
+                else:
+                    checkbox_ui.append(ipyw.Label(value=""))
+                vol_ui.append(im.vol_title)
+                x_ui.append(im.x_title)
+                y_ui.append(im.y_title)
 
             # Loop through structures
-            im.struct_checkboxes = {}
             for struct in im.structs:
 
-                # Add checkbox for each structure
-                im.struct_checkboxes[struct] = ipyw.Checkbox(
-                    value=True, description=im.struct_names_nice[struct])
                 self.plot_kw[f"show_struct{i}_{struct}"] \
                     = im.struct_checkboxes[struct]
                 self.struct_checkboxes.append(im.struct_checkboxes[struct])
@@ -1575,14 +1535,19 @@ class QuickViewer:
 
                 # Add info for each structure
                 if self.struct_info:
-                    vol_ui.append(ipyw.Label(value=info[struct]["volume"]))
-                    x_ui.append(ipyw.Label(value=info[struct]["x"]))
-                    y_ui.append(ipyw.Label(value=info[struct]["y"]))
+                    vol_ui.append(im.vol_ui[struct])
+                    x_ui.append(im.x_ui[struct])
+                    y_ui.append(im.y_ui[struct])
 
         # Assemble lower UI
         if self.struct_info:
-            self.ui_lower = ipyw.HBox([ipyw.VBox(ui) for ui in 
-                                       [checkbox_ui, vol_ui, x_ui, y_ui]])
+            centre_layout = ipyw.Layout(align_items="center", 
+                                        padding="0px 0px 0px 100px")
+            self.ui_lower = ipyw.HBox([
+                ipyw.VBox(checkbox_ui),
+                ipyw.VBox(vol_ui, layout=ipyw.Layout(align_items="center")),
+                ipyw.VBox(x_ui, layout=centre_layout),
+                ipyw.VBox(y_ui, layout=centre_layout)])
         else:
             self.ui_lower = ipyw.VBox(checkbox_ui)
 
@@ -1945,6 +1910,11 @@ class QuickViewer:
             else:
                 self.struct_opacity = struct_property
 
+            # Update struct info
+            if self.struct_info:
+                for im in self.images:
+                    im.update_struct_info()
+
         # Update translation slider descriptions
         delta = {"x": dx, "y": dy, "z": dz}
         if self.show_t:
@@ -2108,14 +2078,14 @@ class QuickViewer:
 
                     # Get colour to plot
                     color = colors.to_rgba(im.struct_colours[struct])
-                    if sl in im.contours[view][struct] \
+                    if sl in im.contours[struct][view] \
                        and struct_plot_type != "None":
                         struct_handles.append(mpatches.Patch(
                             color=color, label=im.struct_names_nice[struct]))
 
                     # Plot as mask
                     if struct_plot_type == "Mask":
-                        self.plot_struct_mask(im.ax, struct_img, im, view,
+                        self.plot_struct_mask(im.ax, struct_img.data, im, view,
                                               sl, color)
                         if self.orthog_view:
                             self.plot_struct_mask(im.orthog_ax, struct_img,
@@ -2125,11 +2095,11 @@ class QuickViewer:
 
                     # Plot as contour
                     elif struct_plot_type == "Contour":
-                        self.plot_contours(im.ax, im.contours[view][struct], 
+                        self.plot_contours(im.ax, im.contours[struct][view], 
                                            sl, color)
                         if self.orthog_view:
                             self.plot_contours(im.orthog_ax, 
-                                               im.contours[orthog][struct],
+                                               im.contours[struct][orthog],
                                                im.orthog_slice[view],
                                                color)
 
