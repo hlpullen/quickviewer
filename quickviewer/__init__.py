@@ -5,18 +5,15 @@
 import ipywidgets as ipyw
 import glob
 import numpy as np
-import pydicom
 import nibabel
 import matplotlib
 import matplotlib.pyplot as plt
 import os
 import re
-from matplotlib import colors, cm, gridspec
-import matplotlib.ticker as mticker
+from matplotlib import colors, cm 
 import fnmatch
 import logging
 import copy
-import skimage.measure
 import matplotlib.patches as mpatches
 
 from quickviewer.structs import StructMask
@@ -87,11 +84,11 @@ class QuickViewerImage():
 
             # Set number of voxels and voxel size
             self.nii.affine[i, i] *= self.downsample[ax]
-            self.voxel_sizes[ax] = self.nii.affine[i, i] 
+            self.voxel_sizes[ax] = self.nii.affine[i, i]
 
             # Get min and max of axis
             self.origin[ax] = self.nii.affine[i, 3]
-            lims = [self.origin[ax], self.origin[ax] + self.n_voxels[ax] 
+            lims = [self.origin[ax], self.origin[ax] + self.n_voxels[ax]
                     * self.voxel_sizes[ax]]
             self.length[ax] = abs(lims[1] - lims[0])
             self.axis_min[ax] = min(lims)
@@ -110,7 +107,7 @@ class QuickViewerImage():
         for view, (x, y) in _plot_axes.items():
             if not scale_in_mm:
                 self.extent[view] = None
-                self.aspect[view] = abs(self.voxel_sizes[y] / 
+                self.aspect[view] = abs(self.voxel_sizes[y] /
                                         self.voxel_sizes[x])
             else:
                 self.extent[view] = (self.axis_min[x], self.axis_max[x],
@@ -122,7 +119,7 @@ class QuickViewerImage():
 
         # Set initial positions for orthogonal views
         self.orthog_slice = {
-            view: int(self.n_voxels[_slider_axes[_orthog[view]]] / 2) 
+            view: int(self.n_voxels[_slider_axes[_orthog[view]]] / 2)
             for view in _slider_axes
         }
 
@@ -162,7 +159,7 @@ class QuickViewerImage():
                         self.logger.warning(f"No files matching {p} were "
                                             "found!")
                         return None if not return_nii else (None, None)
-                else: 
+                else:
                     self.logger.warning(f'File {p} not found!')
                     return None if not return_nii else (None, None)
 
@@ -177,7 +174,7 @@ class QuickViewerImage():
                     return None if not return_nii else (None, None)
                 images.append(image)
                 niis.append(nii)
-        
+
         # Return either a list or a single image
         if len(images) > 1:
             return images if not return_nii else (images, niis)
@@ -219,11 +216,11 @@ class QuickViewerImage():
         self.mask_to_apply = mask
         self.has_mask = True
         total_mask = sum(mask) if isinstance(mask, list) else mask
-        self.masked_image[view] = np.ma.masked_where(total_mask < 0.5, 
+        self.masked_image[view] = np.ma.masked_where(total_mask < 0.5,
                                                      self.image)
         if self.has_dose:
             self.logger.debug("Applying mask(s) to dose image")
-            self.masked_dose[view] = np.ma.masked_where(total_mask < 0.5, 
+            self.masked_dose[view] = np.ma.masked_where(total_mask < 0.5,
                                                         self.dose)
 
     def load_dose(self, dose_path):
@@ -245,7 +242,7 @@ class QuickViewerImage():
 
     def load_df(self, df_path):
         """Load an associated deformation field image."""
-        
+
         self.extrapolate_df = False
         if df_path == "regular":
             self.regular_grid = True
@@ -295,7 +292,7 @@ class QuickViewerImage():
 
     def get_nearest_vox(self, ax, vox):
         """Find the nearest slice number to a given number."""
-        
+
         if vox in self.voxel_to_pos_map[ax]:
             return vox
         distance = [abs(v - vox) for v in self.voxel_to_pos_map[ax]]
@@ -322,7 +319,7 @@ class QuickViewerImage():
         """Convert a position in mm to a voxel number along a given axis.
         If take_nearest is True, the closest slice to the position will be
         given."""
-        
+
         pos_str = self.position_fmt[ax].format(float(pos))
         if pos_str not in self.pos_to_voxel_map[ax]:
             if not take_nearest:
@@ -369,9 +366,9 @@ class QuickViewerImage():
 
         # Check whether to use non-default initial value
         self.current_pos = {}
-        use_init_idx = (init_idx is not None) and (init_pos is None or 
-                                                  not self.scale_in_mm)
-        use_init_pos = (init_pos is not None) and (init_idx is None or 
+        use_init_idx = (init_idx is not None) and (init_pos is None or
+                                                   not self.scale_in_mm)
+        use_init_pos = (init_pos is not None) and (init_idx is None or
                                                    self.scale_in_mm)
 
         # User-input index as starting position
@@ -386,7 +383,7 @@ class QuickViewerImage():
         elif use_init_pos:
             nearest_pos = self.get_nearest_pos(ax, init_pos)
             self.current_pos[ax] = nearest_pos if self.scale_in_mm else \
-                    self.pos_to_voxel(ax, float(nearest_pos))
+                        self.pos_to_voxel(ax, float(nearest_pos))
 
         # Set initial postions for all axes
         self.logger.debug("Setting initial slice positions:")
@@ -403,7 +400,7 @@ class QuickViewerImage():
         if not self.scale_in_mm:
             self.slider_to_idx = {}
             self.slider_to_idx["z"] = {
-                self.n_voxels["z"] - i: i for i in 
+                self.n_voxels["z"] - i: i for i in
                 range(self.n_voxels["z"])}
             for a in ["x", "y"]:
                 self.slider_to_idx[a] = {
@@ -549,7 +546,7 @@ class QuickViewerImage():
             nice_name = nice_name[0].upper() + nice_name[1:]
             self.struct_names_nice[f_abs] = nice_name
 
-            # Get contours 
+            # Get contours
             self.contours[f_abs] = self.structs[f_abs].get_contours(
                 self.scale_in_mm)
 
@@ -563,22 +560,22 @@ class QuickViewerImage():
             + list(cm.Set3.colors)
             + list(cm.tab20.colors)
         )
-        self.struct_colours = {f: standard_colors[i] for i, f in 
+        self.struct_colours = {f: standard_colors[i] for i, f in
                                enumerate(self.structs)}
 
         # Apply custom colours
         for struct, colour in struct_colours.items():
 
             struct = os.path.expanduser(struct)
-    
+
             # Check for matching filenames
             if os.path.abspath(struct) in self.structs:
                 structs_to_colour = [os.path.abspath(struct)]
 
             # Check for matching structure names
             elif struct.replace(" ", "_") in self.struct_names.values():
-                structs_to_colour = [f for f, name in self.struct_names.items() 
-                                     if name.lower() == 
+                structs_to_colour = [f for f, name in self.struct_names.items()
+                                     if name.lower() ==
                                      struct.lower().replace(" ", "_")]
 
             # Use wildcard
@@ -587,13 +584,13 @@ class QuickViewerImage():
                 # Search for matches with structure names
                 structs_to_colour = [
                     f for f in self.structs if fnmatch.fnmatch(
-                        self.struct_names[f].lower(), 
+                        self.struct_names[f].lower(),
                         struct.lower().replace(" ", "_"))]
 
                 # Search for matches with structure files
                 if not len(structs_to_colour):
                     structs_to_colour = [
-                        f for f in self.structs if 
+                        f for f in self.structs if
                         fnmatch.fnmatch(f, os.path.abspath(struct))]
 
             # Check colour is valid
@@ -616,8 +613,8 @@ class QuickViewerImage():
         # Set structs as mask
         self.logger.debug("Setting structures as masks")
         for view in _plot_axes:
-            self.apply_mask([struct.data for key, struct in 
-                             self.structs.items() if self.show_struct[key]], 
+            self.apply_mask([struct.data for key, struct in
+                             self.structs.items() if self.show_struct[key]],
                             view)
 
     def count_colorbars(self):
