@@ -42,6 +42,7 @@ class NiftiImage:
                 (a) A string containing the path to a nifti file;
                 (b) A nibabel.nifti1.Nifti1Image object;
                 (c) A numpy array;
+                (d) A numpy file containing an array.
 
         affine : 4x4 array, default=None
             Affine matrix to be used if <nii> is a numpy array. If <nii> is a 
@@ -80,19 +81,26 @@ class NiftiImage:
             if isinstance(nii, str):
                 try:
                     self.nii = nibabel.load(os.path.expanduser(nii))
+                    self.data = self.nii.get_fdata()
+                    affine = self.nii.affine
                     if self.title == "":
                         self.title = os.path.basename(nii)
-                except (FileNotFoundError, 
-                        nibabel.filebasedimages.ImageFileError):
+                except FileNotFoundError:
                     self.valid = False
                     return
+                except nibabel.filebasedimages.ImageFileError:
+                    try:
+                        self.data = np.load(nii)
+                    except (IOError, ValueError):
+                        raise RuntimeError(f"Input file <nii> must be a valid "
+                                           ".nii or .npy file.")
             elif isinstance(nii, nibabel.nifti1.Nifti1Image):
                 self.nii = nii
+                self.data = self.nii.get_fdata()
+                affine = self.nii.affine
             else:
                 raise TypeError("<nii> must be a string, nibabel object, or "
                                 "numpy array.")
-            self.data = self.nii.get_fdata()
-            affine = self.nii.affine
 
         # Assign geometric properties
         self.data = np.nan_to_num(self.data)
@@ -355,7 +363,8 @@ class MultiImage(NiftiImage):
         jacobian=None, 
         df=None,
         structs=None,
-        struct_colours=None
+        struct_colours=None,
+        structs_as_mask=False
     ):
         """Load a QuickViewerImage. 
 
@@ -397,6 +406,9 @@ class MultiImage(NiftiImage):
             Custom colours to use for structures. Dictionary keys can be a
             structure name or a wildcard matching structure name(s). Values
             should be any valid matplotlib colour.
+
+        structs_as_mask : bool, default=False
+            If True, structures will be used as masks.
             
         """
 
