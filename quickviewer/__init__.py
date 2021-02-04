@@ -17,7 +17,7 @@ import copy
 import matplotlib.patches as mpatches
 
 from quickviewer.structs import StructMask
-from quickviewer.core import *
+from quickviewer.image import *
 
 _shrunk_to_aspect = matplotlib.transforms.Bbox.shrunk_to_aspect
 

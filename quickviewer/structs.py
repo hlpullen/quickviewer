@@ -8,7 +8,7 @@ import nibabel
 import numpy as np
 import skimage.measure
 
-from quickviewer.core import *
+from quickviewer.image import *
 
 
 class StructMask:

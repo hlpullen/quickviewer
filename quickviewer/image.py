@@ -19,6 +19,8 @@ _slider_axes = {"x-y": "z", "x-z": "y", "y-z": "x"}
 _plot_axes = {"x-y": ("x", "y"), "x-z": ("z", "x"), "y-z": ("z", "y")}
 _view_map = {"y-x": "x-y", "z-x": "x-z", "z-y": "y-z"}
 _orthog = {'x-y': 'y-z', 'y-z': 'x-z', 'x-z': 'y-z'}
+_orient = {"y-z": [1, 2, 0], "x-z": [0, 2, 1], "x-y": [0, 1, 2]}
+_n_rot = {"y-z": 2, "x-z": 2, "x-y": 1}
 
 
 class NiftiImage:
@@ -79,18 +81,19 @@ class NiftiImage:
         # Load from file or nifti object
         else:
             if isinstance(nii, str):
+                path = os.path.expanduser(nii)
                 try:
-                    self.nii = nibabel.load(os.path.expanduser(nii))
+                    self.nii = nibabel.load(path)
                     self.data = self.nii.get_fdata()
                     affine = self.nii.affine
                     if self.title == "":
-                        self.title = os.path.basename(nii)
+                        self.title = os.path.basename(path)
                 except FileNotFoundError:
                     self.valid = False
                     return
                 except nibabel.filebasedimages.ImageFileError:
                     try:
-                        self.data = np.load(nii)
+                        self.data = np.load(path)
                     except (IOError, ValueError):
                         raise RuntimeError(f"Input file <nii> must be a valid "
                                            ".nii or .npy file.")
@@ -145,7 +148,7 @@ class NiftiImage:
     def pos_to_idx(self, pos, idx):
         """Convert a position to an index along a given axis."""
 
-        return int((pos - self.origin[ax]) / self.voxel_sizes[ax])
+        return round((pos - self.origin[ax]) / self.voxel_sizes[ax])
 
     def get_slice(self, view, sl):
         """Get 2D array corresponding to a slice of the image in a given 
@@ -160,16 +163,14 @@ class NiftiImage:
             Index of the slice to use.
         """
 
-        orient = {"y-z": [1, 2, 0], "x-z": [0, 2, 1], "x-y": [0, 1, 2]}
-        n_rot = {"y-z": 2, "x-z": 2, "x-y": 1}
-        im_slice = np.transpose(self.data, orient[view])[:, :, sl]
+        im_slice = np.transpose(self.data, _orient[view])[:, :, sl]
         if view == "y-z":
             im_slice = im_slice[:, ::-1]
         elif view == "x-z":
             im_slice = im_slice[::-1, ::-1]
-        return np.rot90(im_slice, n_rot[view])
+        return np.rot90(im_slice, _n_rot[view])
   
-    def plot_slice(self, view, sl, ax=None, show=True, mpl_kwargs=None):
+    def plot(self, view, sl, ax=None, mpl_kwargs=None, show=True):
         """Plot a given slice on a set of axes.
         
         Parameters
@@ -198,6 +199,7 @@ class NiftiImage:
         # Plot image
         if mpl_kwargs is None:
             mpl_kwargs = {}
+        mpl_kwargs.setdefault("cmap", "gray")
         ax.imshow(self.get_slice(view, sl), 
                   extent=self.extent[view],
                   aspect=self.aspect[view],
@@ -219,7 +221,7 @@ class NiftiImage:
         directions. If <d> is a single value, the image will be downsampled
         equally in all directions."""
 
-        ds = (d, d, d) if isinstance(d, int) else d
+        ds = get_arg_tuple(d)
         for ax, d_ax in zip(_axes, ds):
             self.voxel_sizes[ax] *= d_ax
         self.data = self.data[::d[1], ::d[0], ::d[2]]
@@ -229,7 +231,7 @@ class NiftiImage:
 class DeformationImage(NiftiImage):
     """NiftiImage containing a deformation field."""
 
-    def __init__(self, path, scale_in_mm=True):
+    def __init__(self, path, scale_in_mm=True, spacing=30, plot_type="grid"):
         """Load deformation field from a file."""
 
         NiftiImage.__init__(self, path, scale_in_mm=scale_in_mm)
@@ -239,12 +241,118 @@ class DeformationImage(NiftiImage):
             raise RuntimeError(f"Deformation field in {path} must contain a "
                                "five-dimensional array!")
         self.data = self.data[:, :, :, 0, :]
+        self.valid_plot_types = ["grid", "quiver", "none"]
+        self.plot_type = plot_type if plot_type in self.valid_plot_types \
+                else self.valid_plot_types[0]
+        
+        # Set grid spacing for plotting
+        spacing = get_arg_tuple(spacing)
+        if self.scale_in_mm:
+            self.spacing = {ax: abs(round(spacing[i] / self.voxel_sizes[ax]))
+                            for i, ax in enumerate(_axes)}
+        else:
+            self.spacing = {ax: spacing[i] for i, ax in enumerate(_axes)}
+        for ax, sp in self.spacing.items():
+            if sp < 2:
+                self.spacing[ax] = 2  # Ensure spacing is at least 2 voxels
+
+    def get_slice(self, view, sl):
+        """Get 2D array corresponding to a slice of the image in a given 
+        orientation."""
+
+        im_slice = np.transpose(self.data, _orient[view] + [3])[:, :, sl, :]
+        if view == "y-z":
+            im_slice = im_slice[:, ::-1, :]
+        elif view == "x-z":
+            im_slice = im_slice[::-1, ::-1, :]
+        return np.rot90(im_slice, _n_rot[view])
+
+    def get_deformation_slice(self, view, sl):
+        """Get indices and displacements on a 2D slice."""
+
+        im_slice = self.get_slice(view, sl)
+        x_ax, y_ax = _plot_axes[view]
+
+        # Get x/y displacement vectors
+        df_x = np.squeeze(im_slice[:, :, _axes[x_ax]])
+        df_y = np.squeeze(im_slice[:, :, _axes[y_ax]])
+        if view == "x-y":
+            df_x = -df_x
+        elif view == "x-z":
+            df_y = -df_y
+        if not self.scale_in_mm:
+            df_x /= self.voxel_sizes[x_ax]
+            df_y /= self.voxel_sizes[y_ax]
+
+        # Get x/y coordinates of each point on the slice
+        xs = np.arange(0, im_slice.shape[1])
+        ys = np.arange(0, im_slice.shape[0])
+        if self.scale_in_mm:
+            xs = self.origin[x_ax] + xs * self.voxel_sizes[x_ax]
+            ys = self.origin[y_ax] + ys * self.voxel_sizes[y_ax]
+        y, x = np.meshgrid(ys, xs)
+        x = x.T
+        y = y.T
+        return x, y, df_x, df_y
+
+    def plot(self, view, sl, ax):
+        """Plot deformation field."""
+
+        if self.plot_type == "grid":
+            self.plot_grid(view, sl, ax)
+        elif self.plot_type == "quiver":
+            self.plot_quiver(view, sl, ax)
+
+    def plot_quiver(self, view, sl, ax, mpl_kwargs=None):
+        """Draw a quiver plot on a set of axes."""
+
+        # Get arrow positions and lengths
+        x_ax, y_ax = _plot_axes[view]
+        x, y, df_x, df_y = self.get_deformation_slice(view, sl)
+        arrows_x = df_x[::self.spacing[y_ax], ::self.spacing[x_ax]]
+        arrows_y = -df_y[::self.spacing[y_ax], ::self.spacing[x_ax]]
+        plot_x = x[::self.spacing[y_ax], ::self.spacing[x_ax]]
+        plot_y = y[::self.spacing[y_ax], ::self.spacing[x_ax]]
+
+        # Matplotlib keywords
+        if mpl_kwargs is None:
+            mpl_kwargs = {}
+        mpl_kwargs.setdefault("cmap", "jet")
+
+        # Plot arrows
+        if arrows_x.any() or arrows_y.any():
+            M = np.hypot(arrows_x, arrows_y)
+            ax.quiver(plot_x, plot_y, arrows_x, arrows_y, M, **mpl_kwargs)
+        else:
+            # If arrow lengths are zero, plot dots
+            ax.scatter(plot_x, plot_y, c="navy", marker=".")
+
+    def plot_grid(self, view, sl, ax, mpl_kwargs=None):
+        """Draw a grid plot on a set of axes."""
+
+        # Get gridline positions
+        ax.autoscale(False)
+        x_ax, y_ax = _plot_axes[view]
+        x, y, df_x, df_y = self.get_deformation_slice(view, sl)
+        df_x += x
+        df_y += y
+
+        # Matplotlib keywords
+        if mpl_kwargs is None:
+            mpl_kwargs = {}
+        mpl_kwargs.setdefault("color", "green")
+
+        # Plot gridlines
+        for i in np.arange(0, x.shape[0], self.spacing[y_ax]):
+            ax.plot(df_x[i, :], df_y[i, :], **mpl_kwargs)
+        for j in np.arange(0, x.shape[1], self.spacing[x_ax]):
+            ax.plot(df_x[:, j], df_y[:, j], **mpl_kwargs)
 
 
 class StructImage(NiftiImage):
     """NiftiImage containing a structure mask."""
 
-    def __init__(self, path, name=None):
+    def __init__(self, path, name=None, plot_type="contour"):
         """Load structure mask from a file, optionally setting the structure's
         name. If <name> is None, the name will be extracted from the filename.
         """
@@ -264,9 +372,17 @@ class StructImage(NiftiImage):
         nice = self.name.replace("_", " ")
         self.name_nice = nice[0].upper() + nice[1:]
 
+        # Set plot type
+        self.valid_plot_types = ["contour", "mask", "none"]
+        self.plot_type = plot_type if plot_type in self.valid_plot_types \
+                else self.valid_plot_types[0]
+
         # Assign geometric properties and contours
         self.set_geom_properties()
         self.set_contours()
+
+        # Assign a random colour
+        self.assign_color(np.random.rand(3, 1).flatten())
 
     def set_geom_properties(self):
         """Set volume and length in each direction."""
@@ -325,23 +441,53 @@ class StructImage(NiftiImage):
                 points.append(contour_points)
             return points
 
-    def assign_colour(self, color):
+    def assign_color(self, color):
         """Assign a colour, ensuring that it is compatible with matplotlib."""
 
-        if matplotlib.colors.is_color_like(colour):
-            self.color = color
+        if matplotlib.colors.is_color_like(color):
+            self.color = matplotlib.colors.to_rgba(color)
         else:
-            print(f"Colour {colour} is not a valid colour.")
+            print(f"Colour {color} is not a valid colour.")
 
-    def plot_contour(self, ax, view, sl, mpl_kwargs=None):
+    def plot(self, view, ax, sl, mpl_kwargs=None):
+        """Plot structure."""
+
+        if self.plot_type == "contour":
+            self.plot_contour(view, sl, ax, mpl_kwargs)
+        elif self.plot_type == "mask":
+            self.plot_mask(view, sl, ax, mpl_kwargs)
+
+    def plot_mask(self, view, sl, ax, mpl_kwargs=None):
+        """Plot structure as a coloured mask."""
+
+        # Get slice
+        im_slice = self.get_slice(view, sl)
+
+        # Make colormap
+        norm = matplotlib.colors.Normalize()
+        cmap = matplotlib.cm.hsv
+        s_colors = cmap(norm(im_slice))
+        s_colors[im_slice > 0, :] = self.color
+        s_colors[im_slice == 0, :] = (0, 0, 0, 0)
+
+        # Display the mask
+        if mpl_kwargs is None:
+            mpl_kwargs = {}
+        ax.imshow(
+            s_colors, 
+            extent=self.extent[view],
+            aspect=self.aspect[view],
+            **mpl_kwargs
+        )
+
+    def plot_contour(self, view, sl, ax, mpl_kwargs=None):
         """Plot a contour for a given orientation and slice number on an 
         existing set of axes."""
 
         if sl not in self.contours[view]:
             return
         kwargs = mpl_kwargs if mpl_kwargs is not None else {}
-        if hasattr(self, "color"):
-            kwargs["color"] = self.color
+        kwargs["color"] = self.color
         for points in self.contours[view][sl]:
             points_x = [p[0] for p in points]
             points_y = [p[1] for p in points]
@@ -354,7 +500,7 @@ class MultiImage(NiftiImage):
 
     def __init__(
         self, 
-        path, 
+        nii, 
         title=None, 
         scale_in_mm=True, 
         downsample=None, 
@@ -370,8 +516,8 @@ class MultiImage(NiftiImage):
 
         Parameters
         ----------
-        path : str
-            Path to a nifti file.
+        nii : str/nifti/array
+            Path to a .nii/.npy file, or an nibabel nifti object/numpy array. 
 
         title : str, default=None
             Title for this image when plotted. If None, the filename will be 
@@ -413,8 +559,7 @@ class MultiImage(NiftiImage):
         """
 
         # Load the scan image
-        self.path = os.path.expanduser(path)
-        NiftiImage.__init__(self, path, title=title, scale_in_mm=scale_in_mm)
+        NiftiImage.__init__(self, nii, title=title, scale_in_mm=scale_in_mm)
         if not self.valid:
             return
         if downsample is not None:
@@ -521,6 +666,15 @@ def same_shape(imgs):
         if imgs[i].shape[:3] != imgs[i + 1].shape[:3]:
             return False
     return True
+
+
+def get_arg_tuple(arg):
+    """Convert an argument to a tuple if it isn't alread."""
+
+    if isinstance(arg, tuple) or isinstance(arg, list):
+        return arg
+    else:
+        return (arg, arg, arg)
 
 
 def get_image_slice(image, view, sl):
