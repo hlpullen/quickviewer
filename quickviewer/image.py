@@ -1,4 +1,4 @@
-"""Shared variables and functions."""
+"""Classes for plotting images from NIfTI files or arrays."""
 
 import fnmatch
 import glob
@@ -70,6 +70,7 @@ class NiftiImage:
         # Assign settings
         self.title = title
         self.scale_in_mm = scale_in_mm
+        self.data_mask = None
         if nii is None:
             self.valid = False
             return
@@ -116,6 +117,7 @@ class NiftiImage:
             self.voxel_sizes = {ax: voxel_sizes[n] for ax, n in _axes.items()}
             self.origin = {ax: origin[n] for ax, n in _axes.items()}
         self.set_geom()
+        self.set_plotting_defaults()
 
     def set_geom(self):
         """Assign geometric properties based on image data, origin, and 
@@ -140,6 +142,38 @@ class NiftiImage:
                 self.aspect[view] = abs(self.voxel_sizes[y] /
                                         self.voxel_sizes[x])
 
+    def set_plotting_defaults(self):
+        """Create dict of default matplotlib plotting arguments."""
+
+        self.mpl_kwargs = {"cmap": "gray",
+                           "interpolation": "none",
+                           "vmin": -300,
+                           "vmax": 200
+                          }
+        self.mask_colour = "black"
+
+    def set_ax(self, ax=None, figsize=None):
+        """Assign an axis to self, or create new axis if needed."""
+
+        if ax is not None:
+            self.ax = ax
+        else:
+            self.figsize = figsize if figsize is not None else 5
+            self.fig, self.ax = plt.subplots(figsize=(self.figsize, 
+                                                      self.figsize))
+
+    def get_kwargs(self, mpl_kwargs, default=None):
+        """Return a dict of matplotlib keyword arguments, combining default
+        values with custom values."""
+
+        if default is None:
+            custom_kwargs = self.mpl_kwargs.copy()
+        else:
+            custom_kwargs = default.copy()
+        if mpl_kwargs is not None:
+            custom_kwargs.update(mpl_kwargs)
+        return custom_kwargs
+
     def idx_to_pos(self, idx, ax):
         """Convert an index to a position along a given axis."""
 
@@ -150,7 +184,38 @@ class NiftiImage:
 
         return round((pos - self.origin[ax]) / self.voxel_sizes[ax])
 
-    def get_slice(self, view, sl):
+    def set_mask(self, mask):
+        """Set the mask for this image. The mask will be used when self.plot()
+        is called with masked=True."""
+        
+        if not self.valid:
+            return
+        if mask is None:
+            self.data_mask = None
+            return
+        elif isinstance(mask, np.ndarray):
+            data_mask = mask
+        elif isinstance(mask, NiftiImage):
+            if not mask.valid:
+                self.data_mask = None
+                return
+            data_mask = mask.data
+        else:
+            raise TypeError("Mask must be a numpy array or a NiftiImage.")
+        
+        # Check mask shape is consistent
+        if data_mask.shape != self.data.shape:
+
+            # Downsample mask if it matches original image shape
+            if data_mask.shape == self.shape:
+                self.data_mask = self.downsample_array(data_mask)
+            else:
+                print("Warning: mask does not match shape of image!")
+
+        else:
+            self.data_mask = data_mask
+
+    def get_slice(self, view, sl, masked=False):
         """Get 2D array corresponding to a slice of the image in a given 
         orientation.
 
@@ -161,16 +226,28 @@ class NiftiImage:
 
         sl : int
             Index of the slice to use.
+
+        masked : bool, default=False
+            If True and the "data_mask" attribute is not None, a mask will be 
+            applied.
         """
 
-        im_slice = np.transpose(self.data, _orient[view])[:, :, sl]
+        # Apply mask if needed
+        if masked and self.data_mask is not None:
+            data = np.ma.masked_where(self.data_mask < 0.5, self.data)
+        else: 
+            data = self.data
+    
+        # Get 2D slice and adjust orientation
+        im_slice = np.transpose(data, _orient[view])[:, :, sl]
         if view == "y-z":
             im_slice = im_slice[:, ::-1]
         elif view == "x-z":
             im_slice = im_slice[::-1, ::-1]
         return np.rot90(im_slice, _n_rot[view])
   
-    def plot(self, view, sl, ax=None, mpl_kwargs=None, show=True):
+    def plot(self, view, sl, ax=None, mpl_kwargs=None, show=True, figsize=None,
+             masked=False):
         """Plot a given slice on a set of axes.
         
         Parameters
@@ -190,42 +267,52 @@ class NiftiImage:
         mpl_kwargs : dict, default=None
             Dictionary of keyword arguments to pass to matplotlib.imshow().
 
+        masked : bool, default=False
+            If True and the "mask" attribute is set, the image will be plotted
+            with a mask.
         """
+
+        if not self.valid:
+            return
         
-        # Create axes if needed
-        if ax is None:
-            fig, ax = plt.subplots()
+        # Get slice
+        self.set_ax(ax, figsize)
+        im_slice = self.get_slice(view, sl, masked)
 
         # Plot image
-        if mpl_kwargs is None:
-            mpl_kwargs = {}
-        mpl_kwargs.setdefault("cmap", "gray")
-        ax.imshow(self.get_slice(view, sl), 
+        self.ax.imshow(im_slice,
                   extent=self.extent[view],
                   aspect=self.aspect[view],
-                  **mpl_kwargs)
+                  **self.get_kwargs(mpl_kwargs))
 
         # Set labels
         units = " (mm)" if self.scale_in_mm else ""
-        ax.set_xlabel(_plot_axes[view][0] + units)
-        ax.set_ylabel(_plot_axes[view][1] + units)
+        self.ax.set_xlabel(_plot_axes[view][0] + units)
+        self.ax.set_ylabel(_plot_axes[view][1] + units)
         if self.title is not None:
-            ax.set_title(self.title)
+            self.ax.set_title(self.title)
 
         # Display image
         if show:
             plt.show()
 
     def downsample(self, d):
-        """Downsample image by amount d = (dx, dy, dz) in the (x, y, z) 
+        """Downsample own image by amount d = (dx, dy, dz) in the (x, y, z) 
         directions. If <d> is a single value, the image will be downsampled
         equally in all directions."""
 
-        ds = get_arg_tuple(d)
-        for ax, d_ax in zip(_axes, ds):
+        self.downsample = get_arg_tuple(d)
+        for ax, d_ax in zip(_axes, self.downsample):
             self.voxel_sizes[ax] *= d_ax
-        self.data = self.data[::d[1], ::d[0], ::d[2]]
+        self.data = self.downsample_array(self.data)
         self.set_geom()
+
+    def downsample_array(self, data_array):
+        """Downsample a numpy array by amount set in self.downsample."""
+
+        return data_array[::self.downsample[1], 
+                          ::self.downsample[0], 
+                          ::self.downsample[2]]
 
 
 class DeformationImage(NiftiImage):
@@ -244,8 +331,13 @@ class DeformationImage(NiftiImage):
         self.valid_plot_types = ["grid", "quiver", "none"]
         self.plot_type = plot_type if plot_type in self.valid_plot_types \
                 else self.valid_plot_types[0]
+        self.set_spacing(spacing)
         
-        # Set grid spacing for plotting
+    def set_spacing(self, spacing):
+        """Assign grid spacing in each direction."""
+
+        if spacing is None:
+            return
         spacing = get_arg_tuple(spacing)
         if self.scale_in_mm:
             self.spacing = {ax: abs(round(spacing[i] / self.voxel_sizes[ax]))
@@ -255,6 +347,12 @@ class DeformationImage(NiftiImage):
         for ax, sp in self.spacing.items():
             if sp < 2:
                 self.spacing[ax] = 2  # Ensure spacing is at least 2 voxels
+
+    def set_plotting_defaults(self):
+        """Create dict of default matplotlib plotting arguments."""
+
+        self.quiver_kwargs = {"cmap": "jet"}
+        self.grid_kwargs = {"color": "green"}
 
     def get_slice(self, view, sl):
         """Get 2D array corresponding to a slice of the image in a given 
@@ -295,18 +393,29 @@ class DeformationImage(NiftiImage):
         y = y.T
         return x, y, df_x, df_y
 
-    def plot(self, view, sl, ax):
+    def plot(self, view, sl, ax=None, mpl_kwargs=None, plot_type=None,
+             spacing=None):
         """Plot deformation field."""
 
-        if self.plot_type == "grid":
-            self.plot_grid(view, sl, ax)
-        elif self.plot_type == "quiver":
-            self.plot_quiver(view, sl, ax)
+        if not self.valid:
+            return
 
-    def plot_quiver(self, view, sl, ax, mpl_kwargs=None):
+        # Apply plot settings
+        if plot_type in self.valid_plot_types:
+            self.plot_type = plot_type
+        self.set_spacing(spacing)
+
+        # Plot grid/quiver
+        if self.plot_type == "grid":
+            self.plot_grid(view, sl, ax, mpl_kwargs)
+        elif self.plot_type == "quiver":
+            self.plot_quiver(view, sl, ax, mpl_kwargs)
+
+    def plot_quiver(self, view, sl, ax=None, mpl_kwargs=None):
         """Draw a quiver plot on a set of axes."""
 
         # Get arrow positions and lengths
+        self.set_ax(ax)
         x_ax, y_ax = _plot_axes[view]
         x, y, df_x, df_y = self.get_deformation_slice(view, sl)
         arrows_x = df_x[::self.spacing[y_ax], ::self.spacing[x_ax]]
@@ -314,39 +423,32 @@ class DeformationImage(NiftiImage):
         plot_x = x[::self.spacing[y_ax], ::self.spacing[x_ax]]
         plot_y = y[::self.spacing[y_ax], ::self.spacing[x_ax]]
 
-        # Matplotlib keywords
-        if mpl_kwargs is None:
-            mpl_kwargs = {}
-        mpl_kwargs.setdefault("cmap", "jet")
-
         # Plot arrows
         if arrows_x.any() or arrows_y.any():
             M = np.hypot(arrows_x, arrows_y)
-            ax.quiver(plot_x, plot_y, arrows_x, arrows_y, M, **mpl_kwargs)
+            ax.quiver(plot_x, plot_y, arrows_x, arrows_y, M, 
+                      **self.get_kwargs(mpl_kwargs, self.quiver_kwargs))
         else:
             # If arrow lengths are zero, plot dots
             ax.scatter(plot_x, plot_y, c="navy", marker=".")
 
-    def plot_grid(self, view, sl, ax, mpl_kwargs=None):
+    def plot_grid(self, view, sl, ax=None, mpl_kwargs=None):
         """Draw a grid plot on a set of axes."""
 
         # Get gridline positions
-        ax.autoscale(False)
+        self.set_ax(ax)
+        self.ax.autoscale(False)
         x_ax, y_ax = _plot_axes[view]
         x, y, df_x, df_y = self.get_deformation_slice(view, sl)
         df_x += x
         df_y += y
 
-        # Matplotlib keywords
-        if mpl_kwargs is None:
-            mpl_kwargs = {}
-        mpl_kwargs.setdefault("color", "green")
-
         # Plot gridlines
+        kwargs = self.get_kwargs(mpl_kwargs, default=self.grid_kwargs)
         for i in np.arange(0, x.shape[0], self.spacing[y_ax]):
-            ax.plot(df_x[i, :], df_y[i, :], **mpl_kwargs)
+            self.ax.plot(df_x[i, :], df_y[i, :], **kwargs)
         for j in np.arange(0, x.shape[1], self.spacing[x_ax]):
-            ax.plot(df_x[:, j], df_y[:, j], **mpl_kwargs)
+            self.ax.plot(df_x[:, j], df_y[:, j], **kwargs)
 
 
 class StructImage(NiftiImage):
@@ -403,6 +505,13 @@ class StructImage(NiftiImage):
             self.length["mm"][ax] = self.length["voxels"][ax] \
                     * abs(self.voxel_sizes[ax])
 
+    def set_plotting_defaults(self):
+        """Set default matplotlib plotting keywords."""
+
+        self.mask_kwargs = {"alpha": 1,
+                            "interpolation": "none"}
+        self.contour_kwargs = {"linewidth": 2}
+
     def set_contours(self):
         """Compute positions of contours on each slice in each orientation.
         """
@@ -449,9 +558,13 @@ class StructImage(NiftiImage):
         else:
             print(f"Colour {color} is not a valid colour.")
 
-    def plot(self, view, ax, sl, mpl_kwargs=None):
+    def plot(self, view, sl, ax, mpl_kwargs=None, plot_type=None):
         """Plot structure."""
 
+        if not self.valid:
+            return
+        if plot_type in self.valid_plot_types:
+            self.plot_type = plot_type
         if self.plot_type == "contour":
             self.plot_contour(view, sl, ax, mpl_kwargs)
         elif self.plot_type == "mask":
@@ -461,6 +574,7 @@ class StructImage(NiftiImage):
         """Plot structure as a coloured mask."""
 
         # Get slice
+        self.set_ax(ax)
         im_slice = self.get_slice(view, sl)
 
         # Make colormap
@@ -471,27 +585,26 @@ class StructImage(NiftiImage):
         s_colors[im_slice == 0, :] = (0, 0, 0, 0)
 
         # Display the mask
-        if mpl_kwargs is None:
-            mpl_kwargs = {}
-        ax.imshow(
+        self.ax.imshow(
             s_colors, 
             extent=self.extent[view],
             aspect=self.aspect[view],
-            **mpl_kwargs
+            **self.get_kwargs(mpl_kwargs, default=self.mask_kwargs)
         )
 
-    def plot_contour(self, view, sl, ax, mpl_kwargs=None):
+    def plot_contour(self, view, sl, ax=None, mpl_kwargs=None):
         """Plot a contour for a given orientation and slice number on an 
         existing set of axes."""
 
         if sl not in self.contours[view]:
             return
-        kwargs = mpl_kwargs if mpl_kwargs is not None else {}
-        kwargs["color"] = self.color
+        self.set_ax(ax)
+        kwargs = self.get_kwargs(mpl_kwargs, default=self.contour_kwargs)
+        kwargs.setdefault("color", self.color)
         for points in self.contours[view][sl]:
             points_x = [p[0] for p in points]
             points_y = [p[1] for p in points]
-            ax.plot(points_x, points_y, **kwargs)
+            self.ax.plot(points_x, points_y, **kwargs)
 
 
 class MultiImage(NiftiImage):
@@ -510,7 +623,6 @@ class MultiImage(NiftiImage):
         df=None,
         structs=None,
         struct_colours=None,
-        structs_as_mask=False
     ):
         """Load a QuickViewerImage. 
 
@@ -590,13 +702,14 @@ class MultiImage(NiftiImage):
         """Load structures from a path/wildcard or list of paths/wildcards."""
 
         self.has_structs = False
+        self.structs = []
         if structs is None:
             return
 
         # Find valid filepaths
         struct_paths = [structs] if isinstance(structs, str) else structs
         files = []
-        for path in structs_paths:
+        for path in struct_paths:
 
             # Find files
             path = os.path.expanduser(path)
@@ -647,6 +760,90 @@ class MultiImage(NiftiImage):
                     if fnmatch.fnmatch(name, struct.name.lower()):
                         struct.assign_color(custom[name])
                         break
+
+    def set_plotting_defaults(self):
+        """Set default matplotlib plotting options."""
+
+        NiftiImage.set_plotting_defaults(self)
+        self.dose_kwargs = {
+            "cmap": "jet", 
+            "alpha": 0.5,
+            "vmin": None,
+            "vmax": None
+        }
+        self.jacobian_kwargs = {
+            "cmap": "seismic",
+            "alpha": 0.5,
+            "vmin": 0.8,
+            "vmax": 1.2
+        }
+
+    def set_masks(self, structs_as_mask=False):
+        """Assign mask(s) to self and dose image."""
+    
+        if self.has_mask:
+            mask_array = self.mask.data
+            if structs_as_mask:
+                for struct in self.structs:
+                    mask_array += struct.data
+        elif structs_as_mask and self.has_structs:
+            mask_array = self.structs[0].data
+            for struct in self.structs[1:]:
+                mask_array += struct.data
+        else:
+            mask_array = None
+        self.set_mask(mask_array)
+        self.dose.set_mask(mask_array)
+
+    def plot(
+        self, 
+        view, 
+        sl, 
+        ax=None, 
+        mpl_kwargs=None,
+        show=True,
+        figsize=None,
+        dose_kwargs=None, 
+        masked=False,
+        jacobian_kwargs=None, 
+        df_kwargs=None,
+        df_plot_type=None,
+        df_spacing=None,
+        struct_kwargs=None,
+        struct_plot_type=None,
+        structs_as_mask=False
+    ):
+        """Plot image slice and any extra overlays."""
+
+        # Plot image
+        self.set_masks(structs_as_mask)
+        NiftiImage.plot(self, view, sl, ax, mpl_kwargs, show=False, 
+                        masked=masked, figsize=figsize)
+
+        # Plot dose field
+        self.dose.plot(view, sl, self.ax, 
+                       self.get_kwargs(dose_kwargs, default=self.dose_kwargs),
+                       show=False, masked=masked)
+
+        # Plot jacobian
+        self.jacobian.plot(view, sl, self.ax, 
+                           self.get_kwargs(jacobian_kwargs, 
+                                           default=self.jacobian_kwargs),
+                           show=False)
+
+        # Plot structures
+        for struct in self.structs:
+            struct.plot(view, sl, self.ax, struct_kwargs, struct_plot_type)
+
+        # Plot deformation field
+        self.df.plot(view, sl, self.ax, 
+                     mpl_kwargs=df_kwargs, 
+                     plot_type=df_plot_type, 
+                     spacing=df_spacing)
+
+        # Display image
+        if show:
+            plt.show()
 
 
 def in_notebook():
