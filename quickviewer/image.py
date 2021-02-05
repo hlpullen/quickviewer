@@ -13,12 +13,9 @@ import skimage.measure
 
 
 # Global properties
-_style = {"description_width": "initial"}
 _axes = {"x": 1, "y": 0, "z": 2}
 _slider_axes = {"x-y": "z", "x-z": "y", "y-z": "x"}
 _plot_axes = {"x-y": ("x", "y"), "x-z": ("z", "x"), "y-z": ("z", "y")}
-_view_map = {"y-x": "x-y", "z-x": "x-z", "z-y": "y-z"}
-_orthog = {'x-y': 'y-z', 'y-z': 'x-z', 'x-z': 'y-z'}
 _orient = {"y-z": [1, 2, 0], "x-z": [0, 2, 1], "x-y": [0, 1, 2]}
 _n_rot = {"y-z": 2, "x-z": 2, "x-y": 1}
 
@@ -146,7 +143,6 @@ class NiftiImage:
         """Create dict of default matplotlib plotting arguments."""
 
         self.mpl_kwargs = {"cmap": "gray",
-                           "interpolation": "none",
                            "vmin": -300,
                            "vmax": 200
                           }
@@ -179,7 +175,7 @@ class NiftiImage:
 
         return self.origin[ax] + idx * self.voxel_sizes[ax]
 
-    def pos_to_idx(self, pos, idx):
+    def pos_to_idx(self, pos, ax):
         """Convert a position to an index along a given axis."""
 
         return round((pos - self.origin[ax]) / self.voxel_sizes[ax])
@@ -895,5 +891,5 @@ def get_image_slice(image, view, sl):
             im_to_show = im_to_show[::-1, ::-1, :]
         return np.rot90(im_to_show, n_rot[view])
 
-__all__ = ("_style", "_axes", "_plot_axes", "_slider_axes", "_view_map", 
-           "_orthog", "in_notebook", "same_shape", "get_image_slice")
+__all__ = ("_axes", "_plot_axes", "_slider_axes", "same_shape", 
+           "get_image_slice", "in_notebook")

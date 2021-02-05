@@ -20,6 +20,10 @@ from quickviewer.structs import StructMask
 from quickviewer.image import *
 
 _shrunk_to_aspect = matplotlib.transforms.Bbox.shrunk_to_aspect
+_style = {"description_width": "initial"}
+_view_map = {"y-x": "x-y", "z-x": "x-z", "z-y": "y-z"}
+_orthog = {'x-y': 'y-z', 'y-z': 'x-z', 'x-z': 'y-z'}
+
 
 
 class QuickViewerImage():
