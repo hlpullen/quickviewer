@@ -22,10 +22,13 @@ class ViewerImage(MultiImage):
         downsample=None, 
         dose=None, 
         mask=None, 
+        invert_mask=False,
+        mask_colour="black",
         jacobian=None, 
         df=None,
         structs=None,
         struct_colours=None,
+        structs_as_mask=False,
         standalone=True,
         init_view="x-y",
         init_idx=None,
@@ -34,7 +37,8 @@ class ViewerImage(MultiImage):
     ):
 
         MultiImage.__init__(self, nii, title, scale_in_mm, downsample, dose,
-                            mask, jacobian, df, structs, struct_colours)
+                            mask, jacobian, df, structs, struct_colours,
+                            structs_as_mask)
         self.interactive = False  # Flag for creation of interactive elements
 
         # Set initial view and slice numbers
@@ -50,6 +54,8 @@ class ViewerImage(MultiImage):
         self.v = v
         self.standalone = standalone
         self.continuous_update = continuous_update
+        self.invert_mask = invert_mask
+        self.mask_colour = mask_colour
         self.plotting = False
 
         # Display plot
@@ -95,20 +101,24 @@ class ViewerImage(MultiImage):
             else:
                 return idx + 1
 
-    def set_interactive(self, ui_view=None, ui_hu=None, ui_slice=None):
+    def set_interactive(self):
         """Create interactive elements."""
         
         if in_notebook():
-            self.make_ui(ui_view, ui_hu, ui_slice)
+            self.make_ui()
         else:
             self.set_callbacks()
-        self.interactive = True
 
-    def make_ui(self, ui_view=None, ui_hu=None, ui_slice=None):
-        """Make Jupyter notebook UI."""
+    def make_ui(self, vimage=None, share_sliders=True):
+        """Make Jupyter notebook UI. If qv_image contains another ViewerImage
+        instance, the UI will be taken from that image. If share_sliders is 
+        False, independent HU and slice sliders will be created."""
+
+        shared_ui = isinstance(vimage, ViewerImage)
+        self.main_ui = []
 
         # View radio buttons
-        if ui_view is None:
+        if not shared_ui:
             self.ui_view = ipyw.RadioButtons(
                 options=["x-y", "y-z", "x-z"],
                 value=self.view,
@@ -116,25 +126,25 @@ class ViewerImage(MultiImage):
                 disabled=False,
                 style=_style,
             )
+            self.main_ui.append(self.ui_view)
         else:
-            self.ui_view = ui_view
+            self.ui_view = vimage.ui_view
             self.view = self.ui_view.value
 
-        # HU slider
-        if ui_hu is None:
+        # HU and slice sliders
+        if not shared_ui or share_sliders:
+
+            # HU slider
             self.ui_hu = ipyw.IntRangeSlider(
-                min=self.data.min(),
-                max=self.data.max(),
+                min=-2000, max=2000,
                 value=self.v,
                 description="HU range",
                 continuous_update=False,
                 style=_style
             )
-        else:
-            self.ui_hu = ui_hu
+            self.main_ui.append(self.ui_hu)
 
-        # Slice slider
-        if ui_slice is None:
+            # Slice slider
             self.ui_slice = ipyw.FloatSlider(
                 continuous_update=self.continuous_update,
                 style=_style,
@@ -142,14 +152,50 @@ class ViewerImage(MultiImage):
             )
             self.own_ui_slice = True
             self.update_slice_slider()
+            self.main_ui.append(self.ui_slice)
+
         else:
-            self.ui_slice = ui_slice
+            self.ui_hu = vimage.ui_hu
+            self.ui_slice = vimage.ui_hu
             self.slice[self.view] = self.ui_slice.value
             self.own_ui_slice = False
 
+        # Extra sliders
+        self.extra_ui = []
+        if not shared_ui:
+
+            # Mask checkbox
+            self.ui_mask = ipyw.Checkbox(value=self.has_mask, 
+                                         description="Apply mask", 
+                                         width=200)
+            if self.has_mask:
+                self.extra_ui.append(self.ui_mask)
+
+            # Dose opacity
+            self.ui_dose = ipyw.FloatSlider(
+                value=0.5, min=0, max=1, step=0.1, 
+                description=f"Dose opacity", 
+                continuous_update=self.continuous_update,
+                readout_format=".1f", style=_style,
+            )
+            if self.has_dose:
+                self.extra_ui.append(self.ui_dose)
+
+        else:
+            self.ui_mask = vimage.ui_mask
+            self.ui_dose = vimage.ui_dose
+
         # Combine UI elements
-        self.ui = [self.ui_view, self.ui_hu, self.ui_slice]
-        self.ui_box = ipyw.VBox(self.ui)
+        self.main_ui_box = ipyw.VBox(self.main_ui)
+        self.extra_ui_box = ipyw.VBox(self.extra_ui)
+        self.ui = self.main_ui + self.extra_ui
+        self.ui_box = ipyw.HBox([self.main_ui_box, self.extra_ui_box])
+        self.interactive = True
+
+    def set_callbacks(self):
+        """Set up matplotlib callback functions for interactive plotting."""
+
+        self.interactive = True
 
     def update_slice_slider(self):
         """Update the slice slider to show the axis corresponding to the 
@@ -202,10 +248,6 @@ class ViewerImage(MultiImage):
                 self.slider_to_idx(self.ui_slice.value), ax)
             self.ui_slice.description = f"{ax} ({pos:.1f} mm)"
 
-    def set_callback(self):
-        """Set up matplotlib callbacks for interactivity."""
-        pass
-
     def show(self):
         """Display plot and UI."""
 
@@ -247,11 +289,20 @@ class ViewerImage(MultiImage):
             self.update_slice_slider_desc()
         self.slice[self.view] = self.slider_to_idx(self.ui_slice.value)
 
+        # Get dose settings
+        dose_kwargs = {}
+        if self.has_dose:
+            dose_kwargs = {"alpha": self.ui_dose.value}
+
         # Make plot
         MultiImage.plot(self, 
                         self.view, 
                         self.slice[self.view], 
                         mpl_kwargs=mpl_kwargs, 
+                        masked=self.ui_mask.value,
+                        invert_mask=self.invert_mask,
+                        mask_colour=self.mask_colour,
+                        dose_kwargs=dose_kwargs,
                         show=False)
         self.plotting = False
 

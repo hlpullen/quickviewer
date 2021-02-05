@@ -1,5 +1,6 @@
 """Classes for plotting images from NIfTI files or arrays."""
 
+import copy
 import fnmatch
 import glob
 import matplotlib.pyplot as plt
@@ -211,7 +212,7 @@ class NiftiImage:
         else:
             self.data_mask = data_mask
 
-    def get_slice(self, view, sl, masked=False):
+    def get_slice(self, view, sl, masked=False, invert_mask=False):
         """Get 2D array corresponding to a slice of the image in a given 
         orientation.
 
@@ -230,7 +231,10 @@ class NiftiImage:
 
         # Apply mask if needed
         if masked and self.data_mask is not None:
-            data = np.ma.masked_where(self.data_mask < 0.5, self.data)
+            if invert_mask:
+                data = np.ma.masked_where(self.data_mask > 0.5, self.data)
+            else:
+                data = np.ma.masked_where(self.data_mask < 0.5, self.data)
         else: 
             data = self.data
     
@@ -243,7 +247,7 @@ class NiftiImage:
         return np.rot90(im_slice, _n_rot[view])
   
     def plot(self, view, sl, ax=None, mpl_kwargs=None, show=True, figsize=None,
-             masked=False):
+             masked=False, invert_mask=False, mask_colour="black"):
         """Plot a given slice on a set of axes.
         
         Parameters
@@ -266,6 +270,12 @@ class NiftiImage:
         masked : bool, default=False
             If True and the "mask" attribute is set, the image will be plotted
             with a mask.
+
+        invert_mask : bool, default=True
+            If True, any masks will be inverted.
+
+        mask_colour : matplotlib colour, default="black"
+            Colour in which to plot any masked areas
         """
 
         if not self.valid:
@@ -273,13 +283,18 @@ class NiftiImage:
         
         # Get slice
         self.set_ax(ax, figsize)
-        im_slice = self.get_slice(view, sl, masked)
+        im_slice = self.get_slice(view, sl, masked, invert_mask)
+
+        # Get colourmap
+        kwargs = self.get_kwargs(mpl_kwargs)
+        cmap = copy.copy(matplotlib.cm.get_cmap(kwargs.pop("cmap")))
+        cmap.set_bad(color=mask_colour)
 
         # Plot image
         self.ax.imshow(im_slice,
                   extent=self.extent[view],
                   aspect=self.aspect[view],
-                  **self.get_kwargs(mpl_kwargs))
+                  cmap=cmap, **kwargs)
 
         # Set labels
         units = " (mm)" if self.scale_in_mm else ""
@@ -619,6 +634,7 @@ class MultiImage(NiftiImage):
         df=None,
         structs=None,
         struct_colours=None,
+        structs_as_mask=False
     ):
         """Load a QuickViewerImage. 
 
@@ -679,6 +695,9 @@ class MultiImage(NiftiImage):
         self.load_to(jacobian, "jacobian")
         self.load_df(df)
         self.load_structs(structs, struct_colours)
+        self.structs_as_mask = structs_as_mask
+        if self.has_structs and structs_as_mask:
+            self.has_mask = True
 
     def load_to(self, path, attr):
         """Load image data from a path into a class attribute."""
@@ -774,15 +793,15 @@ class MultiImage(NiftiImage):
             "vmax": 1.2
         }
 
-    def set_masks(self, structs_as_mask=False):
+    def set_masks(self):
         """Assign mask(s) to self and dose image."""
     
         if self.has_mask:
             mask_array = self.mask.data
-            if structs_as_mask:
+            if self.structs_as_mask:
                 for struct in self.structs:
                     mask_array += struct.data
-        elif structs_as_mask and self.has_structs:
+        elif self.structs_as_mask and self.has_structs:
             mask_array = self.structs[0].data
             for struct in self.structs[1:]:
                 mask_array += struct.data
@@ -801,25 +820,28 @@ class MultiImage(NiftiImage):
         figsize=None,
         dose_kwargs=None, 
         masked=False,
+        invert_mask=False,
+        mask_colour="black",
         jacobian_kwargs=None, 
         df_kwargs=None,
         df_plot_type=None,
         df_spacing=None,
         struct_kwargs=None,
         struct_plot_type=None,
-        structs_as_mask=False
     ):
         """Plot image slice and any extra overlays."""
 
         # Plot image
-        self.set_masks(structs_as_mask)
+        self.set_masks()
         NiftiImage.plot(self, view, sl, ax, mpl_kwargs, show=False, 
-                        masked=masked, figsize=figsize)
+                        masked=masked, invert_mask=invert_mask,
+                        mask_colour=mask_colour, figsize=figsize)
 
         # Plot dose field
         self.dose.plot(view, sl, self.ax, 
                        self.get_kwargs(dose_kwargs, default=self.dose_kwargs),
-                       show=False, masked=masked)
+                       show=False, masked=masked, invert_mask=invert_mask,
+                       mask_colour=mask_colour)
 
         # Plot jacobian
         self.jacobian.plot(view, sl, self.ax, 
