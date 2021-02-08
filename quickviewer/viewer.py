@@ -27,6 +27,8 @@ class ViewerImage(MultiImage):
         invert_mask=False,
         mask_colour="black",
         jacobian=None, 
+        jacobian_opacity=0.5,
+        jacobian_cmap="seismic",
         df=None,
         structs=None,
         struct_colours=None,
@@ -56,10 +58,12 @@ class ViewerImage(MultiImage):
         self.v = v
         self.standalone = standalone
         self.continuous_update = continuous_update
-        self.init_dose_opacity = dose_opacity
-        self.dose_cmap = dose_cmap
         self.invert_mask = invert_mask
         self.mask_colour = mask_colour
+        self.init_dose_opacity = dose_opacity
+        self.dose_cmap = dose_cmap
+        self.init_jac_opacity = jacobian_opacity
+        self.jacobian_cmap = jacobian_cmap
         self.plotting = False
 
         # Display plot
@@ -185,6 +189,22 @@ class ViewerImage(MultiImage):
             if self.has_dose:
                 self.extra_ui.append(self.ui_dose)
 
+            # Jacobian opacity and range
+            self.ui_jac_opacity = ipyw.FloatSlider(
+                value=self.init_jac_opacity, min=0, max=1, step=0.1, 
+                description=f"Jacobian opacity", 
+                continuous_update=self.continuous_update,
+                readout_format=".1f", style=_style,
+            )
+            self.ui_jac_range = ipyw.FloatRangeSlider(
+                min=-0.5, max=2.5, step=0.1, value=[0.8, 1.2],
+                description="Jacobian range", continuous_update=False,
+                style=_style, readout_format=".1f"
+            )
+            if self.has_jacobian:
+                self.extra_ui.extend([self.ui_jac_opacity, 
+                                      self.ui_jac_range])
+
         else:
             self.ui_mask = vimage.ui_mask
             self.ui_dose = vimage.ui_dose
@@ -299,6 +319,15 @@ class ViewerImage(MultiImage):
             dose_kwargs = {"alpha": self.ui_dose.value,
                            "cmap": self.dose_cmap}
 
+        # Get jacobian settings
+        jacobian_kwargs = {}
+        if self.has_jacobian:
+            jacobian_kwargs = {"alpha": self.ui_jac_opacity.value,
+                               "cmap": self.jacobian_cmap,
+                               "vmin": self.ui_jac_range.value[0],
+                               "vmax": self.ui_jac_range.value[1]
+                              }
+
         # Make plot
         MultiImage.plot(self, 
                         self.view, 
@@ -308,6 +337,7 @@ class ViewerImage(MultiImage):
                         invert_mask=self.invert_mask,
                         mask_colour=self.mask_colour,
                         dose_kwargs=dose_kwargs,
+                        jacobian_kwargs=jacobian_kwargs,
                         show=False)
         self.plotting = False
 
