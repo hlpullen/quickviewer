@@ -21,6 +21,8 @@ class ViewerImage(MultiImage):
         scale_in_mm=True, 
         downsample=None, 
         dose=None, 
+        dose_opacity=0.5,
+        dose_cmap="jet",
         mask=None, 
         invert_mask=False,
         mask_colour="black",
@@ -54,6 +56,8 @@ class ViewerImage(MultiImage):
         self.v = v
         self.standalone = standalone
         self.continuous_update = continuous_update
+        self.init_dose_opacity = dose_opacity
+        self.dose_cmap = dose_cmap
         self.invert_mask = invert_mask
         self.mask_colour = mask_colour
         self.plotting = False
@@ -173,7 +177,7 @@ class ViewerImage(MultiImage):
 
             # Dose opacity
             self.ui_dose = ipyw.FloatSlider(
-                value=0.5, min=0, max=1, step=0.1, 
+                value=self.init_dose_opacity, min=0, max=1, step=0.1, 
                 description=f"Dose opacity", 
                 continuous_update=self.continuous_update,
                 readout_format=".1f", style=_style,
@@ -292,7 +296,8 @@ class ViewerImage(MultiImage):
         # Get dose settings
         dose_kwargs = {}
         if self.has_dose:
-            dose_kwargs = {"alpha": self.ui_dose.value}
+            dose_kwargs = {"alpha": self.ui_dose.value,
+                           "cmap": self.dose_cmap}
 
         # Make plot
         MultiImage.plot(self, 
