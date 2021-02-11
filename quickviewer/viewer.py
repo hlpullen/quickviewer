@@ -30,6 +30,8 @@ class ViewerImage(MultiImage):
         jacobian_opacity=0.5,
         jacobian_cmap="seismic",
         df=None,
+        df_plot_type="grid",
+        df_spacing=30,
         structs=None,
         struct_colours=None,
         structs_as_mask=False,
@@ -64,6 +66,8 @@ class ViewerImage(MultiImage):
         self.dose_cmap = dose_cmap
         self.init_jac_opacity = jacobian_opacity
         self.jacobian_cmap = jacobian_cmap
+        self.init_df_plot_type = df_plot_type
+        self.df_spacing = df_spacing
         self.plotting = False
 
         # Display plot
@@ -170,6 +174,7 @@ class ViewerImage(MultiImage):
 
         # Extra sliders
         self.extra_ui = []
+        self.lower_ui = []
         if not shared_ui:
 
             # Mask checkbox
@@ -204,6 +209,18 @@ class ViewerImage(MultiImage):
             if self.has_jacobian:
                 self.extra_ui.extend([self.ui_jac_opacity, 
                                       self.ui_jac_range])
+
+            # Deformation field plot type
+            self.ui_df = ipyw.Dropdown(
+                options=["grid", "quiver", "none"],
+                value=self.init_df_plot_type,
+                description="Deformation field",
+                style=_style,
+            )
+            if self.has_df:
+                self.extra_ui.append(self.ui_df)
+
+            # Structure UI
 
         else:
             self.ui_mask = vimage.ui_mask
@@ -338,6 +355,8 @@ class ViewerImage(MultiImage):
                         mask_colour=self.mask_colour,
                         dose_kwargs=dose_kwargs,
                         jacobian_kwargs=jacobian_kwargs,
+                        df_plot_type=self.ui_df.value,
+                        df_spacing=self.df_spacing,
                         show=False)
         self.plotting = False
 
