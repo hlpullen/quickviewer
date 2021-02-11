@@ -2940,4 +2940,3 @@ matplotlib.rcParams["figure.figsize"] = (7.4, 4.8)
 matplotlib.rcParams["font.serif"] = "Times New Roman"
 matplotlib.rcParams["font.family"] = "serif"
 matplotlib.rcParams["font.size"] = 14.0
-matplotlib.rcParams["axes.facecolor"] = "black"
