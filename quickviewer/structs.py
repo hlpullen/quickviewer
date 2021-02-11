@@ -178,7 +178,7 @@ class StructMask:
 
 
 
-def StructComparison:
+class StructComparison:
 
     def __init__(self, nii1, nii2):
 
