@@ -451,15 +451,15 @@ class DeformationImage(NiftiImage):
         self.ax.autoscale(False)
         x_ax, y_ax = _plot_axes[view]
         x, y, df_x, df_y = self.get_deformation_slice(view, sl)
-        df_x += x
-        df_y += y
+        grid_x = x + df_x
+        grid_y = y + df_y
 
         # Plot gridlines
         kwargs = self.get_kwargs(mpl_kwargs, default=self.grid_kwargs)
         for i in np.arange(0, x.shape[0], self.spacing[y_ax]):
-            self.ax.plot(df_x[i, :], df_y[i, :], **kwargs)
+            self.ax.plot(grid_x[i, :], grid_y[i, :], **kwargs)
         for j in np.arange(0, x.shape[1], self.spacing[x_ax]):
-            self.ax.plot(df_x[:, j], df_y[:, j], **kwargs)
+            self.ax.plot(grid_x[:, j], grid_y[:, j], **kwargs)
 
 
 class StructImage(NiftiImage):
