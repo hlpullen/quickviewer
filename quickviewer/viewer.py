@@ -4,7 +4,9 @@ import ipywidgets as ipyw
 import numpy as np
 
 from quickviewer.image import MultiImage
-from quickviewer.image import _axes, _plot_axes, _slider_axes
+from quickviewer.image import _axes, _plot_axes, _slider_axes, \
+        _df_plot_types, _struct_plot_types
+
 
 _style = {"description_width": "initial"}
 _view_map = {"y-x": "x-y", "z-x": "x-z", "z-y": "y-z"}
@@ -19,6 +21,7 @@ class ViewerImage(MultiImage):
         nii, 
         title=None, 
         scale_in_mm=True, 
+        figsize=6,
         downsample=None, 
         dose=None, 
         dose_opacity=0.5,
@@ -32,8 +35,12 @@ class ViewerImage(MultiImage):
         df=None,
         df_plot_type="grid",
         df_spacing=30,
+        df_kwargs=None,
         structs=None,
         struct_colours=None,
+        struct_plot_type="contour",
+        struct_opacity=1,
+        struct_linewidth=2,
         structs_as_mask=False,
         standalone=True,
         init_view="x-y",
@@ -59,6 +66,7 @@ class ViewerImage(MultiImage):
         # Assign plot settings
         self.v = v
         self.standalone = standalone
+        self.figsize = figsize
         self.continuous_update = continuous_update
         self.invert_mask = invert_mask
         self.mask_colour = mask_colour
@@ -66,8 +74,12 @@ class ViewerImage(MultiImage):
         self.dose_cmap = dose_cmap
         self.init_jac_opacity = jacobian_opacity
         self.jacobian_cmap = jacobian_cmap
-        self.init_df_plot_type = df_plot_type
+        self.df_plot_type = df_plot_type
         self.df_spacing = df_spacing
+        self.df_kwargs = df_kwargs
+        self.struct_plot_type = struct_plot_type
+        self.struct_opacity = struct_opacity
+        self.struct_linewidth = struct_linewidth
         self.plotting = False
 
         # Display plot
@@ -212,8 +224,8 @@ class ViewerImage(MultiImage):
 
             # Deformation field plot type
             self.ui_df = ipyw.Dropdown(
-                options=["grid", "quiver", "none"],
-                value=self.init_df_plot_type,
+                options=_df_plot_types,
+                value=self.df_plot_type,
                 description="Deformation field",
                 style=_style,
             )
@@ -221,6 +233,36 @@ class ViewerImage(MultiImage):
                 self.extra_ui.append(self.ui_df)
 
             # Structure UI
+            # Structure plot type
+            self.ui_struct_plot_type = ipyw.Dropdown(
+                options=_struct_plot_types,
+                value=self.struct_plot_type,
+                description="Structure plotting",
+                style=_style,
+            )
+
+            # Opacity/linewidth slider
+            self.ui_struct_slider = ipyw.FloatSlider(continuous_update=False,
+                                                     style=_style)
+            self.update_struct_slider()
+
+            # Jump to structures
+            self.structs_for_jump = {"": None, **{s.name_nice: s for s in 
+                                                  self.structs}}
+            self.ui_struct_jump = ipyw.Dropdown(
+                options=self.structs_for_jump.keys(),
+                value="",
+                description="Jump to",
+                style=_style,
+            )
+
+            # Add all structure UIs
+            if self.has_structs:
+                self.extra_ui.extend([
+                    self.ui_struct_plot_type,
+                    self.ui_struct_slider,
+                    self.ui_struct_jump
+                ])
 
         else:
             self.ui_mask = vimage.ui_mask
@@ -232,6 +274,29 @@ class ViewerImage(MultiImage):
         self.ui = self.main_ui + self.extra_ui
         self.ui_box = ipyw.HBox([self.main_ui_box, self.extra_ui_box])
         self.interactive = True
+
+    def update_struct_slider(self):
+        """Update range and description of structure slider."""
+    
+        self.struct_plot_type = self.ui_struct_plot_type.value
+        if self.struct_plot_type == "mask":
+            self.ui_struct_slider.disabled = False
+            self.ui_struct_slider.min = 0
+            self.ui_struct_slider.max = 1
+            self.ui_struct_slider.step = 0.1
+            self.ui_struct_slider.value = self.struct_opacity
+            self.ui_struct_slider.description = 'Structure opacity'
+            self.ui_struct_slider.readout_format = '.1f'
+        elif self.struct_plot_type == "contour":
+            self.ui_struct_slider.disabled = False
+            self.ui_struct_slider.min = 1
+            self.ui_struct_slider.max = 8
+            self.ui_struct_slider.value = self.struct_linewidth
+            self.ui_struct_slider.step = 1
+            self.ui_struct_slider.description = 'Structure linewidth'
+            self.ui_struct_slider.readout_format = '.0f'
+        else:
+            self.ui_struct_slider.disabled = True
 
     def set_callbacks(self):
         """Set up matplotlib callback functions for interactive plotting."""
@@ -289,6 +354,18 @@ class ViewerImage(MultiImage):
                 self.slider_to_idx(self.ui_slice.value), ax)
             self.ui_slice.description = f"{ax} ({pos:.1f} mm)"
 
+    def jump_to_struct(self):
+        """Jump to the mid slice of a structure."""
+
+        if self.ui_struct_jump.value == "":
+            return
+
+        struct = self.structs_for_jump[self.ui_struct_jump.value]
+        mid_slice = int(np.mean(list(struct.contours[self.view].keys())))
+        self.ui_slice.value = self.idx_to_slider(
+            mid_slice, _slider_axes[self.view])
+        self.ui_struct_jump.value = ""
+
     def show(self):
         """Display plot and UI."""
 
@@ -328,6 +405,7 @@ class ViewerImage(MultiImage):
             self.update_slice_slider()
         elif not self.scale_in_mm:
             self.update_slice_slider_desc()
+        self.jump_to_struct()
         self.slice[self.view] = self.slider_to_idx(self.ui_slice.value)
 
         # Get dose settings
@@ -345,11 +423,24 @@ class ViewerImage(MultiImage):
                                "vmax": self.ui_jac_range.value[1]
                               }
 
+        # Get structure settings
+        if self.ui_struct_plot_type.value != self.struct_plot_type:
+            self.update_struct_slider()
+        if self.struct_plot_type == "contour": 
+            self.struct_linewidth = self.ui_struct_slider.value
+            struct_kwargs = {"linewidth": self.struct_linewidth}
+        elif self.struct_plot_type == "mask":
+            self.struct_opacity = self.ui_struct_slider.value
+            struct_kwargs = {"alpha": self.struct_opacity}
+        else:
+            struct_kwargs = {}
+
         # Make plot
         MultiImage.plot(self, 
                         self.view, 
                         self.slice[self.view], 
                         mpl_kwargs=mpl_kwargs, 
+                        figsize=self.figsize,
                         masked=self.ui_mask.value,
                         invert_mask=self.invert_mask,
                         mask_colour=self.mask_colour,
@@ -357,6 +448,9 @@ class ViewerImage(MultiImage):
                         jacobian_kwargs=jacobian_kwargs,
                         df_plot_type=self.ui_df.value,
                         df_spacing=self.df_spacing,
+                        df_kwargs=self.df_kwargs,
+                        struct_plot_type=self.struct_plot_type,
+                        struct_kwargs=struct_kwargs,
                         show=False)
         self.plotting = False
 

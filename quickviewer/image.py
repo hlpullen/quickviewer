@@ -20,6 +20,10 @@ _plot_axes = {"x-y": ("x", "y"), "x-z": ("z", "x"), "y-z": ("z", "y")}
 _orient = {"y-z": [1, 2, 0], "x-z": [0, 2, 1], "x-y": [0, 1, 2]}
 _n_rot = {"y-z": 2, "x-z": 2, "x-y": 1}
 
+# Plotting types
+_df_plot_types = ["grid", "quiver", "none"]
+_struct_plot_types = ["contour", "mask", "none"]
+
 
 class NiftiImage:
     """Class to hold properties of an image array with an affine matrix."""
@@ -339,9 +343,8 @@ class DeformationImage(NiftiImage):
             raise RuntimeError(f"Deformation field in {path} must contain a "
                                "five-dimensional array!")
         self.data = self.data[:, :, :, 0, :]
-        self.valid_plot_types = ["grid", "quiver", "none"]
-        self.plot_type = plot_type if plot_type in self.valid_plot_types \
-                else self.valid_plot_types[0]
+        self.plot_type = plot_type if plot_type in _df_plot_types else \
+                _df_plot_types[0]
         self.set_spacing(spacing)
         
     def set_spacing(self, spacing):
@@ -412,7 +415,7 @@ class DeformationImage(NiftiImage):
             return
 
         # Apply plot settings
-        if plot_type in self.valid_plot_types:
+        if plot_type in _df_plot_types:
             self.plot_type = plot_type
         self.set_spacing(spacing)
 
@@ -486,9 +489,8 @@ class StructImage(NiftiImage):
         self.name_nice = nice[0].upper() + nice[1:]
 
         # Set plot type
-        self.valid_plot_types = ["contour", "mask", "none"]
-        self.plot_type = plot_type if plot_type in self.valid_plot_types \
-                else self.valid_plot_types[0]
+        self.plot_type = plot_type if plot_type in _struct_plot_types else \
+                _struct_plot_types[0]
 
         # Assign geometric properties and contours
         self.set_geom_properties()
@@ -574,7 +576,7 @@ class StructImage(NiftiImage):
 
         if not self.valid:
             return
-        if plot_type in self.valid_plot_types:
+        if plot_type in _struct_plot_types:
             self.plot_type = plot_type
         if self.plot_type == "contour":
             self.plot_contour(view, sl, ax, mpl_kwargs)
@@ -756,7 +758,8 @@ class MultiImage(NiftiImage):
             + list(matplotlib.cm.tab20.colors)
         )
         custom = struct_colours if struct_colours is not None else {}
-        custom = {n.lower().replace(" ", "_"): col for n, col in custom}
+        custom = {n.lower().replace(" ", "_"): col for n, col in 
+                  custom.items()}
         for i, struct in enumerate(self.structs):
 
             # Assign standard colour
@@ -772,9 +775,10 @@ class MultiImage(NiftiImage):
             # If no exact match, check for first matching wildcard
             if not matched:
                 for name in custom:
-                    if fnmatch.fnmatch(name, struct.name.lower()):
+                    if fnmatch.fnmatch(struct.name.lower(), name):
                         struct.assign_color(custom[name])
                         break
+
 
     def set_plotting_defaults(self):
         """Set default matplotlib plotting options."""
