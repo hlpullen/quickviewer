@@ -41,6 +41,8 @@ class ViewerImage(MultiImage):
         struct_plot_type="contour",
         struct_opacity=1,
         struct_linewidth=2,
+        struct_legend=True,
+        legend_loc='lower left',
         structs_as_mask=False,
         standalone=True,
         init_view="x-y",
@@ -64,23 +66,34 @@ class ViewerImage(MultiImage):
         self.set_slice(init_view, init_idx)
 
         # Assign plot settings
+        # General settings
         self.v = v
         self.standalone = standalone
         self.figsize = figsize
         self.continuous_update = continuous_update
+        self.plotting = False
+
+        # Mask settings
         self.invert_mask = invert_mask
         self.mask_colour = mask_colour
+
+        # Dose settings
         self.init_dose_opacity = dose_opacity
         self.dose_cmap = dose_cmap
+
+        # Jacobian/deformation field settings
         self.init_jac_opacity = jacobian_opacity
         self.jacobian_cmap = jacobian_cmap
         self.df_plot_type = df_plot_type
         self.df_spacing = df_spacing
         self.df_kwargs = df_kwargs
+
+        # Structure settings
         self.struct_plot_type = struct_plot_type
         self.struct_opacity = struct_opacity
         self.struct_linewidth = struct_linewidth
-        self.plotting = False
+        self.struct_legend = struct_legend
+        self.legend_loc = legend_loc
 
         # Display plot
         self.show()
@@ -268,11 +281,17 @@ class ViewerImage(MultiImage):
             self.ui_mask = vimage.ui_mask
             self.ui_dose = vimage.ui_dose
 
+        # Make structure checkboxes
+        for s in self.structs:
+            s.checkbox = ipyw.Checkbox(value=True, description=s.name_nice)
+            self.lower_ui.append(s.checkbox)
+
         # Combine UI elements
         self.main_ui_box = ipyw.VBox(self.main_ui)
         self.extra_ui_box = ipyw.VBox(self.extra_ui)
-        self.ui = self.main_ui + self.extra_ui
+        self.ui = self.main_ui + self.extra_ui + self.lower_ui
         self.ui_box = ipyw.HBox([self.main_ui_box, self.extra_ui_box])
+        self.ui_box_lower = ipyw.VBox(self.lower_ui)
         self.interactive = True
 
     def update_struct_slider(self):
@@ -379,7 +398,10 @@ class ViewerImage(MultiImage):
                 ui_kw = {str(np.random.rand()): ui for ui in self.ui}
                 self.out = ipyw.interactive_output(self.plot, ui_kw)
                 from IPython.display import display
-                display(self.ui_box, self.out)
+                to_display = [self.ui_box, self.out]
+                if self.has_structs:
+                    to_display.append(self.ui_box_lower)
+                display(*to_display)
             else:
                 self.plot()
                 plt.show()
@@ -434,6 +456,8 @@ class ViewerImage(MultiImage):
             struct_kwargs = {"alpha": self.struct_opacity}
         else:
             struct_kwargs = {}
+        for s in self.structs:
+            s.visible = s.checkbox.value
 
         # Make plot
         MultiImage.plot(self, 
@@ -451,6 +475,8 @@ class ViewerImage(MultiImage):
                         df_kwargs=self.df_kwargs,
                         struct_plot_type=self.struct_plot_type,
                         struct_kwargs=struct_kwargs,
+                        struct_legend=self.struct_legend,
+                        legend_loc=self.legend_loc,
                         show=False)
         self.plotting = False
 

@@ -11,6 +11,7 @@ import numpy as np
 import os
 import re
 import skimage.measure
+import matplotlib.patches as mpatches
 
 
 # Global properties
@@ -474,6 +475,7 @@ class StructImage(NiftiImage):
         """
 
         # Load the mask
+        self.path = path
         NiftiImage.__init__(self, path)
         if not self.valid:
             return
@@ -491,6 +493,7 @@ class StructImage(NiftiImage):
         # Set plot type
         self.plot_type = plot_type if plot_type in _struct_plot_types else \
                 _struct_plot_types[0]
+        self.visible = True
 
         # Assign geometric properties and contours
         self.set_geom_properties()
@@ -609,7 +612,7 @@ class StructImage(NiftiImage):
         """Plot a contour for a given orientation and slice number on an 
         existing set of axes."""
 
-        if sl not in self.contours[view]:
+        if not self.on_slice(sl, view):
             return
         self.set_ax(ax)
         kwargs = self.get_kwargs(mpl_kwargs, default=self.contour_kwargs)
@@ -618,6 +621,9 @@ class StructImage(NiftiImage):
             points_x = [p[0] for p in points]
             points_y = [p[1] for p in points]
             self.ax.plot(points_x, points_y, **kwargs)
+
+    def on_slice(self, sl, view):
+        return sl in self.contours[view]
 
 
 class MultiImage(NiftiImage):
@@ -832,6 +838,8 @@ class MultiImage(NiftiImage):
         df_spacing=None,
         struct_kwargs=None,
         struct_plot_type=None,
+        struct_legend=True,
+        legend_loc='lower left'
     ):
         """Plot image slice and any extra overlays."""
 
@@ -854,8 +862,14 @@ class MultiImage(NiftiImage):
                            show=False)
 
         # Plot structures
+        struct_handles = []
         for struct in self.structs:
+            if not struct.visible:
+                continue
             struct.plot(view, sl, self.ax, struct_kwargs, struct_plot_type)
+            if struct.on_slice(sl, view) and struct_plot_type != "none":
+                struct_handles.append(mpatches.Patch(color=struct.color, 
+                                                     label=struct.name_nice))
 
         # Plot deformation field
         self.df.plot(view, sl, self.ax, 
@@ -863,7 +877,13 @@ class MultiImage(NiftiImage):
                      plot_type=df_plot_type, 
                      spacing=df_spacing)
 
+        # Draw legend
+        if struct_legend:
+            self.ax.legend(handles=struct_handles, loc=legend_loc, 
+                           facecolor="white", framealpha=1)
+
         # Display image
+        plt.tight_layout()
         if show:
             plt.show()
 
