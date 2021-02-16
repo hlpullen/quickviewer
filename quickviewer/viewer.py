@@ -23,6 +23,7 @@ class ViewerImage(MultiImage):
         scale_in_mm=True, 
         figsize=6,
         downsample=None, 
+        colorbar=False,
         dose=None, 
         dose_opacity=0.5,
         dose_cmap="jet",
@@ -71,6 +72,7 @@ class ViewerImage(MultiImage):
         self.standalone = standalone
         self.figsize = figsize
         self.continuous_update = continuous_update
+        self.colorbar = colorbar
         self.plotting = False
 
         # Mask settings
@@ -465,6 +467,7 @@ class ViewerImage(MultiImage):
                         self.slice[self.view], 
                         mpl_kwargs=mpl_kwargs, 
                         figsize=self.figsize,
+                        colorbar=colorbar,
                         masked=self.ui_mask.value,
                         invert_mask=self.invert_mask,
                         mask_colour=self.mask_colour,

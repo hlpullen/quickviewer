@@ -3,6 +3,7 @@
 import copy
 import fnmatch
 import glob
+import matplotlib.gridspec as gridspec
 import matplotlib.pyplot as plt
 import matplotlib.cm
 import matplotlib.colors
@@ -154,15 +155,27 @@ class NiftiImage:
                           }
         self.mask_colour = "black"
 
-    def set_ax(self, ax=None, figsize=None):
+    def set_ax(self, ax=None, figsize=None, view='x-y', colorbar=0):
         """Assign an axis to self, or create new axis if needed."""
 
+        # Colorbar placement settings
+        self.colorbar_pad = 0.02
+        self.colorbar_frac = 0.05
+
+        # Assign external axes
         if ax is not None:
             self.ax = ax
-        else:
-            self.figsize = figsize if figsize is not None else 5
-            self.fig, self.ax = plt.subplots(figsize=(self.figsize, 
-                                                      self.figsize))
+            return
+
+        # Create new figure and axes
+        x, y = _plot_axes[view]
+        x_length = abs(self.lims[x][0] - self.lims[x][1])
+        y_length = abs(self.lims[y][0] - self.lims[y][1])
+        self.fig_height = figsize if figsize is not None else 5
+        self.fig_width = self.fig_height * x_length / y_length \
+                * (1 + colorbar * (self.colorbar_pad + self.colorbar_frac))
+        self.fig = plt.figure(figsize=(self.fig_width, self.fig_height))
+        self.ax = self.fig.add_subplot()
 
     def get_kwargs(self, mpl_kwargs, default=None):
         """Return a dict of matplotlib keyword arguments, combining default
@@ -252,7 +265,8 @@ class NiftiImage:
         return np.rot90(im_slice, _n_rot[view])
   
     def plot(self, view, sl, ax=None, mpl_kwargs=None, show=True, figsize=None,
-             masked=False, invert_mask=False, mask_colour="black"):
+             colorbar=False, colorbar_label="HU", cax=None, masked=False, 
+             invert_mask=False, mask_colour="black"):
         """Plot a given slice on a set of axes.
         
         Parameters
@@ -287,7 +301,7 @@ class NiftiImage:
             return
         
         # Get slice
-        self.set_ax(ax, figsize)
+        self.set_ax(ax, figsize, view, colorbar)
         im_slice = self.get_slice(view, sl, masked, invert_mask)
 
         # Get colourmap
@@ -296,7 +310,7 @@ class NiftiImage:
         cmap.set_bad(color=mask_colour)
 
         # Plot image
-        self.ax.imshow(im_slice,
+        mesh = self.ax.imshow(im_slice,
                   extent=self.extent[view],
                   aspect=self.aspect[view],
                   cmap=cmap, **kwargs)
@@ -307,6 +321,19 @@ class NiftiImage:
         self.ax.set_ylabel(_plot_axes[view][1] + units)
         if self.title is not None:
             self.ax.set_title(self.title)
+
+        # Draw colorbar
+        if colorbar:
+            fig = plt.gcf()
+            plot_height = self.ax.get_position().y1 - self.ax.get_position().y0
+            plot_width = self.ax.get_position().x1 - self.ax.get_position().x0
+            clb_pad = self.colorbar_pad * plot_width
+            clb_width = self.colorbar_frac * plot_width
+            clb_x0 = fig.axes[-1].get_position().x1 + clb_pad
+            clb_y0 = self.ax.get_position().y0
+            cax = plt.gcf().add_axes([clb_x0, clb_y0, clb_width, plot_height])
+            clb = plt.gcf().colorbar(mesh, cax=cax, label=colorbar_label)
+            clb.solids.set_edgecolor("face")
 
         # Display image
         if show:
@@ -424,13 +451,13 @@ class DeformationImage(NiftiImage):
         if self.plot_type == "grid":
             self.plot_grid(view, sl, ax, mpl_kwargs)
         elif self.plot_type == "quiver":
-            self.plot_quiver(view, sl, ax, mpl_kwargs)
+            return self.plot_quiver(view, sl, ax, mpl_kwargs)
 
     def plot_quiver(self, view, sl, ax=None, mpl_kwargs=None):
         """Draw a quiver plot on a set of axes."""
 
         # Get arrow positions and lengths
-        self.set_ax(ax)
+        self.set_ax(ax, view=view)
         x_ax, y_ax = _plot_axes[view]
         x, y, df_x, df_y = self.get_deformation_slice(view, sl)
         arrows_x = df_x[::self.spacing[y_ax], ::self.spacing[x_ax]]
@@ -441,17 +468,17 @@ class DeformationImage(NiftiImage):
         # Plot arrows
         if arrows_x.any() or arrows_y.any():
             M = np.hypot(arrows_x, arrows_y)
-            ax.quiver(plot_x, plot_y, arrows_x, arrows_y, M, 
+            return ax.quiver(plot_x, plot_y, arrows_x, arrows_y, M, 
                       **self.get_kwargs(mpl_kwargs, self.quiver_kwargs))
         else:
             # If arrow lengths are zero, plot dots
-            ax.scatter(plot_x, plot_y, c="navy", marker=".")
+            return ax.scatter(plot_x, plot_y, c="navy", marker=".")
 
     def plot_grid(self, view, sl, ax=None, mpl_kwargs=None):
         """Draw a grid plot on a set of axes."""
 
         # Get gridline positions
-        self.set_ax(ax)
+        self.set_ax(ax, view=view)
         self.ax.autoscale(False)
         x_ax, y_ax = _plot_axes[view]
         x, y, df_x, df_y = self.get_deformation_slice(view, sl)
@@ -584,13 +611,13 @@ class StructImage(NiftiImage):
         if self.plot_type == "contour":
             self.plot_contour(view, sl, ax, mpl_kwargs)
         elif self.plot_type == "mask":
-            self.plot_mask(view, sl, ax, mpl_kwargs)
+            return self.plot_mask(view, sl, ax, mpl_kwargs)
 
     def plot_mask(self, view, sl, ax, mpl_kwargs=None):
         """Plot structure as a coloured mask."""
 
         # Get slice
-        self.set_ax(ax)
+        self.set_ax(ax, view=view)
         im_slice = self.get_slice(view, sl)
 
         # Make colormap
@@ -601,7 +628,7 @@ class StructImage(NiftiImage):
         s_colors[im_slice == 0, :] = (0, 0, 0, 0)
 
         # Display the mask
-        self.ax.imshow(
+        return self.ax.imshow(
             s_colors, 
             extent=self.extent[view],
             aspect=self.aspect[view],
@@ -614,7 +641,7 @@ class StructImage(NiftiImage):
 
         if not self.on_slice(sl, view):
             return
-        self.set_ax(ax)
+        self.set_ax(ax, view=view)
         kwargs = self.get_kwargs(mpl_kwargs, default=self.contour_kwargs)
         kwargs.setdefault("color", self.color)
         for points in self.contours[view][sl]:
@@ -820,6 +847,11 @@ class MultiImage(NiftiImage):
         self.set_mask(mask_array)
         self.dose.set_mask(mask_array)
 
+    def set_ax(self, ax=None, figsize=None, view=None, colorbar=False):
+
+        n_colorbars = colorbar * (1 + self.has_dose + self.has_jacobian)
+        NiftiImage.set_ax(self, ax, figsize, view, colorbar=n_colorbars)
+
     def plot(
         self, 
         view, 
@@ -828,6 +860,7 @@ class MultiImage(NiftiImage):
         mpl_kwargs=None,
         show=True,
         figsize=None,
+        colorbar=False,
         dose_kwargs=None, 
         masked=False,
         invert_mask=False,
@@ -844,22 +877,25 @@ class MultiImage(NiftiImage):
         """Plot image slice and any extra overlays."""
 
         # Plot image
+        self.set_ax(ax, figsize, view, colorbar)
         self.set_masks()
-        NiftiImage.plot(self, view, sl, ax, mpl_kwargs, show=False, 
-                        masked=masked, invert_mask=invert_mask,
-                        mask_colour=mask_colour, figsize=figsize)
+        NiftiImage.plot(self, view, sl, self.ax, mpl_kwargs, show=False, 
+                                  colorbar=colorbar, masked=masked, 
+                                  invert_mask=invert_mask, 
+                                  mask_colour=mask_colour, figsize=figsize)
 
         # Plot dose field
         self.dose.plot(view, sl, self.ax, 
                        self.get_kwargs(dose_kwargs, default=self.dose_kwargs),
                        show=False, masked=masked, invert_mask=invert_mask,
-                       mask_colour=mask_colour)
+                       mask_colour=mask_colour, colorbar=colorbar, 
+                       colorbar_label="Dose (Gy)")
 
         # Plot jacobian
         self.jacobian.plot(view, sl, self.ax, 
                            self.get_kwargs(jacobian_kwargs, 
                                            default=self.jacobian_kwargs),
-                           show=False)
+                           show=False, colorbar=colorbar)
 
         # Plot structures
         struct_handles = []
