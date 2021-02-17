@@ -484,6 +484,20 @@ class ViewerImage(MultiImage):
         self.plotting = False
 
 
+class OrthogonalImage(ViewerImage):
+    """ViewerImage with an orthgonal view displayed."""
+
+
+    def set_ax(self, view, gspec=None, colorbar=False):
+        """Create axes for this plot, either standalone or inside an existing 
+        gridspec."""
+
+        own_aspect = self.get_plot_aspect(view, self.get_n_colorbars)
+
+    def plot(self, **kwargs):
+
+
+
 def in_notebook():
     try:
         if 'IPKernelApp' not in get_ipython().config:

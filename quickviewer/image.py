@@ -21,6 +21,7 @@ _slider_axes = {"x-y": "z", "x-z": "y", "y-z": "x"}
 _plot_axes = {"x-y": ("x", "y"), "x-z": ("z", "x"), "y-z": ("z", "y")}
 _orient = {"y-z": [1, 2, 0], "x-z": [0, 2, 1], "x-y": [0, 1, 2]}
 _n_rot = {"y-z": 2, "x-z": 2, "x-y": 1}
+_orthog = {'x-y': 'y-z', 'y-z': 'x-z', 'x-z': 'y-z'}
 
 # Plotting types
 _df_plot_types = ["grid", "quiver", "none"]
@@ -31,12 +32,12 @@ class NiftiImage:
     """Class to hold properties of an image array with an affine matrix."""
 
     def __init__(
-        self, 
-        nii, 
-        affine=None, 
-        voxel_sizes=(1, 1, 1), 
-        origin=(0, 0, 0), 
-        title=None, 
+        self,
+        nii,
+        affine=None,
+        voxel_sizes=(1, 1, 1),
+        origin=(0, 0, 0),
+        title=None,
         scale_in_mm=True
     ):
         """Initialise from a nifti file, nifti object, or numpy array.
@@ -51,17 +52,17 @@ class NiftiImage:
                 (d) A numpy file containing an array.
 
         affine : 4x4 array, default=None
-            Affine matrix to be used if <nii> is a numpy array. If <nii> is a 
+            Affine matrix to be used if <nii> is a numpy array. If <nii> is a
             file path or a nibabel object, this parameter is ignored. If None,
-            the arguments <voxel_sizes> and <origin> will be used to set the 
+            the arguments <voxel_sizes> and <origin> will be used to set the
             affine matrix.
 
         voxel_sizes : tuple, default=(1, 1, 1)
-            Voxel sizes in mm, given in the order (y, x, z). Only used if 
+            Voxel sizes in mm, given in the order (y, x, z). Only used if
             <nii> is a numpy array and <affine> is None.
 
         origin : tuple, default=(0, 0, 0)
-            Origin position in mm, given in the order (y, x, z). Only used if 
+            Origin position in mm, given in the order (y, x, z). Only used if
             <nii> is a numpy array and <affine> is None.
 
         title : str, default=None
@@ -100,7 +101,7 @@ class NiftiImage:
                     try:
                         self.data = np.load(path)
                     except (IOError, ValueError):
-                        raise RuntimeError(f"Input file <nii> must be a valid "
+                        raise RuntimeError("Input file <nii> must be a valid "
                                            ".nii or .npy file.")
             elif isinstance(nii, nibabel.nifti1.Nifti1Image):
                 self.nii = nii
@@ -124,7 +125,7 @@ class NiftiImage:
         self.set_plotting_defaults()
 
     def set_geom(self):
-        """Assign geometric properties based on image data, origin, and 
+        """Assign geometric properties based on image data, origin, and
         voxel sizes."""
 
         self.n_voxels = {ax: self.data.shape[n] for ax, n in _axes.items()}
@@ -137,7 +138,7 @@ class NiftiImage:
         for view, (x, y) in _plot_axes.items():
             if self.scale_in_mm:
                 self.extent[view] = (
-                    min(self.lims[x]), max(self.lims[x]), 
+                    min(self.lims[x]), max(self.lims[x]),
                     max(self.lims[y]), min(self.lims[y])
                 )
                 self.aspect[view] = 1
@@ -151,23 +152,22 @@ class NiftiImage:
 
         self.mpl_kwargs = {"cmap": "gray",
                            "vmin": -300,
-                           "vmax": 200
-                          }
+                           "vmax": 200}
         self.mask_colour = "black"
 
-    def get_plot_aspect(self, view, n_colorbars=0):
-        """Get aspect ratio for this plot in a given orientation with a 
+    def get_relative_width(self, view, n_colorbars=0):
+        """Get width:height ratio for this plot in a given orientation with a
         given number of colorbars."""
 
         x, y = _plot_axes[view]
         x_length = abs(self.lims[x][0] - self.lims[x][1])
         y_length = abs(self.lims[y][0] - self.lims[y][1])
         width = x_length / y_length
-        colorbar_frac = 0.3
+        colorbar_frac = 0.2
         width *= 1 + n_colorbars * colorbar_frac / width
-        return 1 / width
+        return width
 
-    def set_ax(self, ax=None, figsize=None, view='x-y', n_colorbars=0):
+    def set_ax(self, view, ax=None, figsize=None, n_colorbars=0):
         """Assign an axis to self, or create new axis if needed."""
 
         # Assign external axes
@@ -176,8 +176,9 @@ class NiftiImage:
             return
 
         # Create figure and axes
-        aspect = self.get_plot_aspect(view, n_colorbars)
-        self.fig = plt.figure(figsize=(figsize / aspect, figsize))
+        rel_width = self.get_relative_width(view, n_colorbars)
+        figsize = 5 if figsize is None else figsize
+        self.fig = plt.figure(figsize=(figsize * rel_width, figsize))
         self.ax = self.fig.add_subplot()
 
     def get_kwargs(self, mpl_kwargs, default=None):
@@ -205,7 +206,7 @@ class NiftiImage:
     def set_mask(self, mask):
         """Set the mask for this image. The mask will be used when self.plot()
         is called with masked=True."""
-        
+
         if not self.valid:
             return
         if mask is None:
@@ -220,7 +221,7 @@ class NiftiImage:
             data_mask = mask.data
         else:
             raise TypeError("Mask must be a numpy array or a NiftiImage.")
-        
+
         # Check mask shape is consistent
         if data_mask.shape != self.data.shape:
 
@@ -234,7 +235,7 @@ class NiftiImage:
             self.data_mask = data_mask
 
     def get_slice(self, view, sl, masked=False, invert_mask=False):
-        """Get 2D array corresponding to a slice of the image in a given 
+        """Get 2D array corresponding to a slice of the image in a given
         orientation.
 
         Parameters
@@ -246,7 +247,7 @@ class NiftiImage:
             Index of the slice to use.
 
         masked : bool, default=False
-            If True and the "data_mask" attribute is not None, a mask will be 
+            If True and the "data_mask" attribute is not None, a mask will be
             applied.
         """
 
@@ -256,9 +257,9 @@ class NiftiImage:
                 data = np.ma.masked_where(self.data_mask > 0.5, self.data)
             else:
                 data = np.ma.masked_where(self.data_mask < 0.5, self.data)
-        else: 
+        else:
             data = self.data
-    
+
         # Get 2D slice and adjust orientation
         im_slice = np.transpose(data, _orient[view])[:, :, sl]
         if view == "y-z":
@@ -266,12 +267,12 @@ class NiftiImage:
         elif view == "x-z":
             im_slice = im_slice[::-1, ::-1]
         return np.rot90(im_slice, _n_rot[view])
-  
+
     def plot(self, view, sl, ax=None, mpl_kwargs=None, show=True, figsize=None,
-             colorbar=False, colorbar_label="HU", clb_ax=None, masked=False, 
-             invert_mask=False, mask_colour="black"):
+             colorbar=False, colorbar_label="HU", masked=False,
+             invert_mask=False, mask_colour="black", no_ylabel=False):
         """Plot a given slice on a set of axes.
-        
+
         Parameters
         ----------
         view : str
@@ -302,9 +303,9 @@ class NiftiImage:
 
         if not self.valid:
             return
-        
+
         # Get slice
-        self.set_ax(ax, figsize, view, colorbar)
+        self.set_ax(view, ax, figsize, colorbar)
         im_slice = self.get_slice(view, sl, masked, invert_mask)
 
         # Get colourmap
@@ -314,20 +315,22 @@ class NiftiImage:
 
         # Plot image
         mesh = self.ax.imshow(im_slice,
-                  extent=self.extent[view],
-                  aspect=self.aspect[view],
-                  cmap=cmap, **kwargs)
+                              extent=self.extent[view],
+                              aspect=self.aspect[view],
+                              cmap=cmap, **kwargs)
 
         # Set labels
         units = " (mm)" if self.scale_in_mm else ""
         self.ax.set_xlabel(_plot_axes[view][0] + units)
-        self.ax.set_ylabel(_plot_axes[view][1] + units)
+        if not no_ylabel:
+            self.ax.set_ylabel(_plot_axes[view][1] + units)
+        else:
+            self.ax.set_yticks([])
         if self.title is not None:
             self.ax.set_title(self.title)
 
         # Draw colorbar
-        if colorbar and mpl_kwargs.get("alpha", 1) > 0:
-            ax  = clb_ax if clb_ax is not None else self.ax
+        if colorbar and kwargs.get("alpha", 1) > 0:
             clb = plt.gcf().colorbar(mesh, ax=self.ax, label=colorbar_label)
             clb.solids.set_edgecolor("face")
 
@@ -337,7 +340,7 @@ class NiftiImage:
             plt.show()
 
     def downsample(self, d):
-        """Downsample own image by amount d = (dx, dy, dz) in the (x, y, z) 
+        """Downsample own image by amount d = (dx, dy, dz) in the (x, y, z)
         directions. If <d> is a single value, the image will be downsampled
         equally in all directions."""
 
@@ -350,8 +353,8 @@ class NiftiImage:
     def downsample_array(self, data_array):
         """Downsample a numpy array by amount set in self.downsample."""
 
-        return data_array[::self.downsample[1], 
-                          ::self.downsample[0], 
+        return data_array[::self.downsample[1],
+                          ::self.downsample[0],
                           ::self.downsample[2]]
 
 
@@ -369,9 +372,9 @@ class DeformationImage(NiftiImage):
                                "five-dimensional array!")
         self.data = self.data[:, :, :, 0, :]
         self.plot_type = plot_type if plot_type in _df_plot_types else \
-                _df_plot_types[0]
+            _df_plot_types[0]
         self.set_spacing(spacing)
-        
+
     def set_spacing(self, spacing):
         """Assign grid spacing in each direction."""
 
@@ -394,7 +397,7 @@ class DeformationImage(NiftiImage):
         self.grid_kwargs = {"color": "green"}
 
     def get_slice(self, view, sl):
-        """Get 2D array corresponding to a slice of the image in a given 
+        """Get 2D array corresponding to a slice of the image in a given
         orientation."""
 
         im_slice = np.transpose(self.data, _orient[view] + [3])[:, :, sl, :]
@@ -454,7 +457,7 @@ class DeformationImage(NiftiImage):
         """Draw a quiver plot on a set of axes."""
 
         # Get arrow positions and lengths
-        self.set_ax(ax, view=view)
+        self.set_ax(view, ax)
         x_ax, y_ax = _plot_axes[view]
         x, y, df_x, df_y = self.get_deformation_slice(view, sl)
         arrows_x = df_x[::self.spacing[y_ax], ::self.spacing[x_ax]]
@@ -465,8 +468,8 @@ class DeformationImage(NiftiImage):
         # Plot arrows
         if arrows_x.any() or arrows_y.any():
             M = np.hypot(arrows_x, arrows_y)
-            return ax.quiver(plot_x, plot_y, arrows_x, arrows_y, M, 
-                      **self.get_kwargs(mpl_kwargs, self.quiver_kwargs))
+            return ax.quiver(plot_x, plot_y, arrows_x, arrows_y, M,
+                             **self.get_kwargs(mpl_kwargs, self.quiver_kwargs))
         else:
             # If arrow lengths are zero, plot dots
             return ax.scatter(plot_x, plot_y, c="navy", marker=".")
@@ -475,7 +478,7 @@ class DeformationImage(NiftiImage):
         """Draw a grid plot on a set of axes."""
 
         # Get gridline positions
-        self.set_ax(ax, view=view)
+        self.set_ax(view, ax)
         self.ax.autoscale(False)
         x_ax, y_ax = _plot_axes[view]
         x, y, df_x, df_y = self.get_deformation_slice(view, sl)
@@ -509,14 +512,14 @@ class StructImage(NiftiImage):
             self.name = name
         else:
             basename = os.path.basename(path).strip(".gz").strip(".nii")
-            self.name = re.sub(r"RTSTRUCT_[MVCT]+_\d+_\d+_\d+_", "", 
+            self.name = re.sub(r"RTSTRUCT_[MVCT]+_\d+_\d+_\d+_", "",
                                basename).replace(" ", "_")
         nice = self.name.replace("_", " ")
         self.name_nice = nice[0].upper() + nice[1:]
 
         # Set plot type
         self.plot_type = plot_type if plot_type in _struct_plot_types else \
-                _struct_plot_types[0]
+            _struct_plot_types[0]
         self.visible = True
 
         # Assign geometric properties and contours
@@ -534,7 +537,7 @@ class StructImage(NiftiImage):
             "voxels": self.data.astype(bool).sum()
         }
         self.volume["mm"] = self.volume["voxels"] \
-                * abs(np.prod(list(self.voxel_sizes.values())))
+            * abs(np.prod(list(self.voxel_sizes.values())))
         self.volume["ml"] = self.volume["mm"] * (0.1 ** 3)
 
         # Lengths
@@ -543,7 +546,7 @@ class StructImage(NiftiImage):
         for ax, n in _axes.items():
             self.length["voxels"][ax] = max(nonzero[:, n]) - min(nonzero[:, n])
             self.length["mm"][ax] = self.length["voxels"][ax] \
-                    * abs(self.voxel_sizes[ax])
+                * abs(self.voxel_sizes[ax])
 
     def set_plotting_defaults(self):
         """Set default matplotlib plotting keywords."""
@@ -555,7 +558,7 @@ class StructImage(NiftiImage):
     def set_contours(self):
         """Compute positions of contours on each slice in each orientation.
         """
-        
+
         self.contours = {}
         for view, z in _slider_axes.items():
             self.contours[view] = {}
@@ -563,9 +566,9 @@ class StructImage(NiftiImage):
                 contour = self.get_contour_slice(view, i)
                 if contour is not None:
                     self.contours[view][i] = contour
-    
+
     def get_contour_slice(self, view, sl):
-        """Convert mask to contours on a given slice <sl> in a given 
+        """Convert mask to contours on a given slice <sl> in a given
         orientation <view>."""
 
         # Ignore slices with no structure mask
@@ -583,9 +586,9 @@ class StructImage(NiftiImage):
                 for (y, x) in contour:
                     if self.scale_in_mm:
                         x = min(self.lims[x_ax]) + \
-                                (x + 0.5) * abs(self.voxel_sizes[x_ax])
+                            (x + 0.5) * abs(self.voxel_sizes[x_ax])
                         y = min(self.lims[y_ax]) + \
-                                (y + 0.5) * abs(self.voxel_sizes[y_ax])
+                            (y + 0.5) * abs(self.voxel_sizes[y_ax])
                     contour_points.append((x, y))
                 points.append(contour_points)
             return points
@@ -614,7 +617,7 @@ class StructImage(NiftiImage):
         """Plot structure as a coloured mask."""
 
         # Get slice
-        self.set_ax(ax, view=view)
+        self.set_ax(view, ax)
         im_slice = self.get_slice(view, sl)
 
         # Make colormap
@@ -626,19 +629,19 @@ class StructImage(NiftiImage):
 
         # Display the mask
         return self.ax.imshow(
-            s_colors, 
+            s_colors,
             extent=self.extent[view],
             aspect=self.aspect[view],
             **self.get_kwargs(mpl_kwargs, default=self.mask_kwargs)
         )
 
     def plot_contour(self, view, sl, ax=None, mpl_kwargs=None):
-        """Plot a contour for a given orientation and slice number on an 
+        """Plot a contour for a given orientation and slice number on an
         existing set of axes."""
 
         if not self.on_slice(sl, view):
             return
-        self.set_ax(ax, view=view)
+        self.set_ax(view, ax)
         kwargs = self.get_kwargs(mpl_kwargs, default=self.contour_kwargs)
         kwargs.setdefault("color", self.color)
         for points in self.contours[view][sl]:
@@ -655,36 +658,36 @@ class MultiImage(NiftiImage):
     masks, structures, jacobian determinant, and deformation field."""
 
     def __init__(
-        self, 
-        nii, 
-        title=None, 
-        scale_in_mm=True, 
-        downsample=None, 
-        dose=None, 
-        mask=None, 
-        jacobian=None, 
+        self,
+        nii,
+        title=None,
+        scale_in_mm=True,
+        downsample=None,
+        dose=None,
+        mask=None,
+        jacobian=None,
         df=None,
         structs=None,
         struct_colours=None,
         structs_as_mask=False
     ):
-        """Load a QuickViewerImage. 
+        """Load a QuickViewerImage.
 
         Parameters
         ----------
         nii : str/nifti/array
-            Path to a .nii/.npy file, or an nibabel nifti object/numpy array. 
+            Path to a .nii/.npy file, or an nibabel nifti object/numpy array.
 
         title : str, default=None
-            Title for this image when plotted. If None, the filename will be 
+            Title for this image when plotted. If None, the filename will be
             used.
 
         scale_in_mm : bool, default=True
             If True, image will be plotted in mm rather than voxels.
 
         downsample : int/tuple, default=None
-            Amount by which to downsample in the (x, y, z) directions. If a 
-            single value is given, the image will be downsampled equally in 
+            Amount by which to downsample in the (x, y, z) directions. If a
+            single value is given, the image will be downsampled equally in
             all directions.
 
         dose : str, default=None
@@ -700,8 +703,8 @@ class MultiImage(NiftiImage):
             Path to a deformation field file.
 
         structs : str/list, default=None
-            A string containing a path, directory, or wildcard pointing to 
-            nifti file(s) containing structure(s). Can also be a list of 
+            A string containing a path, directory, or wildcard pointing to
+            nifti file(s) containing structure(s). Can also be a list of
             paths/directories/wildcards.
 
         struct_colours : dict, default=None
@@ -711,7 +714,7 @@ class MultiImage(NiftiImage):
 
         structs_as_mask : bool, default=False
             If True, structures will be used as masks.
-            
+
         """
 
         # Load the scan image
@@ -779,7 +782,7 @@ class MultiImage(NiftiImage):
         self.has_structs = True
         files = list(set([os.path.abspath(f) for f in files]))
         self.structs = [StructImage(f) for f in files]
-        
+
         # Assign colours
         standard_colors = (
             list(matplotlib.cm.Set1.colors)[:-1]
@@ -788,7 +791,7 @@ class MultiImage(NiftiImage):
             + list(matplotlib.cm.tab20.colors)
         )
         custom = struct_colours if struct_colours is not None else {}
-        custom = {n.lower().replace(" ", "_"): col for n, col in 
+        custom = {n.lower().replace(" ", "_"): col for n, col in
                   custom.items()}
         for i, struct in enumerate(self.structs):
 
@@ -809,13 +812,12 @@ class MultiImage(NiftiImage):
                         struct.assign_color(custom[name])
                         break
 
-
     def set_plotting_defaults(self):
         """Set default matplotlib plotting options."""
 
         NiftiImage.set_plotting_defaults(self)
         self.dose_kwargs = {
-            "cmap": "jet", 
+            "cmap": "jet",
             "alpha": 0.5,
             "vmin": None,
             "vmax": None
@@ -829,7 +831,7 @@ class MultiImage(NiftiImage):
 
     def set_masks(self):
         """Assign mask(s) to self and dose image."""
-    
+
         if self.has_mask:
             mask_array = self.mask.data
             if self.structs_as_mask:
@@ -844,25 +846,27 @@ class MultiImage(NiftiImage):
         self.set_mask(mask_array)
         self.dose.set_mask(mask_array)
 
-    def set_ax(self, ax=None, figsize=None, view=None, colorbar=False):
+    def get_n_colorbars(self, colorbar=False):
+        return colorbar * (1 + self.has_dose + self.has_jacobian)
 
-        n_colorbars = colorbar * (1 + self.has_dose + self.has_jacobian)
-        NiftiImage.set_ax(self, ax, figsize, view, n_colorbars)
+    def set_ax(self, view, ax=None, figsize=None, colorbar=False):
+        NiftiImage.set_ax(self, view, ax, figsize,
+                          self.get_n_colorbars(colorbar))
 
     def plot(
-        self, 
-        view, 
-        sl, 
-        ax=None, 
+        self,
+        view,
+        sl,
+        ax=None,
+        figsize=None,
         mpl_kwargs=None,
         show=True,
-        figsize=None,
         colorbar=False,
-        dose_kwargs=None, 
+        dose_kwargs=None,
         masked=False,
         invert_mask=False,
         mask_colour="black",
-        jacobian_kwargs=None, 
+        jacobian_kwargs=None,
         df_kwargs=None,
         df_plot_type=None,
         df_spacing=None,
@@ -874,25 +878,25 @@ class MultiImage(NiftiImage):
         """Plot image slice and any extra overlays."""
 
         # Plot image
-        self.set_ax(ax, figsize, view, colorbar)
+        self.set_ax(view, ax, figsize, colorbar)
         self.set_masks()
-        NiftiImage.plot(self, view, sl, self.ax, mpl_kwargs, show=False, 
-                                  colorbar=colorbar, masked=masked, 
-                                  invert_mask=invert_mask, 
-                                  mask_colour=mask_colour, figsize=figsize)
+        NiftiImage.plot(self, view, sl, self.ax, mpl_kwargs, show=False,
+                        colorbar=colorbar, masked=masked,
+                        invert_mask=invert_mask,
+                        mask_colour=mask_colour, figsize=figsize)
 
         # Plot dose field
-        self.dose.plot(view, sl, self.ax, 
+        self.dose.plot(view, sl, self.ax,
                        self.get_kwargs(dose_kwargs, default=self.dose_kwargs),
                        show=False, masked=masked, invert_mask=invert_mask,
-                       mask_colour=mask_colour, colorbar=colorbar, 
+                       mask_colour=mask_colour, colorbar=colorbar,
                        colorbar_label="Dose (Gy)")
 
         # Plot jacobian
-        self.jacobian.plot(view, sl, self.ax, 
-                           self.get_kwargs(jacobian_kwargs, 
+        self.jacobian.plot(view, sl, self.ax,
+                           self.get_kwargs(jacobian_kwargs,
                                            default=self.jacobian_kwargs),
-                           show=False, colorbar=colorbar, 
+                           show=False, colorbar=colorbar,
                            colorbar_label="Jacobian determinant")
 
         # Plot structures
@@ -902,23 +906,103 @@ class MultiImage(NiftiImage):
                 continue
             struct.plot(view, sl, self.ax, struct_kwargs, struct_plot_type)
             if struct.on_slice(sl, view) and struct_plot_type != "none":
-                struct_handles.append(mpatches.Patch(color=struct.color, 
+                struct_handles.append(mpatches.Patch(color=struct.color,
                                                      label=struct.name_nice))
 
         # Plot deformation field
-        self.df.plot(view, sl, self.ax, 
-                     mpl_kwargs=df_kwargs, 
-                     plot_type=df_plot_type, 
+        self.df.plot(view, sl, self.ax,
+                     mpl_kwargs=df_kwargs,
+                     plot_type=df_plot_type,
                      spacing=df_spacing)
 
         # Draw legend
         if struct_legend:
-            self.ax.legend(handles=struct_handles, loc=legend_loc, 
+            self.ax.legend(handles=struct_handles, loc=legend_loc,
                            facecolor="white", framealpha=1)
 
         # Display image
-        plt.tight_layout()
         if show:
+            plt.tight_layout()
+            plt.show()
+
+
+class OrthogonalImage(MultiImage):
+    """MultiImage with an orthogonal view next to it."""
+
+    def set_axes(self, view, gs=None, figsize=None, colorbar=False):
+
+        width_ratios = [
+            self.get_relative_width(view),
+            self.get_relative_width(_orthog[view], 
+                                    self.get_n_colorbars(colorbar))
+        ]
+        if gs is None:
+            figsize = figsize if figsize is not None else 5
+            fig = plt.figure(figsize=(figsize * sum(width_ratios), figsize))
+            self.gs = fig.add_gridspec(1, 2, width_ratios=width_ratios)
+        else:
+            fig = plt.gcf()
+            self.gs = gs.subgridspec(1, 2, width_ratios=width_ratios)
+
+        self.own_ax = fig.add_subplot(self.gs[0])
+        self.orthog_ax = fig.add_subplot(self.gs[1])
+
+    def plot(self, 
+             view, 
+             sl, 
+             gs=None, 
+             figsize=None, 
+             mpl_kwargs=None,
+             show=True,
+             colorbar=False,
+             struct_kwargs=None,
+             struct_plot_type=None,
+             **kwargs
+            ):
+        """Plot MultiImage next to orthogonal image."""
+
+        self.set_axes(view, gs, figsize, colorbar)
+
+        # Plot the MultiImage
+        MultiImage.plot(self, view, sl, ax=self.own_ax, colorbar=False, 
+                        show=False, mpl_kwargs=mpl_kwargs, 
+                        struct_kwargs=struct_kwargs, 
+                        struct_plot_type=struct_plot_type,
+                        **kwargs)
+
+        # Plot orthogonal image
+        orthog_view = _orthog[view]
+        orthog_sl = int(self.n_voxels[_slider_axes[orthog_view]] / 2)
+        NiftiImage.plot(self, 
+                        orthog_view,
+                        orthog_sl,
+                        ax=self.orthog_ax, 
+                        mpl_kwargs=mpl_kwargs, 
+                        show=False, 
+                        colorbar=colorbar,
+                        no_ylabel=True)
+
+        # Plot structures on orthogonal image
+        for struct in self.structs:
+            if not struct.visible:
+                continue
+            struct.plot(orthog_view, orthog_sl, self.orthog_ax, struct_kwargs, 
+                        struct_plot_type)
+
+        # Plot indicator line
+        pos = sl if not self.scale_in_mm else self.idx_to_pos(
+            sl, _slider_axes[view])
+        if view == "x-y":
+            full_y = self.extent[orthog_view][2:] if self.scale_in_mm else \
+                [0, self.n_voxels[_plot_axes[orthog_view][1]] - 1]
+            self.orthog_ax.plot([pos, pos], full_y, 'r')
+        else:
+            full_x = self.extent[orthog_view][:2] if self.scale_in_mm else \
+                [0, self.n_voxels[_plot_axes[orthog_view][0]] - 1]
+            self.orthog_ax.plot(full_x, [pos, pos], 'r')
+
+        if show:
+            plt.tight_layout()
             plt.show()
 
 
@@ -932,7 +1016,7 @@ def in_notebook():
 
 
 def same_shape(imgs):
-    """Check whether images in a list all have the same shape (in the 
+    """Check whether images in a list all have the same shape (in the
     first 3 dimensions)."""
 
     for i in range(len(imgs) - 1):
@@ -971,5 +1055,6 @@ def get_image_slice(image, view, sl):
             im_to_show = im_to_show[::-1, ::-1, :]
         return np.rot90(im_to_show, n_rot[view])
 
-__all__ = ("_axes", "_plot_axes", "_slider_axes", "same_shape", 
+
+__all__ = ("_axes", "_plot_axes", "_slider_axes", "same_shape",
            "get_image_slice", "in_notebook")
