@@ -155,7 +155,19 @@ class NiftiImage:
                           }
         self.mask_colour = "black"
 
-    def set_ax(self, ax=None, figsize=None, view='x-y', colorbar=0):
+    def get_plot_aspect(self, view, n_colorbars=0):
+        """Get aspect ratio for this plot in a given orientation with a 
+        given number of colorbars."""
+
+        x, y = _plot_axes[view]
+        x_length = abs(self.lims[x][0] - self.lims[x][1])
+        y_length = abs(self.lims[y][0] - self.lims[y][1])
+        width = x_length / y_length
+        colorbar_frac = 0.3
+        width *= 1 + n_colorbars * colorbar_frac / width
+        return 1 / width
+
+    def set_ax(self, ax=None, figsize=None, view='x-y', n_colorbars=0):
         """Assign an axis to self, or create new axis if needed."""
 
         # Assign external axes
@@ -163,18 +175,9 @@ class NiftiImage:
             self.ax = ax
             return
 
-        # Get figure dimensions
-        x, y = _plot_axes[view]
-        x_length = abs(self.lims[x][0] - self.lims[x][1])
-        y_length = abs(self.lims[y][0] - self.lims[y][1])
-        self.fig_height = figsize if figsize is not None else 5
-        self.fig_width = self.fig_height * x_length / y_length
-        self.colorbar_frac = 0.3
-        self.fig_width *= (1 + colorbar * self.colorbar_frac * self.fig_height
-                          / self.fig_width)
-
         # Create figure and axes
-        self.fig = plt.figure(figsize=(self.fig_width, self.fig_height))
+        aspect = self.get_plot_aspect(view, n_colorbars)
+        self.fig = plt.figure(figsize=(figsize / aspect, figsize))
         self.ax = self.fig.add_subplot()
 
     def get_kwargs(self, mpl_kwargs, default=None):
@@ -844,7 +847,7 @@ class MultiImage(NiftiImage):
     def set_ax(self, ax=None, figsize=None, view=None, colorbar=False):
 
         n_colorbars = colorbar * (1 + self.has_dose + self.has_jacobian)
-        NiftiImage.set_ax(self, ax, figsize, view, colorbar=n_colorbars)
+        NiftiImage.set_ax(self, ax, figsize, view, n_colorbars)
 
     def plot(
         self, 
