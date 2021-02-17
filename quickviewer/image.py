@@ -158,22 +158,22 @@ class NiftiImage:
     def set_ax(self, ax=None, figsize=None, view='x-y', colorbar=0):
         """Assign an axis to self, or create new axis if needed."""
 
-        # Colorbar placement settings
-        self.colorbar_pad = 0.04
-        self.colorbar_frac = 0.046
-
         # Assign external axes
         if ax is not None:
             self.ax = ax
             return
 
-        # Create new figure and axes
+        # Get figure dimensions
         x, y = _plot_axes[view]
         x_length = abs(self.lims[x][0] - self.lims[x][1])
         y_length = abs(self.lims[y][0] - self.lims[y][1])
         self.fig_height = figsize if figsize is not None else 5
-        self.fig_width = self.fig_height * y_length / x_length \
-                * (1 + colorbar * (self.colorbar_pad + self.colorbar_frac))
+        self.fig_width = self.fig_height * x_length / y_length
+        self.colorbar_frac = 0.3
+        self.fig_width *= (1 + colorbar * self.colorbar_frac * self.fig_height
+                          / self.fig_width)
+
+        # Create figure and axes
         self.fig = plt.figure(figsize=(self.fig_width, self.fig_height))
         self.ax = self.fig.add_subplot()
 
@@ -323,24 +323,14 @@ class NiftiImage:
             self.ax.set_title(self.title)
 
         # Draw colorbar
-        if colorbar:
-            fig = plt.gcf()
-            #  plot_height = self.ax.get_position().y1 - self.ax.get_position().y0
-            #  plot_width = self.ax.get_position().x1 - self.ax.get_position().x0
-            #  clb_pad = self.colorbar_pad * plot_width
-            #  clb_width = self.colorbar_frac * plot_width
-            #  clb_x0 = fig.axes[-1].get_position().x1 + clb_pad
-            #  clb_y0 = self.ax.get_position().y0
-            #  cax = plt.gcf().add_axes([clb_x0, clb_y0, clb_width, plot_height])
+        if colorbar and mpl_kwargs.get("alpha", 1) > 0:
             ax  = clb_ax if clb_ax is not None else self.ax
-            clb = plt.gcf().colorbar(mesh, ax=ax, fraction=self.colorbar_frac,
-                                     pad=self.colorbar_pad, 
-                                     label=colorbar_label)
+            clb = plt.gcf().colorbar(mesh, ax=self.ax, label=colorbar_label)
             clb.solids.set_edgecolor("face")
 
         # Display image
         if show:
-            #  plt.tight_layout()
+            plt.tight_layout()
             plt.show()
 
     def downsample(self, d):
@@ -884,7 +874,7 @@ class MultiImage(NiftiImage):
         self.set_ax(ax, figsize, view, colorbar)
         self.set_masks()
         NiftiImage.plot(self, view, sl, self.ax, mpl_kwargs, show=False, 
-                                  colorbar=False, masked=masked, 
+                                  colorbar=colorbar, masked=masked, 
                                   invert_mask=invert_mask, 
                                   mask_colour=mask_colour, figsize=figsize)
 
@@ -899,7 +889,8 @@ class MultiImage(NiftiImage):
         self.jacobian.plot(view, sl, self.ax, 
                            self.get_kwargs(jacobian_kwargs, 
                                            default=self.jacobian_kwargs),
-                           show=False, colorbar=colorbar)
+                           show=False, colorbar=colorbar, 
+                           colorbar_label="Jacobian determinant")
 
         # Plot structures
         struct_handles = []

@@ -467,7 +467,7 @@ class ViewerImage(MultiImage):
                         self.slice[self.view], 
                         mpl_kwargs=mpl_kwargs, 
                         figsize=self.figsize,
-                        colorbar=colorbar,
+                        colorbar=self.colorbar,
                         masked=self.ui_mask.value,
                         invert_mask=self.invert_mask,
                         mask_colour=self.mask_colour,
