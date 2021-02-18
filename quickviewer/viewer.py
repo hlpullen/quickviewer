@@ -115,9 +115,9 @@ class ImageViewer():
             return
         max_slice = self.im.n_voxels[_slider_axes[view]] - 1
         min_slice = 0
-        if self.slice < min_slice:
+        if self.slice[view] < min_slice:
             self.slice[view] = min_slice
-        elif self.slice > max_slice:
+        elif self.slice[view] > max_slice:
             self.slice[view] = max_slice
         else:
             self.slice[view] = sl
@@ -212,6 +212,7 @@ class ImageViewer():
 
         # Extra sliders
         self.extra_ui = []
+        self.extra_ui_no_jump = []
         self.lower_ui = []
         if not shared_ui:
 
@@ -224,20 +225,20 @@ class ImageViewer():
 
             # Dose opacity
             self.ui_dose = ipyw.FloatSlider(
-                value=self.init_dose_opacity, min=0, max=1, step=0.1,
+                value=self.init_dose_opacity, min=0, max=1, step=0.05,
                 description="Dose opacity",
                 continuous_update=self.continuous_update,
-                readout_format=".1f", style=_style,
+                readout_format=".2f", style=_style,
             )
             if self.im.has_dose:
                 self.extra_ui.append(self.ui_dose)
 
             # Jacobian opacity and range
             self.ui_jac_opacity = ipyw.FloatSlider(
-                value=self.init_jac_opacity, min=0, max=1, step=0.1,
+                value=self.init_jac_opacity, min=0, max=1, step=0.05,
                 description="Jacobian opacity",
                 continuous_update=self.continuous_update,
-                readout_format=".1f", style=_style,
+                readout_format=".2f", style=_style,
             )
             self.ui_jac_range = ipyw.FloatRangeSlider(
                 min=-0.5, max=2.5, step=0.1, value=[0.8, 1.2],
@@ -287,8 +288,11 @@ class ImageViewer():
                 self.extra_ui.extend([
                     self.ui_struct_plot_type,
                     self.ui_struct_slider,
-                    self.ui_struct_jump
                 ])
+            self.extra_ui_no_jump = self.extra_ui.copy()
+            if self.im.has_structs:
+                self.extra_ui.append(self.ui_struct_jump)
+                self.main_sliders.insert(0, self.ui_struct_jump)
 
         else:
             to_share = ["ui_mask", "ui_dose", "ui_jac_opacity", "ui_jac_range",
@@ -548,8 +552,8 @@ class QuickViewer:
         self.jacobian = self.get_input_list(jacobian)
         self.df = self.get_input_list(df)
 
-        # Make individual viewers
-        self.viewers = []
+        # Make individual viewer
+        self.viewer = []
         viewer_type = ImageViewer if not orthog_view else OrthogViewer
         for i in range(self.n):
             viewer = viewer_type(
@@ -558,7 +562,7 @@ class QuickViewer:
                 jacobian=self.jacobian[i], df=self.df[i], standalone=False, 
                 **kwargs)
             if viewer.im.valid:
-                self.viewers.append(viewer)
+                self.viewer.append(viewer)
 
         # Settings needed for plotting
         self.figsize = kwargs.get("figsize", _default_figsize)
@@ -599,30 +603,30 @@ class QuickViewer:
 
         # Only share slider if images have same shape
         if share_slider:
-            same_shape = [v.im.shape == self.viewers[0].im.shape
-                          for v in self.viewers]
+            same_shape = [v.im.shape == self.viewer[0].im.shape
+                          for v in self.viewer]
             share_slider *= all(same_shape)
 
         self.main_sliders = []
         self.lower_ui = []
 
         # Make UI for first image
-        self.viewers[0].make_ui()
-        self.main_sliders.append(self.viewers[0].main_sliders)
-        self.extra_ui = self.viewers[0].extra_ui
-        self.lower_ui.extend(self.viewers[0].lower_ui)
-        many_with_structs = sum([v.im.has_structs for v in self.viewers]) > 1
+        self.viewer[0].make_ui()
+        self.main_sliders.append(self.viewer[0].main_sliders)
+        self.extra_ui = self.viewer[0].extra_ui
+        self.lower_ui.extend(self.viewer[0].lower_ui)
+        many_with_structs = sum([v.im.has_structs for v in self.viewer]) > 1
         if many_with_structs:
             self.lower_ui.insert(
                 0, ipyw.HTML(value=f"<b>{v.im.title + ':'}</b>"))
 
         # Store orientation UI
-        self.ui_view = self.viewers[0].ui_view
+        self.ui_view = self.viewer[0].ui_view
         self.view = self.ui_view.value
 
         # Make UI for subsequent images
-        for v in self.viewers[1:]:
-            v.make_ui(vimage=self.viewers[0], share_sliders=share_slider)
+        for v in self.viewer[1:]:
+            v.make_ui(vimage=self.viewer[0], share_sliders=share_slider)
             if not share_slider:
                 self.main_sliders.append(v.main_sliders)
             if v.im.has_structs:
@@ -634,24 +638,29 @@ class QuickViewer:
         # Set UI as plotting kwargs
         ui_all = [self.ui_view] \
                 + list(itertools.chain.from_iterable(self.main_sliders)) \
-                + self.extra_ui \
-                + list(itertools.chain.from_iterable(self.lower_ui))
+                + self.extra_ui + self.lower_ui
         self.ui_kw = {str(np.random.rand()): ui for ui in ui_all}
 
         # Assemble UI boxes
-        self.main_slider_boxes = [ipyw.VBox(ui) for ui in self.main_sliders]
-        self.set_slider_widths()
-        self.main_ui_box = ipyw.VBox([self.ui_view, 
-                                      ipyw.HBox(self.main_slider_boxes)])
-        self.extra_ui_box = ipyw.VBox(self.extra_ui)
-        self.ui_box = ipyw.HBox([self.main_ui_box, self.extra_ui_box])
-        self.ui_box_lower = ipyw.VBox(self.lower_ui)
+        if self.n == 1 or share_slider:
+            self.ui_box = self.viewer[0].ui_box
+            self.ui_box_lower = self.viewer[0].ui_box_lower
+            self.main_slider_boxes = []
+
+        else:
+            self.main_slider_boxes = [ipyw.VBox(ui) for ui in self.main_sliders]
+            self.set_slider_widths()
+            self.extra_ui_box = ipyw.VBox(self.extra_ui)
+            self.upper_ui_box = ipyw.HBox([self.ui_view, self.extra_ui_box])
+            self.slider_box = ipyw.HBox(self.main_slider_boxes)
+            self.ui_box = ipyw.VBox([self.upper_ui_box, self.slider_box])
+            self.ui_box_lower = ipyw.VBox(self.lower_ui)
 
     def set_slider_widths(self):
         """Adjust widths of slider UI."""
 
         for i, slider in enumerate(self.main_slider_boxes[:-1]):
-            width = self.figsize * self.viewers[i].im.get_relative_width(
+            width = self.figsize * self.viewer[i].im.get_relative_width(
                 self.view, self.colorbar) * mpl.rcParams["figure.dpi"]
             slider.layout = ipyw.Layout(width=f"{width}px", 
                                        justify_content="center")
@@ -660,7 +669,7 @@ class QuickViewer:
 
         # Get width of each figure 
         width_ratios = [v.im.get_relative_width(self.view, self.colorbar) 
-                        for v in self.viewers]
+                        for v in self.viewer]
         height = self.figsize
         width = self.figsize * sum(width_ratios)
 
@@ -669,7 +678,7 @@ class QuickViewer:
 
         # Make gridspec
         gs = self.fig.add_gridspec(1, self.n, width_ratios=width_ratios)
-        for i, v in enumerate(self.viewers):
+        for i, v in enumerate(self.viewer):
             v.gs = gs[i]
 
     def plot(self, **kwargs):
@@ -682,7 +691,7 @@ class QuickViewer:
         # Deal with view change
         if self.ui_view.value != self.view:
             self.view = self.ui_view.value
-            for v in self.viewers:
+            for v in self.viewer:
                 v.view = self.ui_view.value
                 v.update_slice_slider()
             self.set_slider_widths()
@@ -691,7 +700,7 @@ class QuickViewer:
         self.make_fig()
 
         # Plot all images
-        for v in self.viewers:
+        for v in self.viewer:
             v.plot()
         plt.tight_layout()
         self.plotting = False
