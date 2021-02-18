@@ -524,6 +524,7 @@ class QuickViewer:
         jacobian=None,
         df=None,
         share_slider=True,
+        orthog_view=False,
         **kwargs
     ):
 
@@ -544,8 +545,9 @@ class QuickViewer:
 
         # Make individual viewers
         self.viewers = []
+        viewer_type = ImageViewer if not orthog_view else OrthogViewer
         for i in range(self.n):
-            viewer = ImageViewer(
+            viewer = viewer_type(
                 self.nii[i], title=self.title[i], dose=self.dose[i],
                 mask=self.mask[i], structs=self.structs[i], 
                 jacobian=self.jacobian[i], df=self.df[i], standalone=False, 
