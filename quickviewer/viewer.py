@@ -4,13 +4,15 @@ import itertools
 import ipywidgets as ipyw
 import numpy as np
 import matplotlib.pyplot as plt
+import matplotlib as mpl
 
 from quickviewer.image import MultiImage, OrthogonalImage
 from quickviewer.image import _slider_axes, _df_plot_types, \
         _struct_plot_types, _orthog, _default_figsize
 
 
-_style = {"description_width": "initial"}
+_style = {"description_width": "initial",
+          "value_width": "initial"}
 _view_map = {"y-x": "x-y", "z-x": "x-z", "z-y": "y-z"}
 
 
@@ -161,6 +163,7 @@ class ImageViewer():
 
         shared_ui = isinstance(vimage, ImageViewer)
         self.main_ui = []
+        self.main_sliders = []
 
         # View radio buttons
         if not shared_ui:
@@ -177,7 +180,7 @@ class ImageViewer():
             self.view = self.ui_view.value
 
         # HU and slice sliders
-        if not shared_ui or share_sliders:
+        if not share_sliders or not shared_ui:
 
             # HU slider
             self.ui_hu = ipyw.IntRangeSlider(
@@ -188,6 +191,7 @@ class ImageViewer():
                 style=_style
             )
             self.main_ui.append(self.ui_hu)
+            self.main_sliders.append(self.ui_hu)
 
             # Slice slider
             self.ui_slice = ipyw.FloatSlider(
@@ -198,10 +202,11 @@ class ImageViewer():
             self.own_ui_slice = True
             self.update_slice_slider()
             self.main_ui.append(self.ui_slice)
+            self.main_sliders.append(self.ui_slice)
 
         else:
             self.ui_hu = vimage.ui_hu
-            self.ui_slice = vimage.ui_hu
+            self.ui_slice = vimage.ui_slice
             self.slice[self.view] = self.ui_slice.value
             self.own_ui_slice = False
 
@@ -555,16 +560,16 @@ class QuickViewer:
             if viewer.im.valid:
                 self.viewers.append(viewer)
 
-        # Make UI
-        self.make_ui(share_slider)
-
         # Settings needed for plotting
         self.figsize = kwargs.get("figsize", _default_figsize)
         self.colorbar = kwargs.get("colorbar", False)
         self.plotting = False
 
+        # Make UI
+        self.make_ui(share_slider)
+
         # Display
-        if in_notebook():
+        if True:
             self.out = ipyw.interactive_output(self.plot, self.ui_kw)
             from IPython.display import display
             to_display = [self.ui_box, self.out]
@@ -598,12 +603,12 @@ class QuickViewer:
                           for v in self.viewers]
             share_slider *= all(same_shape)
 
-        self.main_ui = []
+        self.main_sliders = []
         self.lower_ui = []
 
         # Make UI for first image
         self.viewers[0].make_ui()
-        self.main_ui.append(self.viewers[0].main_ui)
+        self.main_sliders.append(self.viewers[0].main_sliders)
         self.extra_ui = self.viewers[0].extra_ui
         self.lower_ui.extend(self.viewers[0].lower_ui)
         many_with_structs = sum([v.im.has_structs for v in self.viewers]) > 1
@@ -619,7 +624,7 @@ class QuickViewer:
         for v in self.viewers[1:]:
             v.make_ui(vimage=self.viewers[0], share_sliders=share_slider)
             if not share_slider:
-                self.main_ui.append(v.main_ui)
+                self.main_sliders.append(v.main_sliders)
             if v.im.has_structs:
                 if many_with_structs:
                     self.lower_ui.append(
@@ -627,16 +632,29 @@ class QuickViewer:
                 self.lower_ui.extend(v.lower_ui)
 
         # Set UI as plotting kwargs
-        ui_all = list(itertools.chain.from_iterable(self.main_ui)) \
+        ui_all = [self.ui_view] \
+                + list(itertools.chain.from_iterable(self.main_sliders)) \
                 + self.extra_ui \
                 + list(itertools.chain.from_iterable(self.lower_ui))
         self.ui_kw = {str(np.random.rand()): ui for ui in ui_all}
 
         # Assemble UI boxes
-        self.main_ui_boxes = [ipyw.VBox(ui) for ui in self.main_ui]
+        self.main_slider_boxes = [ipyw.VBox(ui) for ui in self.main_sliders]
+        self.set_slider_widths()
+        self.main_ui_box = ipyw.VBox([self.ui_view, 
+                                      ipyw.HBox(self.main_slider_boxes)])
         self.extra_ui_box = ipyw.VBox(self.extra_ui)
-        self.ui_box = ipyw.HBox(self.main_ui_boxes + [self.extra_ui_box])
+        self.ui_box = ipyw.HBox([self.main_ui_box, self.extra_ui_box])
         self.ui_box_lower = ipyw.VBox(self.lower_ui)
+
+    def set_slider_widths(self):
+        """Adjust widths of slider UI."""
+
+        for i, slider in enumerate(self.main_slider_boxes[:-1]):
+            width = self.figsize * self.viewers[i].im.get_relative_width(
+                self.view, self.colorbar) * mpl.rcParams["figure.dpi"]
+            slider.layout = ipyw.Layout(width=f"{width}px", 
+                                       justify_content="center")
 
     def make_fig(self):
 
@@ -667,6 +685,7 @@ class QuickViewer:
             for v in self.viewers:
                 v.view = self.ui_view.value
                 v.update_slice_slider()
+            self.set_slider_widths()
 
         # Reset figure
         self.make_fig()
