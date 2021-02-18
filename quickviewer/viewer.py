@@ -1,36 +1,37 @@
 """Classes for creating a UI and displaying interactive plots."""
 
+import itertools
 import ipywidgets as ipyw
 import numpy as np
+import matplotlib.pyplot as plt
 
-from quickviewer.image import MultiImage
-from quickviewer.image import _axes, _plot_axes, _slider_axes, \
-        _df_plot_types, _struct_plot_types
+from quickviewer.image import MultiImage, OrthogonalImage
+from quickviewer.image import _slider_axes, _df_plot_types, \
+        _struct_plot_types, _orthog, _default_figsize
 
 
 _style = {"description_width": "initial"}
 _view_map = {"y-x": "x-y", "z-x": "x-z", "z-y": "y-z"}
-_orthog = {'x-y': 'y-z', 'y-z': 'x-z', 'x-z': 'y-z'}
 
 
-class ViewerImage(MultiImage):
+class ImageViewer():
     """Class for displaying a MultiImage with interactive elements."""
 
     def __init__(
-        self, 
-        nii, 
-        title=None, 
-        scale_in_mm=True, 
-        figsize=6,
-        downsample=None, 
+        self,
+        nii,
+        title=None,
+        scale_in_mm=True,
+        figsize=_default_figsize,
+        downsample=None,
         colorbar=False,
-        dose=None, 
+        dose=None,
         dose_opacity=0.5,
         dose_cmap="jet",
-        mask=None, 
+        mask=None,
         invert_mask=False,
         mask_colour="black",
-        jacobian=None, 
+        jacobian=None,
         jacobian_opacity=0.5,
         jacobian_cmap="seismic",
         df=None,
@@ -49,27 +50,27 @@ class ViewerImage(MultiImage):
         init_view="x-y",
         init_idx=None,
         v=(-300, 200),
-        continuous_update=False
+        continuous_update=False,
     ):
 
-        MultiImage.__init__(self, nii, title, scale_in_mm, downsample, dose,
-                            mask, jacobian, df, structs, struct_colours,
-                            structs_as_mask)
+        self.im = self.make_image(
+            nii, title, scale_in_mm, downsample, dose, mask, jacobian, df,
+            structs, struct_colours, structs_as_mask)
         self.interactive = False  # Flag for creation of interactive elements
+        self.gs = None  # Gridspec in which to place plot axes
 
         # Set initial view and slice numbers
         if init_view in _view_map:
             self.view = _view_map[init_view]
         else:
             self.view = init_view
-        self.slice = {view: int(self.n_voxels[z] / 2) for view, z 
+        self.slice = {view: int(self.im.n_voxels[z] / 2) for view, z
                       in _slider_axes.items()}
         self.set_slice(init_view, init_idx)
 
         # Assign plot settings
         # General settings
         self.v = v
-        self.standalone = standalone
         self.figsize = figsize
         self.continuous_update = continuous_update
         self.colorbar = colorbar
@@ -98,14 +99,19 @@ class ViewerImage(MultiImage):
         self.legend_loc = legend_loc
 
         # Display plot
-        self.show()
+        if standalone:
+            self.show()
+
+    def make_image(self, *args):
+        """Set up image object."""
+        return MultiImage(*args)
 
     def set_slice(self, view, sl):
         """Set the current slice number in a specific view."""
 
         if sl is None:
             return
-        max_slice = self.n_voxels[_slider_axes[init_view]] - 1
+        max_slice = self.im.n_voxels[_slider_axes[view]] - 1
         min_slice = 0
         if self.slice < min_slice:
             self.slice[view] = min_slice
@@ -119,11 +125,11 @@ class ViewerImage(MultiImage):
 
         if ax is None:
             ax = _slider_axes[self.view]
-        if self.scale_in_mm:
-            return self.pos_to_idx(val, ax)
+        if self.im.scale_in_mm:
+            return self.im.pos_to_idx(val, ax)
         else:
             if ax == "z":
-                return int(self.n_voxels[ax] - val)
+                return int(self.im.n_voxels[ax] - val)
             else:
                 return int(val - 1)
 
@@ -132,28 +138,28 @@ class ViewerImage(MultiImage):
 
         if ax is None:
             ax = _slider_axes[self.view]
-        if self.scale_in_mm:
-            return self.idx_to_pos(idx, ax)
+        if self.im.scale_in_mm:
+            return self.im.idx_to_pos(idx, ax)
         else:
             if ax == "z":
-                return self.n_voxels[ax] - idx
+                return self.im.n_voxels[ax] - idx
             else:
                 return idx + 1
 
     def set_interactive(self):
         """Create interactive elements."""
-        
+
         if in_notebook():
             self.make_ui()
         else:
             self.set_callbacks()
 
     def make_ui(self, vimage=None, share_sliders=True):
-        """Make Jupyter notebook UI. If qv_image contains another ViewerImage
-        instance, the UI will be taken from that image. If share_sliders is 
+        """Make Jupyter notebook UI. If qv_image contains another ImageViewer
+        instance, the UI will be taken from that image. If share_sliders is
         False, independent HU and slice sliders will be created."""
 
-        shared_ui = isinstance(vimage, ViewerImage)
+        shared_ui = isinstance(vimage, ImageViewer)
         self.main_ui = []
 
         # View radio buttons
@@ -205,26 +211,26 @@ class ViewerImage(MultiImage):
         if not shared_ui:
 
             # Mask checkbox
-            self.ui_mask = ipyw.Checkbox(value=self.has_mask, 
-                                         description="Apply mask", 
+            self.ui_mask = ipyw.Checkbox(value=self.im.has_mask,
+                                         description="Apply mask",
                                          width=200)
-            if self.has_mask:
+            if self.im.has_mask:
                 self.extra_ui.append(self.ui_mask)
 
             # Dose opacity
             self.ui_dose = ipyw.FloatSlider(
-                value=self.init_dose_opacity, min=0, max=1, step=0.1, 
-                description=f"Dose opacity", 
+                value=self.init_dose_opacity, min=0, max=1, step=0.1,
+                description="Dose opacity",
                 continuous_update=self.continuous_update,
                 readout_format=".1f", style=_style,
             )
-            if self.has_dose:
+            if self.im.has_dose:
                 self.extra_ui.append(self.ui_dose)
 
             # Jacobian opacity and range
             self.ui_jac_opacity = ipyw.FloatSlider(
-                value=self.init_jac_opacity, min=0, max=1, step=0.1, 
-                description=f"Jacobian opacity", 
+                value=self.init_jac_opacity, min=0, max=1, step=0.1,
+                description="Jacobian opacity",
                 continuous_update=self.continuous_update,
                 readout_format=".1f", style=_style,
             )
@@ -233,8 +239,8 @@ class ViewerImage(MultiImage):
                 description="Jacobian range", continuous_update=False,
                 style=_style, readout_format=".1f"
             )
-            if self.has_jacobian:
-                self.extra_ui.extend([self.ui_jac_opacity, 
+            if self.im.has_jacobian:
+                self.extra_ui.extend([self.ui_jac_opacity,
                                       self.ui_jac_range])
 
             # Deformation field plot type
@@ -244,7 +250,7 @@ class ViewerImage(MultiImage):
                 description="Deformation field",
                 style=_style,
             )
-            if self.has_df:
+            if self.im.has_df:
                 self.extra_ui.append(self.ui_df)
 
             # Structure UI
@@ -261,9 +267,9 @@ class ViewerImage(MultiImage):
                                                      style=_style)
             self.update_struct_slider()
 
-            # Jump to structures
-            self.structs_for_jump = {"": None, **{s.name_nice: s for s in 
-                                                  self.structs}}
+            # Structure jumping UI
+            self.structs_for_jump = {"": None, **{s.name_nice: s for s in
+                                                  self.im.structs}}
             self.ui_struct_jump = ipyw.Dropdown(
                 options=self.structs_for_jump.keys(),
                 value="",
@@ -272,7 +278,7 @@ class ViewerImage(MultiImage):
             )
 
             # Add all structure UIs
-            if self.has_structs:
+            if self.im.has_structs:
                 self.extra_ui.extend([
                     self.ui_struct_plot_type,
                     self.ui_struct_slider,
@@ -280,11 +286,14 @@ class ViewerImage(MultiImage):
                 ])
 
         else:
-            self.ui_mask = vimage.ui_mask
-            self.ui_dose = vimage.ui_dose
+            to_share = ["ui_mask", "ui_dose", "ui_jac_opacity", "ui_jac_range",
+                        "ui_df", "ui_struct_plot_type", "ui_struct_slider", 
+                        "ui_struct_jump"]
+            for ts in to_share:
+                setattr(self, ts, getattr(vimage, ts))
 
         # Make structure checkboxes
-        for s in self.structs:
+        for s in self.im.structs:
             s.checkbox = ipyw.Checkbox(value=True, description=s.name_nice)
             self.lower_ui.append(s.checkbox)
 
@@ -298,7 +307,7 @@ class ViewerImage(MultiImage):
 
     def update_struct_slider(self):
         """Update range and description of structure slider."""
-    
+
         self.struct_plot_type = self.ui_struct_plot_type.value
         if self.struct_plot_type == "mask":
             self.ui_struct_slider.disabled = False
@@ -325,7 +334,7 @@ class ViewerImage(MultiImage):
         self.interactive = True
 
     def update_slice_slider(self):
-        """Update the slice slider to show the axis corresponding to the 
+        """Update the slice slider to show the axis corresponding to the
         current view, with value set to the last value used on that axis."""
 
         if not self.own_ui_slice:
@@ -333,12 +342,12 @@ class ViewerImage(MultiImage):
 
         # Get new min and max
         ax = _slider_axes[self.view]
-        if self.scale_in_mm:
-            new_min = min(self.lims[ax])
-            new_max = max(self.lims[ax]) - self.voxel_sizes[ax]
+        if self.im.scale_in_mm:
+            new_min = min(self.im.lims[ax])
+            new_max = max(self.im.lims[ax]) - self.im.voxel_sizes[ax]
         else:
             new_min = 1
-            new_max = self.n_voxels[ax]
+            new_max = self.im.n_voxels[ax]
 
         # Set to widest range of new and old values
         if new_min < self.ui_slice.min:
@@ -357,18 +366,18 @@ class ViewerImage(MultiImage):
             self.ui_slice.max = new_max
 
         # Set step and description
-        self.ui_slice.step = abs(self.voxel_sizes[ax]) if self.scale_in_mm \
-                else 1
+        self.ui_slice.step = abs(self.im.voxel_sizes[ax]) if \
+            self.im.scale_in_mm else 1
         self.update_slice_slider_desc()
-    
+
     def update_slice_slider_desc(self):
-        """Update slice slider description to reflect current axis and 
+        """Update slice slider description to reflect current axis and
         position."""
 
         if not self.own_ui_slice:
             return
         ax = _slider_axes[self.view]
-        if self.scale_in_mm:
+        if self.im.scale_in_mm:
             self.ui_slice.description = f"{ax} (mm)"
         else:
             pos = self.idx_to_pos(
@@ -395,18 +404,17 @@ class ViewerImage(MultiImage):
             self.set_interactive()
 
         # Make output
-        if self.standalone:
-            if in_notebook():
-                ui_kw = {str(np.random.rand()): ui for ui in self.ui}
-                self.out = ipyw.interactive_output(self.plot, ui_kw)
-                from IPython.display import display
-                to_display = [self.ui_box, self.out]
-                if self.has_structs:
-                    to_display.append(self.ui_box_lower)
-                display(*to_display)
-            else:
-                self.plot()
-                plt.show()
+        if in_notebook():
+            ui_kw = {str(np.random.rand()): ui for ui in self.ui}
+            self.out = ipyw.interactive_output(self.plot, ui_kw)
+            from IPython.display import display
+            to_display = [self.ui_box, self.out]
+            if self.im.has_structs:
+                to_display.append(self.ui_box_lower)
+            display(*to_display)
+        else:
+            self.plot()
+            plt.show()
 
     def plot(self, **kwargs):
         """Plot a slice with current settings."""
@@ -417,40 +425,38 @@ class ViewerImage(MultiImage):
 
         # Get view
         view = self.ui_view.value
-        view_changed = self.view != view
-        self.view = view
+        if self.view != view:
+            self.view = view
+            self.update_slice_slider()
 
         # Get HU range
         mpl_kwargs = {"vmin": self.ui_hu.value[0],
                       "vmax": self.ui_hu.value[1]}
 
         # Get slice
-        if view_changed:
-            self.update_slice_slider()
-        elif not self.scale_in_mm:
-            self.update_slice_slider_desc()
         self.jump_to_struct()
         self.slice[self.view] = self.slider_to_idx(self.ui_slice.value)
+        if not self.im.scale_in_mm:
+            self.update_slice_slider_desc()
 
         # Get dose settings
         dose_kwargs = {}
-        if self.has_dose:
+        if self.im.has_dose:
             dose_kwargs = {"alpha": self.ui_dose.value,
                            "cmap": self.dose_cmap}
 
         # Get jacobian settings
         jacobian_kwargs = {}
-        if self.has_jacobian:
+        if self.im.has_jacobian:
             jacobian_kwargs = {"alpha": self.ui_jac_opacity.value,
                                "cmap": self.jacobian_cmap,
                                "vmin": self.ui_jac_range.value[0],
-                               "vmax": self.ui_jac_range.value[1]
-                              }
+                               "vmax": self.ui_jac_range.value[1]}
 
         # Get structure settings
         if self.ui_struct_plot_type.value != self.struct_plot_type:
             self.update_struct_slider()
-        if self.struct_plot_type == "contour": 
+        if self.struct_plot_type == "contour":
             self.struct_linewidth = self.ui_struct_slider.value
             struct_kwargs = {"linewidth": self.struct_linewidth}
         elif self.struct_plot_type == "mask":
@@ -458,44 +464,216 @@ class ViewerImage(MultiImage):
             struct_kwargs = {"alpha": self.struct_opacity}
         else:
             struct_kwargs = {}
-        for s in self.structs:
+        for s in self.im.structs:
             s.visible = s.checkbox.value
 
         # Make plot
-        MultiImage.plot(self, 
-                        self.view, 
-                        self.slice[self.view], 
-                        mpl_kwargs=mpl_kwargs, 
-                        figsize=self.figsize,
-                        colorbar=self.colorbar,
-                        masked=self.ui_mask.value,
-                        invert_mask=self.invert_mask,
-                        mask_colour=self.mask_colour,
-                        dose_kwargs=dose_kwargs,
-                        jacobian_kwargs=jacobian_kwargs,
-                        df_plot_type=self.ui_df.value,
-                        df_spacing=self.df_spacing,
-                        df_kwargs=self.df_kwargs,
-                        struct_plot_type=self.struct_plot_type,
-                        struct_kwargs=struct_kwargs,
-                        struct_legend=self.struct_legend,
-                        legend_loc=self.legend_loc,
-                        show=False)
+        self.im.plot(self.view,
+                     self.slice[self.view],
+                     gs=self.gs,
+                     mpl_kwargs=mpl_kwargs,
+                     figsize=self.figsize,
+                     colorbar=self.colorbar,
+                     masked=self.ui_mask.value,
+                     invert_mask=self.invert_mask,
+                     mask_colour=self.mask_colour,
+                     dose_kwargs=dose_kwargs,
+                     jacobian_kwargs=jacobian_kwargs,
+                     df_plot_type=self.ui_df.value,
+                     df_spacing=self.df_spacing,
+                     df_kwargs=self.df_kwargs,
+                     struct_plot_type=self.struct_plot_type,
+                     struct_kwargs=struct_kwargs,
+                     struct_legend=self.struct_legend,
+                     legend_loc=self.legend_loc,
+                     show=False)
         self.plotting = False
 
 
-class OrthogonalImage(ViewerImage):
-    """ViewerImage with an orthgonal view displayed."""
+class OrthogViewer(ImageViewer):
+    """ImageViewer with an orthgonal view displayed."""
+
+    def make_image(self, *args):
+        """Set up image object."""
+        return OrthogonalImage(*args)
+
+    def jump_to_struct(self):
+        """Jump to mid slice of a structure."""
+
+        if self.ui_struct_jump.value == "":
+            return
+
+        struct = self.structs_for_jump[self.ui_struct_jump.value]
+        ImageViewer.jump_to_struct(self)
+
+        orthog_view = _orthog[self.view]
+        mid_slice = int(np.mean(list(struct.contours[orthog_view].keys())))
+        self.im.orthog_slices[_slider_axes[orthog_view]] = mid_slice
 
 
-    def set_ax(self, view, gspec=None, colorbar=False):
-        """Create axes for this plot, either standalone or inside an existing 
-        gridspec."""
+class QuickViewer:
+    """Display multiple images with UI."""
 
-        own_aspect = self.get_plot_aspect(view, self.get_n_colorbars)
+    def __init__(
+        self,
+        nii,
+        title=None,
+        mask=None,
+        dose=None,
+        structs=None,
+        jacobian=None,
+        df=None,
+        share_slider=True,
+        **kwargs
+    ):
+
+        # Get image file inputs
+        if not isinstance(nii, list) or isinstance(nii, tuple):
+            self.nii = [nii]
+        else:
+            self.nii = nii
+        self.n = len(self.nii)
+
+        # Process other inputs
+        self.title = self.get_input_list(title)
+        self.dose = self.get_input_list(dose)
+        self.mask = self.get_input_list(mask)
+        self.structs = self.get_input_list(structs)
+        self.jacobian = self.get_input_list(jacobian)
+        self.df = self.get_input_list(df)
+
+        # Make individual viewers
+        self.viewers = []
+        for i in range(self.n):
+            viewer = ImageViewer(
+                self.nii[i], title=self.title[i], dose=self.dose[i],
+                mask=self.mask[i], structs=self.structs[i], 
+                jacobian=self.jacobian[i], df=self.df[i], standalone=False, 
+                **kwargs)
+            if viewer.im.valid:
+                self.viewers.append(viewer)
+
+        # Make UI
+        self.make_ui(share_slider)
+
+        # Settings needed for plotting
+        self.figsize = kwargs.get("figsize", _default_figsize)
+        self.colorbar = kwargs.get("colorbar", False)
+        self.plotting = False
+
+        # Display
+        if in_notebook():
+            self.out = ipyw.interactive_output(self.plot, self.ui_kw)
+            from IPython.display import display
+            to_display = [self.ui_box, self.out]
+            if len(self.lower_ui):
+                to_display.append(self.ui_box_lower)
+            display(*to_display)
+
+    def get_input_list(self, inp):
+        """Convert an input to a list with one item per image to be 
+        displayed."""
+
+        if inp is None or len(inp) == 0:
+            return [None for i in range(self.n)]
+
+        # Convert arg to a list
+        input_list = []
+        if isinstance(inp, list) or isinstance(inp, tuple):
+            if self.n == 1:
+                input_list = [inp]
+            else:
+                input_list = inp
+        else:
+            input_list = [inp]
+        return input_list + [None for i in range(self.n - len(input_list))]
+
+    def make_ui(self, share_slider):
+
+        # Only share slider if images have same shape
+        if share_slider:
+            same_shape = [v.im.shape == self.viewers[0].im.shape
+                          for v in self.viewers]
+            share_slider *= all(same_shape)
+
+        self.main_ui = []
+        self.lower_ui = []
+
+        # Make UI for first image
+        self.viewers[0].make_ui()
+        self.main_ui.append(self.viewers[0].main_ui)
+        self.extra_ui = self.viewers[0].extra_ui
+        self.lower_ui.extend(self.viewers[0].lower_ui)
+        many_with_structs = sum([v.im.has_structs for v in self.viewers]) > 1
+        if many_with_structs:
+            self.lower_ui.insert(
+                0, ipyw.HTML(value=f"<b>{v.im.title + ':'}</b>"))
+
+        # Store orientation UI
+        self.ui_view = self.viewers[0].ui_view
+        self.view = self.ui_view.value
+
+        # Make UI for subsequent images
+        for v in self.viewers[1:]:
+            v.make_ui(vimage=self.viewers[0], share_sliders=share_slider)
+            if not share_slider:
+                self.main_ui.append(v.main_ui)
+            if v.im.has_structs:
+                if many_with_structs:
+                    self.lower_ui.append(
+                        ipyw.HTML(value=f"<b>{v.im.title + ':'}</b>"))
+                self.lower_ui.extend(v.lower_ui)
+
+        # Set UI as plotting kwargs
+        ui_all = list(itertools.chain.from_iterable(self.main_ui)) \
+                + self.extra_ui \
+                + list(itertools.chain.from_iterable(self.lower_ui))
+        self.ui_kw = {str(np.random.rand()): ui for ui in ui_all}
+
+        # Assemble UI boxes
+        self.main_ui_boxes = [ipyw.VBox(ui) for ui in self.main_ui]
+        self.extra_ui_box = ipyw.VBox(self.extra_ui)
+        self.ui_box = ipyw.HBox(self.main_ui_boxes + [self.extra_ui_box])
+        self.ui_box_lower = ipyw.VBox(self.lower_ui)
+
+    def make_fig(self):
+
+        # Get width of each figure 
+        width_ratios = [v.im.get_relative_width(self.view, self.colorbar) 
+                        for v in self.viewers]
+        height = self.figsize
+        width = self.figsize * sum(width_ratios)
+
+        # Make figure
+        self.fig = plt.figure(figsize=(width, height))
+
+        # Make gridspec
+        gs = self.fig.add_gridspec(1, self.n, width_ratios=width_ratios)
+        for i, v in enumerate(self.viewers):
+            v.gs = gs[i]
 
     def plot(self, **kwargs):
+        """Plot all images."""
 
+        if self.plotting:
+            return
+        self.plotting = True
+
+        # Deal with view change
+        if self.ui_view.value != self.view:
+            self.view = self.ui_view.value
+            for v in self.viewers:
+                v.view = self.ui_view.value
+                v.update_slice_slider()
+
+        # Reset figure
+        self.make_fig()
+
+        # Plot all images
+        for v in self.viewers:
+            v.plot()
+        plt.tight_layout()
+        self.plotting = False
 
 
 def in_notebook():
@@ -505,4 +683,3 @@ def in_notebook():
     except NameError:
         return False
     return True
-

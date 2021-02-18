@@ -23,9 +23,10 @@ _orient = {"y-z": [1, 2, 0], "x-z": [0, 2, 1], "x-y": [0, 1, 2]}
 _n_rot = {"y-z": 2, "x-z": 2, "x-y": 1}
 _orthog = {'x-y': 'y-z', 'y-z': 'x-z', 'x-z': 'y-z'}
 
-# Plotting types
+# Plotting properties
 _df_plot_types = ["grid", "quiver", "none"]
 _struct_plot_types = ["contour", "mask", "none"]
+_default_figsize = 6
 
 
 class NiftiImage:
@@ -163,7 +164,7 @@ class NiftiImage:
         x_length = abs(self.lims[x][0] - self.lims[x][1])
         y_length = abs(self.lims[y][0] - self.lims[y][1])
         width = x_length / y_length
-        colorbar_frac = 0.2
+        colorbar_frac = 0.3
         width *= 1 + n_colorbars * colorbar_frac / width
         return width
 
@@ -172,12 +173,13 @@ class NiftiImage:
 
         # Assign external axes
         if ax is not None:
+            self.fig = ax.figure
             self.ax = ax
             return
 
         # Create figure and axes
         rel_width = self.get_relative_width(view, n_colorbars)
-        figsize = 5 if figsize is None else figsize
+        figsize = _default_figsize if figsize is None else figsize
         self.fig = plt.figure(figsize=(figsize * rel_width, figsize))
         self.ax = self.fig.add_subplot()
 
@@ -331,7 +333,7 @@ class NiftiImage:
 
         # Draw colorbar
         if colorbar and kwargs.get("alpha", 1) > 0:
-            clb = plt.gcf().colorbar(mesh, ax=self.ax, label=colorbar_label)
+            clb = self.fig.colorbar(mesh, ax=self.ax, label=colorbar_label)
             clb.solids.set_edgecolor("face")
 
         # Display image
@@ -635,7 +637,7 @@ class StructImage(NiftiImage):
             **self.get_kwargs(mpl_kwargs, default=self.mask_kwargs)
         )
 
-    def plot_contour(self, view, sl, ax=None, mpl_kwargs=None):
+    def plot_contour(self, view, sl, ax, mpl_kwargs=None):
         """Plot a contour for a given orientation and slice number on an
         existing set of axes."""
 
@@ -849,15 +851,24 @@ class MultiImage(NiftiImage):
     def get_n_colorbars(self, colorbar=False):
         return colorbar * (1 + self.has_dose + self.has_jacobian)
 
-    def set_ax(self, view, ax=None, figsize=None, colorbar=False):
+    def set_ax(self, view, ax=None, gs=None, figsize=None, colorbar=False):
+
+        if ax is None and gs is not None:
+            ax = plt.gcf().add_subplot(gs)
+
         NiftiImage.set_ax(self, view, ax, figsize,
                           self.get_n_colorbars(colorbar))
+
+    def get_relative_width(self, view, colorbar=False):
+        return NiftiImage.get_relative_width(
+            self, view, self.get_n_colorbars(colorbar))
 
     def plot(
         self,
         view,
         sl,
         ax=None,
+        gs=None,
         figsize=None,
         mpl_kwargs=None,
         show=True,
@@ -878,7 +889,7 @@ class MultiImage(NiftiImage):
         """Plot image slice and any extra overlays."""
 
         # Plot image
-        self.set_ax(view, ax, figsize, colorbar)
+        self.set_ax(view, ax, gs, figsize, colorbar)
         self.set_masks()
         NiftiImage.plot(self, view, sl, self.ax, mpl_kwargs, show=False,
                         colorbar=colorbar, masked=masked,
@@ -929,15 +940,27 @@ class MultiImage(NiftiImage):
 class OrthogonalImage(MultiImage):
     """MultiImage with an orthogonal view next to it."""
 
+    def __init__(self, *args, **kwargs):
+        MultiImage.__init__(self, *args, **kwargs)
+        self.orthog_slices = {ax: int(self.n_voxels[ax] / 2)
+                              for ax in _axes}
+
+    def get_relative_width(self, view, colorbar=False):
+        """Get width:height ratio for this plot in a given orientation with a
+        given number of colorbars."""
+
+        width_own = MultiImage.get_relative_width(self, view, colorbar)
+        width_orthog = MultiImage.get_relative_width(self, _orthog[view])
+        return width_own + width_orthog
+
     def set_axes(self, view, gs=None, figsize=None, colorbar=False):
 
         width_ratios = [
-            self.get_relative_width(view),
-            self.get_relative_width(_orthog[view], 
-                                    self.get_n_colorbars(colorbar))
+            MultiImage.get_relative_width(self, view, colorbar),
+            MultiImage.get_relative_width(self, _orthog[view])
         ]
         if gs is None:
-            figsize = figsize if figsize is not None else 5
+            figsize = _default_figsize if figsize is None else figsize
             fig = plt.figure(figsize=(figsize * sum(width_ratios), figsize))
             self.gs = fig.add_gridspec(1, 2, width_ratios=width_ratios)
         else:
@@ -947,11 +970,11 @@ class OrthogonalImage(MultiImage):
         self.own_ax = fig.add_subplot(self.gs[0])
         self.orthog_ax = fig.add_subplot(self.gs[1])
 
-    def plot(self, 
-             view, 
-             sl, 
-             gs=None, 
-             figsize=None, 
+    def plot(self,
+             view,
+             sl,
+             gs=None,
+             figsize=None,
              mpl_kwargs=None,
              show=True,
              colorbar=False,
@@ -964,29 +987,29 @@ class OrthogonalImage(MultiImage):
         self.set_axes(view, gs, figsize, colorbar)
 
         # Plot the MultiImage
-        MultiImage.plot(self, view, sl, ax=self.own_ax, colorbar=False, 
-                        show=False, mpl_kwargs=mpl_kwargs, 
-                        struct_kwargs=struct_kwargs, 
+        MultiImage.plot(self, view, sl, ax=self.own_ax, colorbar=colorbar,
+                        show=False, mpl_kwargs=mpl_kwargs,
+                        struct_kwargs=struct_kwargs,
                         struct_plot_type=struct_plot_type,
                         **kwargs)
 
         # Plot orthogonal image
         orthog_view = _orthog[view]
-        orthog_sl = int(self.n_voxels[_slider_axes[orthog_view]] / 2)
-        NiftiImage.plot(self, 
+        orthog_sl = self.orthog_slices[_slider_axes[orthog_view]]
+        NiftiImage.plot(self,
                         orthog_view,
                         orthog_sl,
-                        ax=self.orthog_ax, 
-                        mpl_kwargs=mpl_kwargs, 
-                        show=False, 
-                        colorbar=colorbar,
+                        ax=self.orthog_ax,
+                        mpl_kwargs=mpl_kwargs,
+                        show=False,
+                        colorbar=False,
                         no_ylabel=True)
 
         # Plot structures on orthogonal image
         for struct in self.structs:
             if not struct.visible:
                 continue
-            struct.plot(orthog_view, orthog_sl, self.orthog_ax, struct_kwargs, 
+            struct.plot(orthog_view, orthog_sl, self.orthog_ax, struct_kwargs,
                         struct_plot_type)
 
         # Plot indicator line
