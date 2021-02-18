@@ -51,6 +51,7 @@ class ImageViewer():
         standalone=True,
         init_view="x-y",
         init_idx=None,
+        init_pos=None,
         v=(-300, 200),
         continuous_update=False,
     ):
@@ -61,14 +62,19 @@ class ImageViewer():
         self.interactive = False  # Flag for creation of interactive elements
         self.gs = None  # Gridspec in which to place plot axes
 
-        # Set initial view and slice numbers
+        # Set initial view
         if init_view in _view_map:
             self.view = _view_map[init_view]
         else:
             self.view = init_view
+
+        # Set initial slice numbers
         self.slice = {view: int(self.im.n_voxels[z] / 2) for view, z
                       in _slider_axes.items()}
-        self.set_slice(init_view, init_idx)
+        if init_pos is not None and scale_in_mm:
+            self.set_slice_from_pos(init_view, init_pos)
+        else:
+            self.set_slice(init_view, init_idx)
 
         # Assign plot settings
         # General settings
@@ -121,6 +127,13 @@ class ImageViewer():
             self.slice[view] = max_slice
         else:
             self.slice[view] = sl
+
+    def set_slice_from_pos(self, view, pos):
+        """Set the current slice number from a position in mm."""
+
+        ax = _slider_axes[view]
+        idx = self.im.pos_to_idx(pos, ax)
+        self.set_slice(view, idx)
 
     def slider_to_idx(self, val, ax=None):
         """Convert a slider value to a slice index."""
