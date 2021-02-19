@@ -544,6 +544,7 @@ class QuickViewer:
         df=None,
         share_slider=True,
         orthog_view=False,
+        plots_per_row=None,
         **kwargs
     ):
 
@@ -577,6 +578,7 @@ class QuickViewer:
         # Settings needed for plotting
         self.figsize = kwargs.get("figsize", _default_figsize)
         self.colorbar = kwargs.get("colorbar", False)
+        self.plots_per_row = plots_per_row
         self.plotting = False
 
         # Make UI
@@ -682,6 +684,8 @@ class QuickViewer:
     def set_slider_widths(self):
         """Adjust widths of slider UI."""
 
+        if self.plots_per_row is not None and self.plots_per_row < self.n:
+            return
         for i, slider in enumerate(self.slider_boxes[:-1]):
             width = self.figsize * self.viewer[i].im.get_relative_width(
                 self.view, self.colorbar) * mpl.rcParams["figure.dpi"]
@@ -693,14 +697,24 @@ class QuickViewer:
         # Get width of each figure 
         width_ratios = [v.im.get_relative_width(self.view, self.colorbar) 
                         for v in self.viewer]
-        height = self.figsize
-        width = self.figsize * sum(width_ratios)
+
+        # Get rows and columns
+        if self.plots_per_row is not None:
+            n_cols = min([self.plots_per_row, self.n])
+            n_rows = int(np.ceil(self.n / n_cols))
+            ratios_per_row = np.array(width_ratios).reshape(n_rows, n_cols)
+            width_ratios = np.amax(ratios_per_row, axis=0)
+        else:
+            n_cols = self.n
+            n_rows = 1
 
         # Make figure
+        height = self.figsize * n_rows
+        width = self.figsize * sum(width_ratios)
         self.fig = plt.figure(figsize=(width, height))
 
         # Make gridspec
-        gs = self.fig.add_gridspec(1, self.n, width_ratios=width_ratios)
+        gs = self.fig.add_gridspec(n_rows, n_cols, width_ratios=width_ratios)
         for i, v in enumerate(self.viewer):
             v.gs = gs[i]
 
