@@ -169,14 +169,13 @@ class ImageViewer():
         else:
             self.set_callbacks()
 
-    def make_ui(self, vimage=None, share_sliders=True):
+    def make_ui(self, vimage=None, share_slider=True):
         """Make Jupyter notebook UI. If qv_image contains another ImageViewer
-        instance, the UI will be taken from that image. If share_sliders is
+        instance, the UI will be taken from that image. If share_slider is
         False, independent HU and slice sliders will be created."""
 
         shared_ui = isinstance(vimage, ImageViewer)
         self.main_ui = []
-        self.main_sliders = []
 
         # View radio buttons
         if not shared_ui:
@@ -192,10 +191,22 @@ class ImageViewer():
             self.ui_view = vimage.ui_view
             self.view = self.ui_view.value
 
-        # HU and slice sliders
-        if not share_sliders or not shared_ui:
+        # Structure jumping menu
+        self.structs_for_jump = {"": None, **{s.name_nice: s for s in
+                                              self.im.structs}}
+        self.ui_struct_jump = ipyw.Dropdown(
+            options=self.structs_for_jump.keys(),
+            value="",
+            description="Jump to",
+            style=_style,
+        )
+        if self.im.has_structs:
+            self.main_ui.append(self.ui_struct_jump)
 
-            # HU slider
+        # HU and slice sliders
+        if not share_slider or not shared_ui:
+
+            # Make HU slider
             self.ui_hu = ipyw.IntRangeSlider(
                 min=-2000, max=2000,
                 value=self.v,
@@ -204,9 +215,8 @@ class ImageViewer():
                 style=_style
             )
             self.main_ui.append(self.ui_hu)
-            self.main_sliders.append(self.ui_hu)
 
-            # Slice slider
+            # Make slice slider
             self.ui_slice = ipyw.FloatSlider(
                 continuous_update=self.continuous_update,
                 style=_style,
@@ -215,7 +225,6 @@ class ImageViewer():
             self.own_ui_slice = True
             self.update_slice_slider()
             self.main_ui.append(self.ui_slice)
-            self.main_sliders.append(self.ui_slice)
 
         else:
             self.ui_hu = vimage.ui_hu
@@ -225,8 +234,6 @@ class ImageViewer():
 
         # Extra sliders
         self.extra_ui = []
-        self.extra_ui_no_jump = []
-        self.lower_ui = []
         if not shared_ui:
 
             # Mask checkbox
@@ -286,45 +293,30 @@ class ImageViewer():
                                                      style=_style)
             self.update_struct_slider()
 
-            # Structure jumping UI
-            self.structs_for_jump = {"": None, **{s.name_nice: s for s in
-                                                  self.im.structs}}
-            self.ui_struct_jump = ipyw.Dropdown(
-                options=self.structs_for_jump.keys(),
-                value="",
-                description="Jump to",
-                style=_style,
-            )
-
             # Add all structure UIs
             if self.im.has_structs:
                 self.extra_ui.extend([
                     self.ui_struct_plot_type,
-                    self.ui_struct_slider,
+                    self.ui_struct_slider
                 ])
-            self.extra_ui_no_jump = self.extra_ui.copy()
-            if self.im.has_structs:
-                self.extra_ui.append(self.ui_struct_jump)
-                self.main_sliders.insert(0, self.ui_struct_jump)
 
         else:
             to_share = ["ui_mask", "ui_dose", "ui_jac_opacity", "ui_jac_range",
-                        "ui_df", "ui_struct_plot_type", "ui_struct_slider", 
-                        "ui_struct_jump"]
+                        "ui_df", "ui_struct_plot_type", "ui_struct_slider"]
             for ts in to_share:
                 setattr(self, ts, getattr(vimage, ts))
 
         # Make structure checkboxes
+        self.lower_ui = []
         for s in self.im.structs:
             s.checkbox = ipyw.Checkbox(value=True, description=s.name_nice)
             self.lower_ui.append(s.checkbox)
 
         # Combine UI elements
-        self.main_ui_box = ipyw.VBox(self.main_ui)
-        self.extra_ui_box = ipyw.VBox(self.extra_ui)
-        self.ui = self.main_ui + self.extra_ui + self.lower_ui
-        self.ui_box = ipyw.HBox([self.main_ui_box, self.extra_ui_box])
-        self.ui_box_lower = ipyw.VBox(self.lower_ui)
+        self.upper_ui_box = ipyw.HBox([ipyw.VBox(self.main_ui), 
+                                       ipyw.VBox(self.extra_ui)])
+        self.lower_ui_box = ipyw.VBox(self.lower_ui)
+        self.all_ui = self.main_ui + self.extra_ui + self.lower_ui
         self.interactive = True
 
     def update_struct_slider(self):
@@ -427,16 +419,21 @@ class ImageViewer():
 
         # Make output
         if in_notebook():
-            ui_kw = {str(np.random.rand()): ui for ui in self.ui}
-            self.out = ipyw.interactive_output(self.plot, ui_kw)
-            from IPython.display import display
-            to_display = [self.ui_box, self.out]
-            if self.im.has_structs:
-                to_display.append(self.ui_box_lower)
-            display(*to_display)
+            self.show_in_notebook()
         else:
             self.plot()
             plt.show()
+
+    def show_in_notebook(self):
+        """Display interactive output in a jupyter notebook."""
+
+        from IPython.display import display
+        ui_kw = {str(np.random.rand()): ui for ui in self.all_ui}
+        self.out = ipyw.interactive_output(self.plot, ui_kw)
+        to_display = [self.upper_ui_box, self.out]
+        if len(self.lower_ui):
+            to_display.append(self.lower_ui_box)
+        display(*to_display)
 
     def plot(self, **kwargs):
         """Plot a slice with current settings."""
@@ -586,13 +583,7 @@ class QuickViewer:
         self.make_ui(share_slider)
 
         # Display
-        if True:
-            self.out = ipyw.interactive_output(self.plot, self.ui_kw)
-            from IPython.display import display
-            to_display = [self.ui_box, self.out]
-            if len(self.lower_ui):
-                to_display.append(self.ui_box_lower)
-            display(*to_display)
+        ImageViewer.show_in_notebook(self)
 
     def get_input_list(self, inp):
         """Convert an input to a list with one item per image to be 
@@ -612,67 +603,86 @@ class QuickViewer:
             input_list = [inp]
         return input_list + [None for i in range(self.n - len(input_list))]
 
+    def any_attr(self, attr):
+        """Check whether any of this object's viewers have a given attribute.
+        """
+
+        return any([getattr(v.im, "has_" + attr) for v in self.viewer])
+
     def make_ui(self, share_slider):
 
-        # Only share slider if images have same shape
+        # Only allow share_slider if images have same frame of reference
         if share_slider:
-            same_shape = [v.im.shape == self.viewer[0].im.shape
-                          for v in self.viewer]
-            share_slider *= all(same_shape)
-
-        self.main_sliders = []
-        self.lower_ui = []
+            share_slider *= all([v.im.same_frame(self.viewer[0].im) for v in 
+                                 self.viewer])
 
         # Make UI for first image
-        self.viewer[0].make_ui()
-        self.main_sliders.append(self.viewer[0].main_sliders)
-        self.extra_ui = self.viewer[0].extra_ui
-        self.lower_ui.extend(self.viewer[0].lower_ui)
-        many_with_structs = sum([v.im.has_structs for v in self.viewer]) > 1
-        if many_with_structs:
-            self.lower_ui.insert(
-                0, ipyw.HTML(value=f"<b>{v.im.title + ':'}</b>"))
+        v0 = self.viewer[0]
+        v0.make_ui()
 
-        # Store orientation UI
-        self.ui_view = self.viewer[0].ui_view
+        # Store needed UIs
+        self.ui_view = v0.ui_view
         self.view = self.ui_view.value
+        self.ui_struct_plot_type = v0.ui_struct_plot_type
+        self.struct_plot_type = self.ui_struct_plot_type.value
 
-        # Make UI for subsequent images
+        # Make main upper UI list (= view radio + single HU/slice slider)
+        many_sliders = not share_slider and self.n > 1
+        if not many_sliders:
+            self.main_ui = v0.main_ui
+        else:
+            self.main_ui = [self.ui_view]
+
+        # Make UI for other images
         for v in self.viewer[1:]:
-            v.make_ui(vimage=self.viewer[0], share_sliders=share_slider)
-            if not share_slider:
-                self.main_sliders.append(v.main_sliders)
-            if v.im.has_structs:
-                if many_with_structs:
-                    self.lower_ui.append(
-                        ipyw.HTML(value=f"<b>{v.im.title + ':'}</b>"))
-                self.lower_ui.extend(v.lower_ui)
+            v.make_ui(vimage=v0, share_slider=share_slider)
 
-        # Set UI as plotting kwargs
-        ui_all = [self.ui_view] \
-                + list(itertools.chain.from_iterable(self.main_sliders)) \
-                + self.extra_ui + self.lower_ui
-        self.ui_kw = {str(np.random.rand()): ui for ui in ui_all}
+        # Make UI for each image (= unique HU/slice sliders and struct jump)
+        self.per_image_ui = []
+        if many_sliders:
+            for v in self.viewer:
+                sliders = [v.ui_hu, v.ui_slice]
+                if v.im.has_structs:
+                    sliders.insert(0, v.ui_struct_jump)
+                else:
+                    if self.any_attr("structs"):
+                        sliders.insert(0, ipyw.Label())
+                self.per_image_ui.append(sliders)
+
+        # Make extra UI list
+        self.extra_ui = []
+        for attr in ["mask", "dose", "df"]:
+            if self.any_attr(attr):
+                self.extra_ui.append(getattr(v0, "ui_" + attr))
+        if self.any_attr("jacobian"):
+            self.extra_ui.extend([v0.ui_jac_opacity, v0.ui_jac_range])
+        if self.any_attr("structs"):
+            self.extra_ui.extend([v0.ui_struct_plot_type, v0.ui_struct_slider])
+
+        # Make lower UI for structure checkboxes
+        self.lower_ui = []
+        many_with_structs = sum([v.im.has_structs for v in self.viewer]) > 1
+        for v in self.viewer:
+            if many_with_structs and v.im.has_structs:
+                self.lower_ui.append(ipyw.HTML(
+                    value=f"<b>{v.im.title + ':'}</b>"))
+            self.lower_ui.extend(v.lower_ui)
 
         # Assemble UI boxes
-        if self.n == 1 or share_slider:
-            self.ui_box = self.viewer[0].ui_box
-            self.ui_box_lower = self.viewer[0].ui_box_lower
-            self.main_slider_boxes = []
-
-        else:
-            self.main_slider_boxes = [ipyw.VBox(ui) for ui in self.main_sliders]
-            self.set_slider_widths()
-            self.extra_ui_box = ipyw.VBox(self.extra_ui)
-            self.upper_ui_box = ipyw.HBox([self.ui_view, self.extra_ui_box])
-            self.slider_box = ipyw.HBox(self.main_slider_boxes)
-            self.ui_box = ipyw.VBox([self.upper_ui_box, self.slider_box])
-            self.ui_box_lower = ipyw.VBox(self.lower_ui)
+        main_and_extra_box = ipyw.HBox([ipyw.VBox(self.main_ui),
+                                        ipyw.VBox(self.extra_ui)])
+        self.slider_boxes = [ipyw.VBox(ui) for ui in self.per_image_ui]
+        self.set_slider_widths()
+        self.upper_ui_box = ipyw.VBox([main_and_extra_box,
+                                       ipyw.HBox(self.slider_boxes)])
+        self.lower_ui_box = ipyw.VBox(self.lower_ui)
+        self.all_ui = self.main_ui + self.extra_ui + self.lower_ui \
+                + list(itertools.chain.from_iterable(self.per_image_ui)) \
 
     def set_slider_widths(self):
         """Adjust widths of slider UI."""
 
-        for i, slider in enumerate(self.main_slider_boxes[:-1]):
+        for i, slider in enumerate(self.slider_boxes[:-1]):
             width = self.figsize * self.viewer[i].im.get_relative_width(
                 self.view, self.colorbar) * mpl.rcParams["figure.dpi"]
             slider.layout = ipyw.Layout(width=f"{width}px", 
@@ -708,6 +718,16 @@ class QuickViewer:
                 v.view = self.ui_view.value
                 v.update_slice_slider()
             self.set_slider_widths()
+
+        # Deal with structure plot type change
+        if self.struct_plot_type != self.ui_struct_plot_type.value:
+            self.struct_plot_type = self.ui_struct_plot_type.value
+            self.viewer[0].update_struct_slider()
+
+        # Deal with structure jumps
+        for v in self.viewer:
+            if v.ui_struct_jump != "":
+                v.jump_to_struct()
 
         # Reset figure
         self.make_fig()

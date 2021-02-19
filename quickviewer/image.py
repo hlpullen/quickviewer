@@ -148,6 +148,15 @@ class NiftiImage:
                 self.aspect[view] = abs(self.voxel_sizes[y] /
                                         self.voxel_sizes[x])
 
+    def same_frame(self, im):
+        """Compare own image to another NiftiImage; check whether the frame of 
+        reference is the same."""
+
+        same = self.shape == im.shape
+        same *= list(self.origin.values()) == list(im.origin.values())
+        same *= list(self.voxel_sizes.values()) == list(im.voxel_sizes.values())
+        return same
+
     def set_plotting_defaults(self):
         """Create dict of default matplotlib plotting arguments."""
 
