@@ -8,7 +8,7 @@ import matplotlib as mpl
 
 from quickviewer.image import MultiImage, OrthogonalImage
 from quickviewer.image import _slider_axes, _df_plot_types, \
-        _struct_plot_types, _orthog, _default_figsize
+        _struct_plot_types, _orthog, _default_figsize, _plot_axes
 
 
 _style = {"description_width": "initial",
@@ -545,8 +545,25 @@ class QuickViewer:
         share_slider=True,
         orthog_view=False,
         plots_per_row=None,
+        match_axes=None,
         **kwargs
     ):
+        """
+        Parameters
+        ----------
+        match_axes : int/str, default=None
+            Method for adjusting axis limits. Can either be:
+            - An integer n, where 0 < n < number of plots, or n is -1. The axes
+              of all plots will be adjusted to be the same as those of plot n.
+            - "all": axes for all plots will be adjusted to cover the maximum
+              range of all plots.
+            - "overlap": axes for all plots will be adjusted to just show the
+              overlapping region.
+            - "x": axes will be adjusted to cover the same range across 
+              whatever the x axis is in the current view.
+            - "x": axes will be adjusted to cover the same range across 
+              whatever the y axis is in the current view.
+        """
 
         # Get image file inputs
         if not isinstance(nii, list) or isinstance(nii, tuple):
@@ -579,6 +596,9 @@ class QuickViewer:
         self.figsize = kwargs.get("figsize", _default_figsize)
         self.colorbar = kwargs.get("colorbar", False)
         self.plots_per_row = plots_per_row
+        self.match_axes = match_axes
+        if self.match_axes is not None and not kwargs.get("scale_in_mm", True):
+            self.match_axes = None
         self.plotting = False
 
         # Make UI
@@ -694,9 +714,58 @@ class QuickViewer:
 
     def make_fig(self):
 
-        # Get width of each figure 
-        width_ratios = [v.im.get_relative_width(self.view, self.colorbar) 
-                        for v in self.viewer]
+        # Get relative width of each subplot
+        if self.match_axes is None:
+            width_ratios = [v.im.get_relative_width(self.view, self.colorbar) 
+                            for v in self.viewer]
+            self.xlim = None
+            self.ylim = None
+
+        # Set common x and y limits for all subplots if matching axes
+        else:
+
+            # Match all axes to one plot
+            x, y = _plot_axes[self.view]
+            if isinstance(self.match_axes, int):
+                if self.match_axes >= self.n or self.match_axes == -1:
+                    self.match_axes = self.n - 1
+                extent = self.xlim = self.viewer[self.match_axes].im.extent[
+                    self.view]
+                self.xlim = extent[:2]
+                self.ylim = extent[2:]
+
+            # Match axes to either largest or smallest range
+            else:
+
+                # Get x and y limits of all plots
+                x_lower = [min(v.im.lims[x]) for v in self.viewer]
+                x_upper = [max(v.im.lims[x]) for v in self.viewer]
+                y_lower = [max(v.im.lims[y]) for v in self.viewer]
+                y_upper = [min(v.im.lims[y]) for v in self.viewer]
+
+                # Set x and y limits
+                min_func, max_func = min, max
+                if self.match_axes == "overlap":
+                    min_func, max_func = max_func, min_func
+                self.xlim = min_func(x_lower), max_func(x_upper)
+                self.ylim = max_func(y_lower), min_func(y_upper)
+
+            # Recalculate width ratios
+            if self.match_axes == "x":
+                self.ylim = None
+                x_range = abs(self.xlim[1] - self.xlim[0])
+                width_ratios = [x_range / 
+                                abs(v.im.lims[y][1] - v.im.lims[y][0])
+                                for v in self.viewer]
+            elif self.match_axes == "y":
+                self.xlim = None
+                y_range = abs(self.ylim[1] - self.ylim[0])
+                width_ratios = [abs(v.im.lims[x][1] - v.im.lims[x][0]) /
+                                y_range for v in self.viewer]
+            else:
+                ratio = abs(self.xlim[1] - self.xlim[0]) \
+                        / abs(self.ylim[1] - self.ylim[0]) 
+                width_ratios = [ratio for i in range(self.n)]
 
         # Get rows and columns
         if self.plots_per_row is not None:
@@ -717,6 +786,15 @@ class QuickViewer:
         gs = self.fig.add_gridspec(n_rows, n_cols, width_ratios=width_ratios)
         for i, v in enumerate(self.viewer):
             v.gs = gs[i]
+
+    def adjust_axes(self, viewer):
+        """Match the axis range of a view to the viewers whose indices are 
+        stored in self.match_viewers."""
+
+        if self.xlim is not None:
+            viewer.im.ax.set_xlim(self.xlim)
+        if self.ylim is not None:
+            viewer.im.ax.set_ylim(self.ylim)
 
     def plot(self, **kwargs):
         """Plot all images."""
@@ -749,6 +827,8 @@ class QuickViewer:
         # Plot all images
         for v in self.viewer:
             v.plot()
+            self.adjust_axes(v)
+       
         plt.tight_layout()
         self.plotting = False
 
