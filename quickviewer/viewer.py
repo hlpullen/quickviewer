@@ -22,43 +22,32 @@ class ImageViewer():
     def __init__(
         self,
         nii,
-        title=None,
-        scale_in_mm=True,
         figsize=_default_figsize,
-        downsample=None,
         colorbar=False,
-        dose=None,
         dose_opacity=0.5,
         dose_cmap="jet",
-        mask=None,
         invert_mask=False,
         mask_colour="black",
-        jacobian=None,
         jacobian_opacity=0.5,
         jacobian_cmap="seismic",
-        df=None,
         df_plot_type="grid",
         df_spacing=30,
         df_kwargs=None,
-        structs=None,
-        struct_colours=None,
         struct_plot_type="contour",
         struct_opacity=1,
         struct_linewidth=2,
         struct_legend=True,
         legend_loc='lower left',
-        structs_as_mask=False,
         standalone=True,
         init_view="x-y",
         init_idx=None,
         init_pos=None,
         v=(-300, 200),
         continuous_update=False,
+        **kwargs
     ):
 
-        self.im = self.make_image(
-            nii, title, scale_in_mm, downsample, dose, mask, jacobian, df,
-            structs, struct_colours, structs_as_mask)
+        self.im = self.make_image(nii, **kwargs)
         self.interactive = False  # Flag for creation of interactive elements
         self.gs = None  # Gridspec in which to place plot axes
 
@@ -71,7 +60,7 @@ class ImageViewer():
         # Set initial slice numbers
         self.slice = {view: int(self.im.n_voxels[z] / 2) for view, z
                       in _slider_axes.items()}
-        if init_pos is not None and scale_in_mm:
+        if init_pos is not None and self.im.scale_in_mm:
             self.set_slice_from_pos(init_view, init_pos)
         else:
             self.set_slice(init_view, init_idx)
@@ -110,9 +99,9 @@ class ImageViewer():
         if standalone:
             self.show()
 
-    def make_image(self, *args):
+    def make_image(self, *args, **kwargs):
         """Set up image object."""
-        return MultiImage(*args)
+        return MultiImage(*args, **kwargs)
 
     def set_slice(self, view, sl):
         """Set the current slice number in a specific view."""
@@ -512,9 +501,9 @@ class ImageViewer():
 class OrthogViewer(ImageViewer):
     """ImageViewer with an orthgonal view displayed."""
 
-    def make_image(self, *args):
+    def make_image(self, *args, **kwargs):
         """Set up image object."""
-        return OrthogonalImage(*args)
+        return OrthogonalImage(*args, **kwargs)
 
     def jump_to_struct(self):
         """Jump to mid slice of a structure."""
@@ -793,8 +782,10 @@ class QuickViewer:
 
         if self.xlim is not None:
             viewer.im.ax.set_xlim(self.xlim)
+            viewer.im.apply_zoom(self.view, zoom_y=False)
         if self.ylim is not None:
             viewer.im.ax.set_ylim(self.ylim)
+            viewer.im.apply_zoom(self.view, zoom_x=False)
 
     def plot(self, **kwargs):
         """Plot all images."""

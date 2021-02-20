@@ -17,6 +17,7 @@ import matplotlib.patches as mpatches
 
 # Global properties
 _axes = {"x": 1, "y": 0, "z": 2}
+_axes_natural = {"x": 0, "y": 1, "z": 2}
 _slider_axes = {"x-y": "z", "x-z": "y", "y-z": "x"}
 _plot_axes = {"x-y": ("x", "y"), "x-z": ("z", "x"), "y-z": ("z", "y")}
 _orient = {"y-z": [1, 2, 0], "x-z": [0, 2, 1], "x-y": [0, 1, 2]}
@@ -39,7 +40,8 @@ class NiftiImage:
         voxel_sizes=(1, 1, 1),
         origin=(0, 0, 0),
         title=None,
-        scale_in_mm=True
+        scale_in_mm=True, 
+        zoom=None
     ):
         """Initialise from a nifti file, nifti object, or numpy array.
 
@@ -76,6 +78,7 @@ class NiftiImage:
         # Assign settings
         self.title = title
         self.scale_in_mm = scale_in_mm
+        self.zoom = zoom
         self.data_mask = None
         if nii is None:
             self.valid = False
@@ -172,6 +175,14 @@ class NiftiImage:
         x, y = _plot_axes[view]
         x_length = abs(self.lims[x][0] - self.lims[x][1])
         y_length = abs(self.lims[y][0] - self.lims[y][1])
+        if self.zoom is not None:
+            try: 
+                zoom = float(self.zoom)
+                x_length /= zoom
+                y_length /= zoom
+            except TypeError:
+                x_length /= self.zoom[_axes_natural[x]]
+                y_length /= self.zoom[_axes_natural[y]]
         width = x_length / y_length
         colorbar_frac = 0.3
         width *= 1 + n_colorbars * colorbar_frac / width
@@ -281,7 +292,8 @@ class NiftiImage:
 
     def plot(self, view, sl, ax=None, mpl_kwargs=None, show=True, figsize=None,
              colorbar=False, colorbar_label="HU", masked=False,
-             invert_mask=False, mask_colour="black", no_ylabel=False):
+             invert_mask=False, mask_colour="black", no_ylabel=False,
+             zoom=None):
         """Plot a given slice on a set of axes.
 
         Parameters
@@ -329,6 +341,7 @@ class NiftiImage:
                               extent=self.extent[view],
                               aspect=self.aspect[view],
                               cmap=cmap, **kwargs)
+        self.apply_zoom(view)
 
         # Set labels
         units = " (mm)" if self.scale_in_mm else ""
@@ -349,6 +362,37 @@ class NiftiImage:
         if show:
             plt.tight_layout()
             plt.show()
+
+    def apply_zoom(self, view, zoom_x=True, zoom_y=True):
+        """Zoom in on axes after they have been drawn."""
+
+        if not hasattr(self, "ax"):
+            raise RuntimeError("Trying to zoom before axes have been set!")
+        if self.zoom is None:
+            return
+
+        # Get zoom level in x and y directions
+        x, y = _plot_axes[view]
+        try: 
+            zoom = {"x": float(self.zoom), "y": float(self.zoom)}
+        except TypeError:
+            zoom = {
+                "x": self.zoom[_axes_natural[x]],
+                "y": self.zoom[_axes_natural[y]]
+            }
+
+        # Adjust the axes
+        orig = {"x": self.ax.get_xlim(), "y": self.ax.get_ylim()}
+        new = {}
+        for ax in ["x", "y"]:
+            mid = np.mean(orig[ax])
+            new_min = mid - (mid - orig[ax][0]) / zoom[ax]
+            new_max = mid + (orig[ax][1] - mid) / zoom[ax]
+            new[ax] = new_min, new_max
+        if zoom_x:
+            self.ax.set_xlim(new["x"])
+        if zoom_y:
+            self.ax.set_ylim(new["y"])
 
     def downsample(self, d):
         """Downsample own image by amount d = (dx, dy, dz) in the (x, y, z)
@@ -673,6 +717,7 @@ class MultiImage(NiftiImage):
         nii,
         title=None,
         scale_in_mm=True,
+        zoom=None,
         downsample=None,
         dose=None,
         mask=None,
@@ -729,7 +774,8 @@ class MultiImage(NiftiImage):
         """
 
         # Load the scan image
-        NiftiImage.__init__(self, nii, title=title, scale_in_mm=scale_in_mm)
+        NiftiImage.__init__(self, nii, title=title, scale_in_mm=scale_in_mm,
+                            zoom=zoom)
         if not self.valid:
             return
         if downsample is not None:
