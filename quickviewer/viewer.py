@@ -932,7 +932,10 @@ class QuickViewer:
         if self.plots_per_row is not None:
             n_cols = min([self.plots_per_row, n_plots])
             n_rows = int(np.ceil(n_plots / n_cols))
-            ratios_per_row = np.array(width_ratios).reshape(n_rows, n_cols)
+            width_ratios_padded = width_ratios + \
+                [0 for i in range(n_rows * n_cols - n_plots)]
+            ratios_per_row = np.array(width_ratios_padded).reshape(n_rows, 
+                                                                   n_cols)
             width_ratios = np.amax(ratios_per_row, axis=0)
         else:
             n_cols = n_plots
