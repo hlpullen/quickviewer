@@ -96,7 +96,7 @@ class NiftiImage:
                     self.nii = nibabel.load(path)
                     self.data = self.nii.get_fdata()
                     affine = self.nii.affine
-                    if self.title == "":
+                    if self.title is None:
                         self.title = os.path.basename(path)
                 except FileNotFoundError:
                     self.valid = False
@@ -151,6 +151,17 @@ class NiftiImage:
                 self.aspect[view] = abs(self.voxel_sizes[y] /
                                         self.voxel_sizes[x])
 
+        self.lengths = {ax: abs(self.lims[ax][0] - self.lims[ax][1]) 
+                        for ax in _axes}
+        if self.zoom is not None:
+            try: 
+                zoom = float(self.zoom)
+                self.lengths = {ax: length / zoom for ax, length in 
+                                self.lengths.items()}
+            except TypeError:
+                self.lengths = {ax: length / zoom[_axes_natural[ax]]
+                                for ax, length in self.length.items()}
+
     def same_frame(self, im):
         """Compare own image to another NiftiImage; check whether the frame of 
         reference is the same."""
@@ -173,31 +184,27 @@ class NiftiImage:
         given number of colorbars."""
 
         x, y = _plot_axes[view]
-        x_length = abs(self.lims[x][0] - self.lims[x][1])
-        y_length = abs(self.lims[y][0] - self.lims[y][1])
-        if self.zoom is not None:
-            try: 
-                zoom = float(self.zoom)
-                x_length /= zoom
-                y_length /= zoom
-            except TypeError:
-                x_length /= self.zoom[_axes_natural[x]]
-                y_length /= self.zoom[_axes_natural[y]]
+        x_length = self.lengths[x]
+        y_length = self.lengths[y]
         width = x_length / y_length
         colorbar_frac = 0.3
         width *= 1 + n_colorbars * colorbar_frac / width
         return width
 
-    def set_ax(self, view, ax=None, figsize=None, n_colorbars=0):
+    def set_ax(self, view, ax=None, gs=None, figsize=None, n_colorbars=0):
         """Assign an axis to self, or create new axis if needed."""
 
-        # Assign external axes
+        # Set axis from gridspec
+        if ax is None and gs is not None:
+            ax = plt.gcf().add_subplot(gs)
+
+        # Assign existing axes to self
         if ax is not None:
             self.fig = ax.figure
             self.ax = ax
             return
 
-        # Create figure and axes
+        # Create new figure and axes
         rel_width = self.get_relative_width(view, n_colorbars)
         figsize = _default_figsize if figsize is None else figsize
         self.fig = plt.figure(figsize=(figsize * rel_width, figsize))
@@ -256,7 +263,7 @@ class NiftiImage:
         else:
             self.data_mask = data_mask
 
-    def get_slice(self, view, sl, masked=False, invert_mask=False):
+    def set_slice(self, view, sl, masked=False, invert_mask=False):
         """Get 2D array corresponding to a slice of the image in a given
         orientation.
 
@@ -288,10 +295,12 @@ class NiftiImage:
             im_slice = im_slice[:, ::-1]
         elif view == "x-z":
             im_slice = im_slice[::-1, ::-1]
-        return np.rot90(im_slice, _n_rot[view])
+        im_slice = np.rot90(im_slice, _n_rot[view])
+        self.view = view
+        self.current_slice = im_slice
 
-    def plot(self, view, sl, ax=None, mpl_kwargs=None, show=True, figsize=None,
-             colorbar=False, colorbar_label="HU", masked=False,
+    def plot(self, view, sl, ax=None, gs=None, mpl_kwargs=None, show=True, 
+             figsize=None, colorbar=False, colorbar_label="HU", masked=False,
              invert_mask=False, mask_colour="black", no_ylabel=False,
              zoom=None):
         """Plot a given slice on a set of axes.
@@ -328,8 +337,8 @@ class NiftiImage:
             return
 
         # Get slice
-        self.set_ax(view, ax, figsize, colorbar)
-        im_slice = self.get_slice(view, sl, masked, invert_mask)
+        self.set_ax(view, ax, gs, figsize, colorbar)
+        self.set_slice(view, sl, masked, invert_mask)
 
         # Get colourmap
         kwargs = self.get_kwargs(mpl_kwargs)
@@ -337,21 +346,12 @@ class NiftiImage:
         cmap.set_bad(color=mask_colour)
 
         # Plot image
-        mesh = self.ax.imshow(im_slice,
+        mesh = self.ax.imshow(self.current_slice,
                               extent=self.extent[view],
                               aspect=self.aspect[view],
                               cmap=cmap, **kwargs)
+        self.label_ax(view, no_ylabel)
         self.apply_zoom(view)
-
-        # Set labels
-        units = " (mm)" if self.scale_in_mm else ""
-        self.ax.set_xlabel(_plot_axes[view][0] + units)
-        if not no_ylabel:
-            self.ax.set_ylabel(_plot_axes[view][1] + units)
-        else:
-            self.ax.set_yticks([])
-        if self.title is not None:
-            self.ax.set_title(self.title)
 
         # Draw colorbar
         if colorbar and kwargs.get("alpha", 1) > 0:
@@ -362,6 +362,17 @@ class NiftiImage:
         if show:
             plt.tight_layout()
             plt.show()
+
+    def label_ax(self, view, no_ylabel=False):
+
+        units = " (mm)" if self.scale_in_mm else ""
+        self.ax.set_xlabel(_plot_axes[view][0] + units)
+        if not no_ylabel:
+            self.ax.set_ylabel(_plot_axes[view][1] + units)
+        else:
+            self.ax.set_yticks([])
+        if self.title is not None:
+            self.ax.set_title(self.title)
 
     def apply_zoom(self, view, zoom_x=True, zoom_y=True):
         """Zoom in on axes after they have been drawn."""
@@ -451,7 +462,7 @@ class DeformationImage(NiftiImage):
         self.quiver_kwargs = {"cmap": "jet"}
         self.grid_kwargs = {"color": "green"}
 
-    def get_slice(self, view, sl):
+    def set_slice(self, view, sl):
         """Get 2D array corresponding to a slice of the image in a given
         orientation."""
 
@@ -460,17 +471,18 @@ class DeformationImage(NiftiImage):
             im_slice = im_slice[:, ::-1, :]
         elif view == "x-z":
             im_slice = im_slice[::-1, ::-1, :]
-        return np.rot90(im_slice, _n_rot[view])
+        im_slice = np.rot90(im_slice, _n_rot[view])
+        self.current_slice = im_slice
 
     def get_deformation_slice(self, view, sl):
         """Get indices and displacements on a 2D slice."""
 
-        im_slice = self.get_slice(view, sl)
+        self.set_slice(view, sl)
         x_ax, y_ax = _plot_axes[view]
 
         # Get x/y displacement vectors
-        df_x = np.squeeze(im_slice[:, :, _axes[x_ax]])
-        df_y = np.squeeze(im_slice[:, :, _axes[y_ax]])
+        df_x = np.squeeze(self.current_slice[:, :, _axes[x_ax]])
+        df_y = np.squeeze(self.current_slice[:, :, _axes[y_ax]])
         if view == "x-y":
             df_x = -df_x
         elif view == "x-z":
@@ -480,8 +492,8 @@ class DeformationImage(NiftiImage):
             df_y /= self.voxel_sizes[y_ax]
 
         # Get x/y coordinates of each point on the slice
-        xs = np.arange(0, im_slice.shape[1])
-        ys = np.arange(0, im_slice.shape[0])
+        xs = np.arange(0, self.current_slice.shape[1])
+        ys = np.arange(0, self.current_slice.shape[0])
         if self.scale_in_mm:
             xs = self.origin[x_ax] + xs * self.voxel_sizes[x_ax]
             ys = self.origin[y_ax] + ys * self.voxel_sizes[y_ax]
@@ -627,13 +639,14 @@ class StructImage(NiftiImage):
         orientation <view>."""
 
         # Ignore slices with no structure mask
-        im_slice = self.get_slice(view, sl)
-        if im_slice.max() < 0.5:
+        self.set_slice(view, sl)
+        if self.current_slice.max() < 0.5:
             return
 
         # Find contours
         x_ax, y_ax = _plot_axes[view]
-        contours = skimage.measure.find_contours(im_slice, 0.5, "low", "low")
+        contours = skimage.measure.find_contours(self.current_slice, 0.5, 
+                                                 "low", "low")
         if contours:
             points = []
             for contour in contours:
@@ -673,14 +686,14 @@ class StructImage(NiftiImage):
 
         # Get slice
         self.set_ax(view, ax)
-        im_slice = self.get_slice(view, sl)
+        self.set_slice(view, sl)
 
         # Make colormap
         norm = matplotlib.colors.Normalize()
         cmap = matplotlib.cm.hsv
-        s_colors = cmap(norm(im_slice))
-        s_colors[im_slice > 0, :] = self.color
-        s_colors[im_slice == 0, :] = (0, 0, 0, 0)
+        s_colors = cmap(norm(self.current_slice))
+        s_colors[self.current_slice > 0, :] = self.color
+        s_colors[self.current_slice == 0, :] = (0, 0, 0, 0)
 
         # Display the mask
         return self.ax.imshow(
@@ -906,14 +919,6 @@ class MultiImage(NiftiImage):
     def get_n_colorbars(self, colorbar=False):
         return colorbar * (1 + self.has_dose + self.has_jacobian)
 
-    def set_ax(self, view, ax=None, gs=None, figsize=None, colorbar=False):
-
-        if ax is None and gs is not None:
-            ax = plt.gcf().add_subplot(gs)
-
-        NiftiImage.set_ax(self, view, ax, figsize,
-                          self.get_n_colorbars(colorbar))
-
     def get_relative_width(self, view, colorbar=False):
         return NiftiImage.get_relative_width(
             self, view, self.get_n_colorbars(colorbar))
@@ -946,8 +951,8 @@ class MultiImage(NiftiImage):
         # Plot image
         self.set_ax(view, ax, gs, figsize, colorbar)
         self.set_masks()
-        NiftiImage.plot(self, view, sl, self.ax, mpl_kwargs, show=False,
-                        colorbar=colorbar, masked=masked,
+        NiftiImage.plot(self, view, sl, self.ax, mpl_kwargs=mpl_kwargs, 
+                        show=False, colorbar=colorbar, masked=masked,
                         invert_mask=invert_mask,
                         mask_colour=mask_colour, figsize=figsize)
 
@@ -1084,13 +1089,118 @@ class OrthogonalImage(MultiImage):
             plt.show()
 
 
-def in_notebook():
-    try:
-        if 'IPKernelApp' not in get_ipython().config:
-            return False
-    except NameError:
-        return False
-    return True
+class ComparisonImage(NiftiImage):
+
+    def __init__(self, nii1, nii2, title=None, **kwargs):
+
+        # Load NiftiImages
+        self.ims = []
+        self.standalone = True
+        for nii in [nii1, nii2]:
+            if issubclass(type(nii), NiftiImage):
+                self.ims.append(nii)
+            else:
+                self.standalone = False
+                self.ims.append(NiftiImage(nii, **kwargs))
+
+        self.scale_in_mm = self.ims[0].scale_in_mm
+        self.valid = all([im.valid for im in self.ims])
+        self.title = title
+        self.zoom = kwargs.get("zoom", None)
+        self.gs = None
+
+    def get_relative_width(self, view, n_colorbars=0):
+        """Get relative width of widest of the two images."""
+        
+        x, y = _plot_axes[view]
+        height = max([im.lengths[y] for im in self.ims])
+        width = max([im.lengths[x] for im in self.ims])
+        return width / height
+
+    def plot(self, view=None, sl=None, invert=False, ax=None,
+             mpl_kwargs=None, show=True, figsize=None, **kwargs):
+
+        if not self.valid:
+            return
+
+        # Get image slices
+        if view is None and sl is None:
+            for im in self.ims:
+                if not hasattr(im, "current_slice"):
+                    raise RuntimeError("Must provide a view and slice number "
+                                       "if input images do not have a current "
+                                       "slice set!")
+            self.view = self.ims[0].view
+
+        else:
+            self.view = view
+            for im in self.ims:
+                im.set_slice(view, sl)
+
+        self.slices = [im.current_slice for im in self.ims]
+        self.set_ax(view, ax, self.gs, figsize)
+        self.plot_kwargs = self.ims[0].get_kwargs(mpl_kwargs)
+        self.cmap = copy.copy(matplotlib.cm.get_cmap(
+            self.plot_kwargs.pop("cmap")))
+        
+        self.plot_comparison(invert=invert, **kwargs)
+        self.label_ax(self.view)
+        self.apply_zoom(self.view)
+
+
+class ChequerboardImage(ComparisonImage):
+
+    def plot_comparison(self, invert=False, n_splits=2):
+
+        # Get masked image
+        i1 = int(invert)
+        i2 = 1 - i1
+        size_x = int(np.ceil(self.slices[i2].shape[0] / n_splits))
+        size_y = int(np.ceil(self.slices[i2].shape[1] / n_splits))
+        cb_mask = np.kron([[1, 0] * n_splits, [0, 1] * n_splits] * n_splits, 
+                          np.ones((size_x, size_y)))
+        cb_mask = cb_mask[:self.slices[i2].shape[0], :self.slices[i2].shape[1]]
+        to_show = {
+            i1: self.slices[i1],
+            i2: np.ma.masked_where(cb_mask < 0.5, self.slices[i2])
+        }
+
+        # Plot
+        for i in [i1, i2]:
+            self.ax.imshow(to_show[i],
+                           extent=self.ims[i].extent[self.view],
+                           aspect=self.ims[i].aspect[self.view],
+                           cmap=self.cmap, **self.plot_kwargs)
+
+
+class OverlayImage(ComparisonImage):
+
+    def plot_comparison(self, invert=False, opacity=0.5):
+
+        order = [0, 1] if not invert else [1, 0]
+        cmaps = ["Reds", "Blues"]
+        alphas = [1, opacity]
+        self.ax.set_facecolor("w")
+        for n, i in enumerate(order):
+            self.ax.imshow(self.slices[i],
+                           extent=self.ims[i].extent[self.view],
+                           aspect=self.ims[i].aspect[self.view],
+                           cmap=cmaps[n],
+                           alpha=alphas[n],
+                           **self.plot_kwargs)
+
+
+class DiffImage(ComparisonImage):
+
+    def plot_comparison(self, invert=False):
+
+        diff = self.slices[1] - self.slices[0] if not invert \
+                else self.slices[0] - self.slices[1]
+        self.ax.imshow(diff,
+                       extent=self.ims[0].extent[self.view],
+                       aspect=self.ims[0].aspect[self.view],
+                       cmap=self.cmap, 
+                       **self.plot_kwargs)
 
 
 def same_shape(imgs):
@@ -1135,4 +1245,4 @@ def get_image_slice(image, view, sl):
 
 
 __all__ = ("_axes", "_plot_axes", "_slider_axes", "same_shape",
-           "get_image_slice", "in_notebook")
+           "get_image_slice")

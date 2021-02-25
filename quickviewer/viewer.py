@@ -6,7 +6,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib as mpl
 
-from quickviewer.image import MultiImage, OrthogonalImage
+from quickviewer.image import MultiImage, OrthogonalImage, ChequerboardImage, \
+        OverlayImage, DiffImage
 from quickviewer.image import _slider_axes, _df_plot_types, \
         _struct_plot_types, _orthog, _default_figsize, _plot_axes
 
@@ -302,8 +303,7 @@ class ImageViewer():
             self.lower_ui.append(s.checkbox)
 
         # Combine UI elements
-        self.upper_ui_box = ipyw.HBox([ipyw.VBox(self.main_ui), 
-                                       ipyw.VBox(self.extra_ui)])
+        self.upper_ui = [ipyw.VBox(self.main_ui), ipyw.VBox(self.extra_ui)]
         self.lower_ui_box = ipyw.VBox(self.lower_ui)
         self.all_ui = self.main_ui + self.extra_ui + self.lower_ui
         self.interactive = True
@@ -419,17 +419,14 @@ class ImageViewer():
         from IPython.display import display
         ui_kw = {str(np.random.rand()): ui for ui in self.all_ui}
         self.out = ipyw.interactive_output(self.plot, ui_kw)
+        self.upper_ui_box = ipyw.HBox(self.upper_ui)
         to_display = [self.upper_ui_box, self.out]
         if len(self.lower_ui):
             to_display.append(self.lower_ui_box)
         display(*to_display)
 
-    def plot(self, **kwargs):
-        """Plot a slice with current settings."""
-
-        if self.plotting:
-            return
-        self.plotting = True
+    def set_slice_and_view(self):
+        """Get the current slice and view to plot from the UI."""
 
         # Get view
         view = self.ui_view.value
@@ -437,15 +434,23 @@ class ImageViewer():
             self.view = view
             self.update_slice_slider()
 
-        # Get HU range
-        mpl_kwargs = {"vmin": self.ui_hu.value[0],
-                      "vmax": self.ui_hu.value[1]}
-
         # Get slice
         self.jump_to_struct()
         self.slice[self.view] = self.slider_to_idx(self.ui_slice.value)
         if not self.im.scale_in_mm:
             self.update_slice_slider_desc()
+
+        # Get HU range
+        self.v_min_max = {"vmin": self.ui_hu.value[0],
+                          "vmax": self.ui_hu.value[1]}
+
+    def plot(self, **kwargs):
+        """Plot a slice with current settings."""
+
+        if self.plotting:
+            return
+        self.plotting = True
+        self.set_slice_and_view()
 
         # Get dose settings
         dose_kwargs = {}
@@ -479,7 +484,7 @@ class ImageViewer():
         self.im.plot(self.view,
                      self.slice[self.view],
                      gs=self.gs,
-                     mpl_kwargs=mpl_kwargs,
+                     mpl_kwargs=self.v_min_max,
                      figsize=self.figsize,
                      colorbar=self.colorbar,
                      masked=self.ui_mask.value,
@@ -535,6 +540,11 @@ class QuickViewer:
         orthog_view=False,
         plots_per_row=None,
         match_axes=None,
+        scale_in_mm=True,
+        show_cb=False,
+        show_overlay=False,
+        show_diff=False,
+        comparison_only=False,
         **kwargs
     ):
         """
@@ -569,7 +579,8 @@ class QuickViewer:
         self.jacobian = self.get_input_list(jacobian)
         self.df = self.get_input_list(df)
 
-        # Make individual viewer
+        # Make individual viewers
+        self.scale_in_mm = scale_in_mm
         self.viewer = []
         viewer_type = ImageViewer if not orthog_view else OrthogViewer
         for i in range(self.n):
@@ -577,16 +588,20 @@ class QuickViewer:
                 self.nii[i], title=self.title[i], dose=self.dose[i],
                 mask=self.mask[i], structs=self.structs[i], 
                 jacobian=self.jacobian[i], df=self.df[i], standalone=False, 
-                **kwargs)
+                scale_in_mm=scale_in_mm, **kwargs)
             if viewer.im.valid:
                 self.viewer.append(viewer)
+
+        # Load comparison images
+        self.load_comparison(show_cb, show_overlay, show_diff)
+        self.comparison_only = comparison_only
 
         # Settings needed for plotting
         self.figsize = kwargs.get("figsize", _default_figsize)
         self.colorbar = kwargs.get("colorbar", False)
         self.plots_per_row = plots_per_row
         self.match_axes = match_axes
-        if self.match_axes is not None and not kwargs.get("scale_in_mm", True):
+        if self.match_axes is not None and not self.scale_in_mm:
             self.match_axes = None
         self.plotting = False
 
@@ -619,6 +634,34 @@ class QuickViewer:
         """
 
         return any([getattr(v.im, "has_" + attr) for v in self.viewer])
+
+    def load_comparison(self, show_cb, show_overlay, show_diff):
+        """Create any comparison images."""
+
+        self.comparison = []
+        self.has_chequerboard = show_cb
+        self.has_overlay = show_overlay
+        self.has_diff = show_diff
+        if not (show_cb or show_overlay or show_diff):
+            return
+
+        assert self.n > 1
+        im1 = self.viewer[0].im
+        im2 = self.viewer[1].im
+
+        if show_cb:
+            self.chequerboard = ChequerboardImage(
+                im1, im2, title="Chequerboard", scale_in_mm=self.scale_in_mm)
+            self.comparison.append(self.chequerboard)
+        if show_overlay:
+            self.overlay = OverlayImage(im1, im2, title="Overlay",
+                                        scale_in_mm=self.scale_in_mm)
+            self.comparison.append(self.overlay)
+        if show_diff:
+            self.diff = DiffImage(im1, im2, title="Difference",
+                                     scale_in_mm=self.scale_in_mm)
+            self.comparison.append(self.diff)
+
 
     def make_ui(self, share_slider):
 
@@ -679,16 +722,49 @@ class QuickViewer:
                     value=f"<b>{v.im.title + ':'}</b>"))
             self.lower_ui.extend(v.lower_ui)
 
+        # Make comparison UI
+        self.make_comparison_ui()
+
         # Assemble UI boxes
         main_and_extra_box = ipyw.HBox([ipyw.VBox(self.main_ui),
-                                        ipyw.VBox(self.extra_ui)])
+                                        ipyw.VBox(self.extra_ui),
+                                        ipyw.VBox(self.comp_ui)])
         self.slider_boxes = [ipyw.VBox(ui) for ui in self.per_image_ui]
         self.set_slider_widths()
-        self.upper_ui_box = ipyw.VBox([main_and_extra_box,
-                                       ipyw.HBox(self.slider_boxes)])
+        self.upper_ui = [main_and_extra_box, ipyw.HBox(self.slider_boxes)]
         self.lower_ui_box = ipyw.VBox(self.lower_ui)
         self.all_ui = self.main_ui + self.extra_ui + self.lower_ui \
                 + list(itertools.chain.from_iterable(self.per_image_ui)) \
+                + self.comp_ui
+
+    def make_comparison_ui(self):
+
+        self.comp_ui = []
+
+        if self.has_chequerboard:
+            self.ui_cb = ipyw.IntSlider(
+                min=1, max=10, value=2, step=1,
+                continuous_update=self.viewer[0].continuous_update,
+                description="Chequerboard splits",
+                style=_style,
+            )
+            self.comp_ui.append(self.ui_cb)
+
+        if self.has_overlay:
+            self.ui_overlay = ipyw.FloatSlider(
+                value=0.5, min=0, max=1, step=0.1,
+                description=f"Overlay opacity", 
+                continuous_update=self.viewer[0].continuous_update,
+                readout_format=".1f",
+                style=_style,
+            )
+            self.comp_ui.append(self.ui_overlay)
+
+        if len(self.comparison):
+            self.ui_invert = ipyw.Checkbox(value=False, 
+                                           description="Invert comparison")
+            self.comp_ui.append(self.ui_invert)
+
 
     def set_slider_widths(self):
         """Adjust widths of slider UI."""
@@ -698,8 +774,7 @@ class QuickViewer:
         for i, slider in enumerate(self.slider_boxes[:-1]):
             width = self.figsize * self.viewer[i].im.get_relative_width(
                 self.view, self.colorbar) * mpl.rcParams["figure.dpi"]
-            slider.layout = ipyw.Layout(width=f"{width}px", 
-                                       justify_content="center")
+            slider.layout = ipyw.Layout(width=f"{width}px")
 
     def make_fig(self):
 
@@ -707,6 +782,8 @@ class QuickViewer:
         if self.match_axes is None:
             width_ratios = [v.im.get_relative_width(self.view, self.colorbar) 
                             for v in self.viewer]
+            width_ratios.extend([c.get_relative_width(self.view) for 
+                                 c in self.comparison])
             self.xlim = None
             self.ylim = None
 
@@ -743,27 +820,26 @@ class QuickViewer:
             if self.match_axes == "x":
                 self.ylim = None
                 x_range = abs(self.xlim[1] - self.xlim[0])
-                width_ratios = [x_range / 
-                                abs(v.im.lims[y][1] - v.im.lims[y][0])
-                                for v in self.viewer]
+                width_ratios = [x_range / v.im.lengths[y] for v in self.viewer]
             elif self.match_axes == "y":
                 self.xlim = None
                 y_range = abs(self.ylim[1] - self.ylim[0])
-                width_ratios = [abs(v.im.lims[x][1] - v.im.lims[x][0]) /
-                                y_range for v in self.viewer]
+                width_ratios = [v.im.lengths[x] / y_range for v in self.viewer]
             else:
                 ratio = abs(self.xlim[1] - self.xlim[0]) \
                         / abs(self.ylim[1] - self.ylim[0]) 
                 width_ratios = [ratio for i in range(self.n)]
 
         # Get rows and columns
+        n_plots = (not self.comparison_only) * self.n \
+                + len(self.comparison)
         if self.plots_per_row is not None:
-            n_cols = min([self.plots_per_row, self.n])
-            n_rows = int(np.ceil(self.n / n_cols))
+            n_cols = min([self.plots_per_row, n_plots])
+            n_rows = int(np.ceil(n_plots / n_cols))
             ratios_per_row = np.array(width_ratios).reshape(n_rows, n_cols)
             width_ratios = np.amax(ratios_per_row, axis=0)
         else:
-            n_cols = self.n
+            n_cols = n_plots
             n_rows = 1
 
         # Make figure
@@ -773,8 +849,14 @@ class QuickViewer:
 
         # Make gridspec
         gs = self.fig.add_gridspec(n_rows, n_cols, width_ratios=width_ratios)
-        for i, v in enumerate(self.viewer):
-            v.gs = gs[i]
+        i = 0
+        if not self.comparison_only:
+            for v in self.viewer:
+                v.gs = gs[i]
+                i += 1
+        for c in self.comparison:
+            c.gs = gs[i]
+            i += 1
 
     def adjust_axes(self, viewer):
         """Match the axis range of a view to the viewers whose indices are 
@@ -817,9 +899,28 @@ class QuickViewer:
 
         # Plot all images
         for v in self.viewer:
-            v.plot()
-            self.adjust_axes(v)
-       
+            if self.comparison_only:
+                v.set_slice_and_view()
+                v.im.set_slice(v.view, v.slice[view])
+            else:
+                v.plot()
+                self.adjust_axes(v)
+
+        # Plot all comparison images
+        if len(self.comparison):
+            invert = self.ui_invert.value
+            if self.has_chequerboard:
+                self.chequerboard.plot(invert=invert, 
+                                       n_splits=self.ui_cb.value,
+                                       mpl_kwargs=self.viewer[0].v_min_max)
+            if self.has_overlay:
+                self.overlay.plot(invert=invert, 
+                                  opacity=self.ui_overlay.value,
+                                  mpl_kwargs=self.viewer[0].v_min_max)
+            if self.has_diff:
+                self.diff.plot(invert=invert,
+                               mpl_kwargs=self.viewer[0].v_min_max)
+           
         plt.tight_layout()
         self.plotting = False
 
