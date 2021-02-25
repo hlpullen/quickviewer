@@ -833,6 +833,8 @@ class QuickViewer:
         # Get rows and columns
         n_plots = (not self.comparison_only) * self.n \
                 + len(self.comparison)
+        if self.comparison_only:
+            width_ratios = width_ratios[self.n:]
         if self.plots_per_row is not None:
             n_cols = min([self.plots_per_row, n_plots])
             n_rows = int(np.ceil(n_plots / n_cols))
@@ -901,7 +903,7 @@ class QuickViewer:
         for v in self.viewer:
             if self.comparison_only:
                 v.set_slice_and_view()
-                v.im.set_slice(v.view, v.slice[view])
+                v.im.set_slice(self.view, v.slice[self.view])
             else:
                 v.plot()
                 self.adjust_axes(v)
