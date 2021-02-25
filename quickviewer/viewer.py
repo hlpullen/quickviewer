@@ -9,7 +9,7 @@ import matplotlib as mpl
 from quickviewer.image import MultiImage, OrthogonalImage, ChequerboardImage, \
         OverlayImage, DiffImage
 from quickviewer.image import _slider_axes, _df_plot_types, \
-        _struct_plot_types, _orthog, _default_figsize, _plot_axes
+        _struct_plot_types, _orthog, _default_figsize, _plot_axes, _axes
 
 
 _style = {"description_width": "initial",
@@ -545,6 +545,7 @@ class QuickViewer:
         show_overlay=False,
         show_diff=False,
         comparison_only=False,
+        translation=False,
         **kwargs
     ):
         """
@@ -595,6 +596,7 @@ class QuickViewer:
         # Load comparison images
         self.load_comparison(show_cb, show_overlay, show_diff)
         self.comparison_only = comparison_only
+        self.translation = translation
 
         # Settings needed for plotting
         self.figsize = kwargs.get("figsize", _default_figsize)
@@ -713,7 +715,32 @@ class QuickViewer:
         if self.any_attr("structs"):
             self.extra_ui.extend([v0.ui_struct_plot_type, v0.ui_struct_slider])
 
-        # Make lower UI for structure checkboxes
+        # Make extra UI elements
+        self.make_lower_ui()
+        self.make_comparison_ui()
+        self.make_translation_ui()
+
+        # Assemble UI boxes
+        main_and_extra_box = ipyw.HBox([ipyw.VBox(self.main_ui),
+                                        ipyw.VBox(self.extra_ui),
+                                        ipyw.VBox(self.trans_ui),
+                                        ipyw.VBox(self.comp_ui)])
+        self.slider_boxes = [ipyw.VBox(ui) for ui in self.per_image_ui]
+        self.set_slider_widths()
+        self.upper_ui = [main_and_extra_box, ipyw.HBox(self.slider_boxes)]
+        self.lower_ui_box = ipyw.VBox(self.lower_ui)
+        self.all_ui = (
+            self.main_ui 
+            + self.extra_ui 
+            + self.lower_ui
+            + list(itertools.chain.from_iterable(self.per_image_ui))
+            + self.comp_ui 
+            + self.trans_ui
+        )
+
+    def make_lower_ui(self):
+        """Make lower UI for structure checkboxes."""
+
         self.lower_ui = []
         many_with_structs = sum([v.im.has_structs for v in self.viewer]) > 1
         for v in self.viewer:
@@ -721,21 +748,6 @@ class QuickViewer:
                 self.lower_ui.append(ipyw.HTML(
                     value=f"<b>{v.im.title + ':'}</b>"))
             self.lower_ui.extend(v.lower_ui)
-
-        # Make comparison UI
-        self.make_comparison_ui()
-
-        # Assemble UI boxes
-        main_and_extra_box = ipyw.HBox([ipyw.VBox(self.main_ui),
-                                        ipyw.VBox(self.extra_ui),
-                                        ipyw.VBox(self.comp_ui)])
-        self.slider_boxes = [ipyw.VBox(ui) for ui in self.per_image_ui]
-        self.set_slider_widths()
-        self.upper_ui = [main_and_extra_box, ipyw.HBox(self.slider_boxes)]
-        self.lower_ui_box = ipyw.VBox(self.lower_ui)
-        self.all_ui = self.main_ui + self.extra_ui + self.lower_ui \
-                + list(itertools.chain.from_iterable(self.per_image_ui)) \
-                + self.comp_ui
 
     def make_comparison_ui(self):
 
@@ -765,6 +777,45 @@ class QuickViewer:
                                            description="Invert comparison")
             self.comp_ui.append(self.ui_invert)
 
+    def make_translation_ui(self):
+
+        self.trans_ui = []
+        if not self.translation:
+            return
+
+        assert self.n > 1
+        self.tlabel = ipyw.HTML(value="<b>Translation:</b>")
+        self.tsliders = {}
+        for ax in _axes:
+            n = self.viewer[1].im.n_voxels[ax]
+            self.tsliders[ax] = ipyw.IntSlider(
+                min=-n,
+                max=n,
+                value=0,
+                description=f"{ax} (0 mm)",
+                continuous_update=False,
+                #  style=_style
+            )
+            self.trans_ui.append(self.tsliders[ax])
+        self.current_trans = {ax: slider.value for ax, slider 
+                              in self.tsliders.items()}
+
+    def apply_translation(self):
+        """Update the description of translation sliders to show translation
+        in mm if the translation is changed."""
+
+        new_trans = {ax: slider.value for ax, slider in self.tsliders.items()}
+        if new_trans == self.current_trans:
+            return
+
+        # Set shift for image
+        self.current_trans = new_trans
+        self.viewer[1].im.shift = self.current_trans
+
+        # Adjust descriptions
+        for ax, slider in self.tsliders.items():
+            slider.description = "{} ({:.0f} mm)".format(
+                ax, self.viewer[1].im.voxel_sizes[ax] * slider.value)
 
     def set_slider_widths(self):
         """Adjust widths of slider UI."""
@@ -895,6 +946,10 @@ class QuickViewer:
         for v in self.viewer:
             if v.ui_struct_jump != "":
                 v.jump_to_struct()
+
+        # Apply any translations
+        if self.translation:
+            self.apply_translation()
 
         # Reset figure
         self.make_fig()

@@ -27,7 +27,7 @@ _orthog = {'x-y': 'y-z', 'y-z': 'x-z', 'x-z': 'y-z'}
 # Plotting properties
 _df_plot_types = ["grid", "quiver", "none"]
 _struct_plot_types = ["contour", "mask", "none"]
-_default_figsize = 6
+_default_figsize = 5
 
 
 class NiftiImage:
@@ -80,6 +80,7 @@ class NiftiImage:
         self.scale_in_mm = scale_in_mm
         self.zoom = zoom
         self.data_mask = None
+        self.shift = {ax: 0 for ax in _axes}
         if nii is None:
             self.valid = False
             return
@@ -280,6 +281,8 @@ class NiftiImage:
             applied.
         """
 
+        self.view = view
+
         # Apply mask if needed
         if masked and self.data_mask is not None:
             if invert_mask:
@@ -289,6 +292,14 @@ class NiftiImage:
         else:
             data = self.data
 
+        # Apply shift to slice number
+        sl += self.shift[_slider_axes[view]]
+        if sl < 0 or sl >= self.n_voxels[_slider_axes[view]]:
+            self.current_slice = np.zeros((
+                self.n_voxels[_plot_axes[view][0]],
+                self.n_voxels[_plot_axes[view][1]]))
+            return
+
         # Get 2D slice and adjust orientation
         im_slice = np.transpose(data, _orient[view])[:, :, sl]
         if view == "y-z":
@@ -296,7 +307,25 @@ class NiftiImage:
         elif view == "x-z":
             im_slice = im_slice[::-1, ::-1]
         im_slice = np.rot90(im_slice, _n_rot[view])
-        self.view = view
+
+        # Apply 2D translation
+        x, y = _plot_axes[view]
+        shift_x = self.shift[x]
+        shift_y = self.shift[y]
+        if shift_x:
+            im_slice = np.roll(im_slice, shift_x, axis=1)
+            if shift_x > 0:
+                im_slice[:, :shift_x] = 0
+            else:
+                im_slice[:, shift_x:] = 0
+        if shift_y:
+            im_slice = np.roll(im_slice, -shift_y, axis=0)
+            if shift_y < 0:
+                im_slice[:-shift_y, :] = 0
+            else:
+                im_slice[-shift_y:, :] = 0
+
+        # Set current slice
         self.current_slice = im_slice
 
     def plot(self, view, sl, ax=None, gs=None, mpl_kwargs=None, show=True, 

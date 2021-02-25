@@ -18,6 +18,7 @@ import matplotlib.patches as mpatches
 
 from quickviewer.structs import StructMask
 from quickviewer.image import *
+from quickviewer.viewer import in_notebook
 
 _shrunk_to_aspect = matplotlib.transforms.Bbox.shrunk_to_aspect
 _style = {"description_width": "initial"}
