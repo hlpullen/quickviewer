@@ -2877,6 +2877,7 @@ def write_translation_to_file(
     delta = {"x": dx, "y": dy, "z": dz}
 
     # Create output text
+    overwriting = False
     out_text = ""
     for line in infile:
         if len(line) == 1:

@@ -1,5 +1,7 @@
 """Classes for creating a UI and displaying interactive plots."""
 
+import os
+import re
 import itertools
 import ipywidgets as ipyw
 import numpy as np
@@ -417,7 +419,8 @@ class ImageViewer():
         """Display interactive output in a jupyter notebook."""
 
         from IPython.display import display
-        ui_kw = {str(np.random.rand()): ui for ui in self.all_ui}
+        ui_kw = {str(np.random.rand()): ui for ui in self.all_ui if
+                 hasattr(ui, "value")}
         self.out = ipyw.interactive_output(self.plot, ui_kw)
         self.upper_ui_box = ipyw.HBox(self.upper_ui)
         to_display = [self.upper_ui_box, self.out]
@@ -559,9 +562,9 @@ class QuickViewer:
               range of all plots.
             - "overlap": axes for all plots will be adjusted to just show the
               overlapping region.
-            - "x": axes will be adjusted to cover the same range across 
+            - "x": axes will be adjusted to cover the same range across
               whatever the x axis is in the current view.
-            - "x": axes will be adjusted to cover the same range across 
+            - "x": axes will be adjusted to cover the same range across
               whatever the y axis is in the current view.
         """
 
@@ -587,8 +590,8 @@ class QuickViewer:
         for i in range(self.n):
             viewer = viewer_type(
                 self.nii[i], title=self.title[i], dose=self.dose[i],
-                mask=self.mask[i], structs=self.structs[i], 
-                jacobian=self.jacobian[i], df=self.df[i], standalone=False, 
+                mask=self.mask[i], structs=self.structs[i],
+                jacobian=self.jacobian[i], df=self.df[i], standalone=False,
                 scale_in_mm=scale_in_mm, **kwargs)
             if viewer.im.valid:
                 self.viewer.append(viewer)
@@ -614,7 +617,7 @@ class QuickViewer:
         ImageViewer.show_in_notebook(self)
 
     def get_input_list(self, inp):
-        """Convert an input to a list with one item per image to be 
+        """Convert an input to a list with one item per image to be
         displayed."""
 
         if inp is None or len(inp) == 0:
@@ -661,15 +664,14 @@ class QuickViewer:
             self.comparison.append(self.overlay)
         if show_diff:
             self.diff = DiffImage(im1, im2, title="Difference",
-                                     scale_in_mm=self.scale_in_mm)
+                                  scale_in_mm=self.scale_in_mm)
             self.comparison.append(self.diff)
-
 
     def make_ui(self, share_slider):
 
         # Only allow share_slider if images have same frame of reference
         if share_slider:
-            share_slider *= all([v.im.same_frame(self.viewer[0].im) for v in 
+            share_slider *= all([v.im.same_frame(self.viewer[0].im) for v in
                                  self.viewer])
 
         # Make UI for first image
@@ -730,11 +732,11 @@ class QuickViewer:
         self.upper_ui = [main_and_extra_box, ipyw.HBox(self.slider_boxes)]
         self.lower_ui_box = ipyw.VBox(self.lower_ui)
         self.all_ui = (
-            self.main_ui 
-            + self.extra_ui 
+            self.main_ui
+            + self.extra_ui
             + self.lower_ui
             + list(itertools.chain.from_iterable(self.per_image_ui))
-            + self.comp_ui 
+            + self.comp_ui
             + self.trans_ui
         )
 
@@ -765,7 +767,7 @@ class QuickViewer:
         if self.has_overlay:
             self.ui_overlay = ipyw.FloatSlider(
                 value=0.5, min=0, max=1, step=0.1,
-                description=f"Overlay opacity", 
+                description="Overlay opacity",
                 continuous_update=self.viewer[0].continuous_update,
                 readout_format=".1f",
                 style=_style,
@@ -773,18 +775,35 @@ class QuickViewer:
             self.comp_ui.append(self.ui_overlay)
 
         if len(self.comparison):
-            self.ui_invert = ipyw.Checkbox(value=False, 
+            self.ui_invert = ipyw.Checkbox(value=False,
                                            description="Invert comparison")
             self.comp_ui.append(self.ui_invert)
 
     def make_translation_ui(self):
 
         self.trans_ui = []
+        self.translation *= self.n > 1
         if not self.translation:
             return
 
-        assert self.n > 1
-        self.tlabel = ipyw.HTML(value="<b>Translation:</b>")
+        self.trans_ui.append(ipyw.HTML(value="<b>Translation:</b>"))
+
+        # Make input/output filename UI
+        tfile = self.find_translation_file(self.viewer[1].im)
+        self.has_translation_input = tfile is not None
+        tfile_out = "translation.txt"
+        if self.has_translation_input:
+            self.translation_input = ipyw.Text(description="Original:",
+                                               value=tfile)
+            self.trans_ui.append(self.translation_input)
+            tfile_out = re.sub(".0.txt", "_custom.txt", tfile)
+        self.translation_output = ipyw.Text(description="Save as:",
+                                            value=tfile_out)
+        self.tbutton = ipyw.Button(description="Write translation")
+        self.tbutton.on_click(self.write_translation_to_file)
+        self.trans_ui.extend([self.translation_output, self.tbutton])
+
+        # Make translation sliders
         self.tsliders = {}
         for ax in _axes:
             n = self.viewer[1].im.n_voxels[ax]
@@ -797,8 +816,32 @@ class QuickViewer:
                 #  style=_style
             )
             self.trans_ui.append(self.tsliders[ax])
-        self.current_trans = {ax: slider.value for ax, slider 
+        self.current_trans = {ax: slider.value for ax, slider
                               in self.tsliders.items()}
+
+    def find_translation_file(self, image):
+        """Find an elastix translation file inside the directory of an image.
+        """
+
+        if not hasattr(image, "path"):
+            return
+        indir = os.path.dirname(image.path)
+        tfile = indir + "/TransformParameters.0.txt"
+        if os.path.isfile(tfile):
+            return tfile
+
+    def write_translation_to_file(self, _):
+        """Write current translation to file."""
+
+        input_file = self.translation_input.value \
+                if self.has_translation_input else None
+        if input_file == "":
+            input_file = None
+        output_file = self.translation_output.value
+        translations = {f"d{ax}": self.tsliders[ax].value for ax in
+                        self.tsliders}
+        write_translation_to_file(output_file, input_file=input_file,
+                                  **translations)
 
     def apply_translation(self):
         """Update the description of translation sliders to show translation
@@ -831,9 +874,9 @@ class QuickViewer:
 
         # Get relative width of each subplot
         if self.match_axes is None:
-            width_ratios = [v.im.get_relative_width(self.view, self.colorbar) 
+            width_ratios = [v.im.get_relative_width(self.view, self.colorbar)
                             for v in self.viewer]
-            width_ratios.extend([c.get_relative_width(self.view) for 
+            width_ratios.extend([c.get_relative_width(self.view) for
                                  c in self.comparison])
             self.xlim = None
             self.ylim = None
@@ -878,12 +921,12 @@ class QuickViewer:
                 width_ratios = [v.im.lengths[x] / y_range for v in self.viewer]
             else:
                 ratio = abs(self.xlim[1] - self.xlim[0]) \
-                        / abs(self.ylim[1] - self.ylim[0]) 
+                        / abs(self.ylim[1] - self.ylim[0])
                 width_ratios = [ratio for i in range(self.n)]
 
         # Get rows and columns
         n_plots = (not self.comparison_only) * self.n \
-                + len(self.comparison)
+            + len(self.comparison)
         if self.comparison_only:
             width_ratios = width_ratios[self.n:]
         if self.plots_per_row is not None:
@@ -912,7 +955,7 @@ class QuickViewer:
             i += 1
 
     def adjust_axes(self, viewer):
-        """Match the axis range of a view to the viewers whose indices are 
+        """Match the axis range of a view to the viewers whose indices are
         stored in self.match_viewers."""
 
         if self.xlim is not None:
@@ -967,17 +1010,17 @@ class QuickViewer:
         if len(self.comparison):
             invert = self.ui_invert.value
             if self.has_chequerboard:
-                self.chequerboard.plot(invert=invert, 
+                self.chequerboard.plot(invert=invert,
                                        n_splits=self.ui_cb.value,
                                        mpl_kwargs=self.viewer[0].v_min_max)
             if self.has_overlay:
-                self.overlay.plot(invert=invert, 
+                self.overlay.plot(invert=invert,
                                   opacity=self.ui_overlay.value,
                                   mpl_kwargs=self.viewer[0].v_min_max)
             if self.has_diff:
                 self.diff.plot(invert=invert,
                                mpl_kwargs=self.viewer[0].v_min_max)
-           
+
         plt.tight_layout()
         self.plotting = False
 
@@ -989,3 +1032,76 @@ def in_notebook():
     except NameError:
         return False
     return True
+
+
+def write_translation_to_file(
+    output_file, dx=0, dy=0, dz=0, input_file=None, overwrite=False
+):
+
+    """Open an existing elastix transformation file and create a new
+    version with the translation parameters either replaced or added to the
+    current user-created translation in the displayed figure.
+
+    Parameters
+    ----------
+    output_file : string
+        Name of the output file to produce.
+
+    input_file : string, default=None
+        Path to an Elastix translation file to use as an input.
+
+    dx, dy, dz : float, default=None
+        Translations (in mm) to add to the initial translations in the
+        input_file.
+
+    overwrite : bool, default=False
+        If True, the shifts will be overwritten. If False, they will be added.
+    """
+
+    # Make dictionary of shifts
+    delta = {"x": dx, "y": dy, "z": dz}
+
+    # Create elastix formatted text
+    if input_file is not None:
+
+        infile = open(input_file, "r")
+
+        # Create output text
+        out_text = ""
+        for line in infile:
+            if len(line) == 1:
+                out_text += "\n"
+                continue
+            words = line.split()
+            if words[0] == "(TransformParameters":
+                old_vals = {
+                    "x": float(words[1]),
+                    "y": float(words[2]),
+                    "z": float(words[3][:-1]),
+                }
+                new_vals = {}
+                for ax, old_val in old_vals.items():
+                    if delta[ax] is None:
+                        new_vals[ax] = old_vals[ax]
+                    else:
+                        if overwrite:
+                            new_vals[ax] = delta[ax]
+                        else:
+                            new_vals[ax] = old_vals[ax] + delta[ax]
+                new_line = words[0]
+                for val in new_vals.values():
+                    new_line += " " + str(val)
+                new_line += ")\n"
+                out_text += new_line
+            else:
+                out_text += line
+
+    # Make simple text
+    else:
+        out_text = ''.join(f'{ax} {delta[ax]}\n' for ax in delta)
+
+    # Write to output
+    outfile = open(output_file, "w")
+    outfile.write(out_text)
+    outfile.close()
+    print("Wrote translation to file:", output_file)

@@ -92,19 +92,19 @@ class NiftiImage:
         # Load from file or nifti object
         else:
             if isinstance(nii, str):
-                path = os.path.expanduser(nii)
+                self.path = os.path.expanduser(nii)
                 try:
-                    self.nii = nibabel.load(path)
+                    self.nii = nibabel.load(self.path)
                     self.data = self.nii.get_fdata()
                     affine = self.nii.affine
                     if self.title is None:
-                        self.title = os.path.basename(path)
+                        self.title = os.path.basename(self.path)
                 except FileNotFoundError:
                     self.valid = False
                     return
                 except nibabel.filebasedimages.ImageFileError:
                     try:
-                        self.data = np.load(path)
+                        self.data = np.load(self.path)
                     except (IOError, ValueError):
                         raise RuntimeError("Input file <nii> must be a valid "
                                            ".nii or .npy file.")
@@ -598,7 +598,6 @@ class StructImage(NiftiImage):
         """
 
         # Load the mask
-        self.path = path
         NiftiImage.__init__(self, path)
         if not self.valid:
             return
