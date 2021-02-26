@@ -566,6 +566,7 @@ class QuickViewer:
         show_diff=False,
         comparison_only=False,
         translation=False,
+        suptitle=None,
         **kwargs
     ):
         """
@@ -622,6 +623,7 @@ class QuickViewer:
         self.figsize = kwargs.get("figsize", _default_figsize)
         self.colorbar = kwargs.get("colorbar", False)
         self.plots_per_row = plots_per_row
+        self.suptitle = suptitle
         self.match_axes = match_axes
         if self.match_axes is not None and not self.scale_in_mm:
             self.match_axes = None
@@ -1046,6 +1048,9 @@ class QuickViewer:
             if self.has_diff:
                 self.diff.plot(invert=invert,
                                mpl_kwargs=self.viewer[0].v_min_max)
+
+        if self.suptitle is not None:
+            self.fig.suptitle(self.suptitle)
 
         plt.tight_layout()
         self.plotting = False
