@@ -78,7 +78,7 @@ class NiftiImage:
         # Assign settings
         self.title = title
         self.scale_in_mm = scale_in_mm
-        self.zoom = zoom
+        self.zoom = self.make_zoom_dict(zoom)
         self.data_mask = None
         self.shift = {ax: 0 for ax in _axes}
         if nii is None:
@@ -155,13 +155,8 @@ class NiftiImage:
         self.lengths = {ax: abs(self.lims[ax][0] - self.lims[ax][1]) 
                         for ax in _axes}
         if self.zoom is not None:
-            try: 
-                zoom = float(self.zoom)
-                self.lengths = {ax: length / zoom for ax, length in 
-                                self.lengths.items()}
-            except TypeError:
-                self.lengths = {ax: length / zoom[_axes_natural[ax]]
-                                for ax, length in self.length.items()}
+            self.lengths = {ax: length / self.zoom[ax] for ax, length in 
+                            self.lengths.items()}
 
     def same_frame(self, im):
         """Compare own image to another NiftiImage; check whether the frame of 
@@ -403,6 +398,17 @@ class NiftiImage:
         if self.title is not None:
             self.ax.set_title(self.title)
 
+    def make_zoom_dict(self, zoom):
+        """Convert a single zoom or tuple of zooms to a dictionary."""
+
+        if zoom is None:
+            return
+        try:
+            zoom = float(zoom)
+            return {ax: zoom for ax in _axes}
+        except TypeError:
+            return {ax: zoom[n] for ax, n in _axes_natural.items()}
+
     def apply_zoom(self, view, zoom_x=True, zoom_y=True):
         """Zoom in on axes after they have been drawn."""
 
@@ -411,23 +417,13 @@ class NiftiImage:
         if self.zoom is None:
             return
 
-        # Get zoom level in x and y directions
-        x, y = _plot_axes[view]
-        try: 
-            zoom = {"x": float(self.zoom), "y": float(self.zoom)}
-        except TypeError:
-            zoom = {
-                "x": self.zoom[_axes_natural[x]],
-                "y": self.zoom[_axes_natural[y]]
-            }
-
         # Adjust the axes
         orig = {"x": self.ax.get_xlim(), "y": self.ax.get_ylim()}
         new = {}
         for ax in ["x", "y"]:
             mid = np.mean(orig[ax])
-            new_min = mid - (mid - orig[ax][0]) / zoom[ax]
-            new_max = mid + (orig[ax][1] - mid) / zoom[ax]
+            new_min = mid - (mid - orig[ax][0]) / self.zoom[ax]
+            new_max = mid + (orig[ax][1] - mid) / self.zoom[ax]
             new[ax] = new_min, new_max
         if zoom_x:
             self.ax.set_xlim(new["x"])
@@ -1134,8 +1130,16 @@ class ComparisonImage(NiftiImage):
         self.scale_in_mm = self.ims[0].scale_in_mm
         self.valid = all([im.valid for im in self.ims])
         self.title = title
-        self.zoom = kwargs.get("zoom", None)
         self.gs = None
+
+        # Get zoom
+        zoom = kwargs.get("zoom", None)
+        if zoom is None:
+            zooms = [im.zoom for im in self.ims if im.zoom is not None]
+            if len(zooms):
+                self.zoom = zooms[0]
+        else:
+            self.zoom = self.make_zoom_dict(zoom)
 
     def get_relative_width(self, view, n_colorbars=0):
         """Get relative width of widest of the two images."""
@@ -1179,6 +1183,12 @@ class ComparisonImage(NiftiImage):
 class ChequerboardImage(ComparisonImage):
 
     def plot_comparison(self, invert=False, n_splits=2):
+
+        # Adjust number of splits for zooming
+        if self.zoom is not None and n_splits > 1:
+            x, y = _plot_axes[self.view]
+            n_splits *= min([z for ax, z in self.zoom.items() if ax in [x, y]])
+            n_splits = int(round(n_splits))
 
         # Get masked image
         i1 = int(invert)

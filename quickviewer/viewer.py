@@ -678,12 +678,12 @@ class QuickViewer:
                 im1, im2, title="Chequerboard", scale_in_mm=self.scale_in_mm)
             self.comparison.append(self.chequerboard)
         if show_overlay:
-            self.overlay = OverlayImage(im1, im2, title="Overlay",
-                                        scale_in_mm=self.scale_in_mm)
+            self.overlay = OverlayImage(
+                im1, im2, title="Overlay", scale_in_mm=self.scale_in_mm)
             self.comparison.append(self.overlay)
         if show_diff:
-            self.diff = DiffImage(im1, im2, title="Difference",
-                                  scale_in_mm=self.scale_in_mm)
+            self.diff = DiffImage(
+                im1, im2, title="Difference", scale_in_mm=self.scale_in_mm)
             self.comparison.append(self.diff)
 
     def make_ui(self, share_slider):
@@ -982,7 +982,7 @@ class QuickViewer:
             c.gs = gs[i]
             i += 1
 
-    def adjust_axes(self, viewer):
+    def adjust_axes(self, im):
         """Match the axis range of a view to the viewers whose indices are
         stored in self.match_viewers."""
 
@@ -1032,7 +1032,7 @@ class QuickViewer:
                 v.im.set_slice(self.view, v.slice[self.view])
             else:
                 v.plot()
-                self.adjust_axes(v)
+                self.adjust_axes(v.im)
 
         # Plot all comparison images
         if len(self.comparison):
@@ -1048,6 +1048,8 @@ class QuickViewer:
             if self.has_diff:
                 self.diff.plot(invert=invert,
                                mpl_kwargs=self.viewer[0].v_min_max)
+            for c in self.comparison:
+                self.adjust_axes(c)
 
         if self.suptitle is not None:
             self.fig.suptitle(self.suptitle)
