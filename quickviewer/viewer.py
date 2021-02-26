@@ -47,6 +47,7 @@ class ImageViewer():
         init_pos=None,
         v=(-300, 200),
         continuous_update=False,
+        save_as=None,
         **kwargs
     ):
 
@@ -74,6 +75,7 @@ class ImageViewer():
         self.figsize = figsize
         self.continuous_update = continuous_update
         self.colorbar = colorbar
+        self.save_as = save_as
         self.plotting = False
 
         # Mask settings
@@ -99,6 +101,7 @@ class ImageViewer():
         self.legend_loc = legend_loc
 
         # Display plot
+        self.standalone = standalone
         if standalone:
             self.show()
 
@@ -298,8 +301,17 @@ class ImageViewer():
             for ts in to_share:
                 setattr(self, ts, getattr(vimage, ts))
 
-        # Make structure checkboxes
+        # Make saving UI
         self.lower_ui = []
+        if self.save_as is not None:
+            self.save_name = ipyw.Text(description="Output file:", 
+                                       value=self.save_as)
+            self.save_button = ipyw.Button(description="Save")
+            self.save_button.on_click(self.save_fig)
+            if self.standalone:
+                self.lower_ui.extend([self.save_name, self.save_button])
+
+        # Make structure checkboxes
         for s in self.im.structs:
             s.checkbox = ipyw.Checkbox(value=True, description=s.name_nice)
             self.lower_ui.append(s.checkbox)
@@ -504,6 +516,11 @@ class ImageViewer():
                      legend_loc=self.legend_loc,
                      show=False)
         self.plotting = False
+
+    def save_fig(self, _):
+        """Save figure to a file."""
+
+        self.im.fig.savefig(self.save_name.value)
 
 
 class OrthogViewer(ImageViewer):
@@ -743,7 +760,13 @@ class QuickViewer:
     def make_lower_ui(self):
         """Make lower UI for structure checkboxes."""
 
+        # Saving UI
         self.lower_ui = []
+        if self.viewer[0].save_as is not None:
+            self.lower_ui.extend([self.viewer[0].save_name, 
+                                  self.viewer[0].save_button])
+
+        # Structure UI
         many_with_structs = sum([v.im.has_structs for v in self.viewer]) > 1
         for v in self.viewer:
             if many_with_structs and v.im.has_structs:
