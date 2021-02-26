@@ -318,6 +318,7 @@ class ImageViewer():
 
         # Combine UI elements
         self.upper_ui = [ipyw.VBox(self.main_ui), ipyw.VBox(self.extra_ui)]
+        self.upper_ui_box = ipyw.HBox(self.upper_ui)
         self.lower_ui_box = ipyw.VBox(self.lower_ui)
         self.all_ui = self.main_ui + self.extra_ui + self.lower_ui
         self.interactive = True
@@ -434,7 +435,6 @@ class ImageViewer():
         ui_kw = {str(np.random.rand()): ui for ui in self.all_ui if
                  hasattr(ui, "value")}
         self.out = ipyw.interactive_output(self.plot, ui_kw)
-        self.upper_ui_box = ipyw.HBox(self.upper_ui)
         to_display = [self.upper_ui_box, self.out]
         if len(self.lower_ui):
             to_display.append(self.lower_ui_box)
@@ -749,6 +749,7 @@ class QuickViewer:
         self.slider_boxes = [ipyw.VBox(ui) for ui in self.per_image_ui]
         self.set_slider_widths()
         self.upper_ui = [main_and_extra_box, ipyw.HBox(self.slider_boxes)]
+        self.upper_ui_box = ipyw.VBox(self.upper_ui)
         self.lower_ui_box = ipyw.VBox(self.lower_ui)
         self.all_ui = (
             self.main_ui
@@ -987,11 +988,11 @@ class QuickViewer:
         stored in self.match_viewers."""
 
         if self.xlim is not None:
-            viewer.im.ax.set_xlim(self.xlim)
-            viewer.im.apply_zoom(self.view, zoom_y=False)
+            im.ax.set_xlim(self.xlim)
+            im.apply_zoom(self.view, zoom_y=False)
         if self.ylim is not None:
-            viewer.im.ax.set_ylim(self.ylim)
-            viewer.im.apply_zoom(self.view, zoom_x=False)
+            im.ax.set_ylim(self.ylim)
+            im.apply_zoom(self.view, zoom_x=False)
 
     def plot(self, **kwargs):
         """Plot all images."""

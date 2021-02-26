@@ -1138,7 +1138,7 @@ class ComparisonImage(NiftiImage):
             zooms = [im.zoom for im in self.ims if im.zoom is not None]
             if len(zooms):
                 self.zoom = zooms[0]
-        else:
+        if not hasattr(self, "zoom"):
             self.zoom = self.make_zoom_dict(zoom)
 
     def get_relative_width(self, view, n_colorbars=0):
