@@ -118,7 +118,7 @@ class QuickViewer:
         self.make_ui(share_slider)
 
         # Display
-        ImageViewer.show_in_notebook(self)
+        ImageViewer.show(self)
 
     def get_input_list(self, inp):
         """Convert an input to a list with one item per image to be
@@ -251,7 +251,7 @@ class QuickViewer:
         # Saving UI
         self.lower_ui = []
         if self.viewer[0].save_as is not None:
-            self.lower_ui.extend([self.viewer[0].save_name, 
+            self.lower_ui.extend([self.viewer[0].save_name,
                                   self.viewer[0].save_button])
 
         # Structure UI
@@ -355,7 +355,7 @@ class QuickViewer:
         """Write current translation to file."""
 
         input_file = self.translation_input.value \
-                if self.has_translation_input else None
+            if self.has_translation_input else None
         if input_file == "":
             input_file = None
         output_file = self.translation_output.value
@@ -435,12 +435,12 @@ class QuickViewer:
             if self.match_axes == "x":
                 self.ylim = None
                 x_range = abs(self.xlim[1] - self.xlim[0])
-                width_ratios = [x_range / v.im.get_length(y) for v in 
+                width_ratios = [x_range / v.im.get_length(y) for v in
                                 self.viewer]
             elif self.match_axes == "y":
                 self.xlim = None
                 y_range = abs(self.ylim[1] - self.ylim[0])
-                width_ratios = [v.im.get_length(x) / y_range for v in 
+                width_ratios = [v.im.get_length(x) / y_range for v in
                                 self.viewer]
             else:
                 ratio = abs(self.xlim[1] - self.xlim[0]) \
@@ -461,7 +461,7 @@ class QuickViewer:
             n_rows = int(np.ceil(n_plots / n_cols))
             width_ratios_padded = width_ratios + \
                 [0 for i in range((n_rows * n_cols) - n_plots)]
-            ratios_per_row = np.array(width_ratios_padded).reshape(n_rows, 
+            ratios_per_row = np.array(width_ratios_padded).reshape(n_rows,
                                                                    n_cols)
             width_ratios = np.amax(ratios_per_row, axis=0)
         else:
@@ -483,6 +483,10 @@ class QuickViewer:
         for c in self.comparison:
             c.gs = gs[i]
             i += 1
+
+        # Assign callbacks to figure
+        if not self.in_notebook:
+            self.set_callbacks()
 
     def adjust_axes(self, im):
         """Match the axis range of a view to the viewers whose indices are
@@ -598,7 +602,6 @@ class ImageViewer():
     ):
 
         self.im = self.make_image(nii, **kwargs)
-        self.interactive = False  # Flag for creation of interactive elements
         self.gs = None  # Gridspec in which to place plot axes
 
         # Set initial view
@@ -625,6 +628,7 @@ class ImageViewer():
         self.annotate_slice = annotate_slice
         self.save_as = save_as
         self.plotting = False
+        self.callbacks_set = False
 
         # Mask settings
         self.invert_mask = invert_mask
@@ -655,6 +659,10 @@ class ImageViewer():
         if self.length_units is None:
             self.length_units = "mm" if self.im.scale_in_mm else "voxels"
         self.init_struct = init_struct
+
+        # Make UI
+        self.make_ui()
+        self.in_notebook = in_notebook()
 
         # Display plot
         self.standalone = standalone
@@ -712,14 +720,6 @@ class ImageViewer():
             else:
                 return idx + 1
 
-    def set_interactive(self):
-        """Create interactive elements."""
-
-        if in_notebook():
-            self.make_ui()
-        else:
-            self.set_callbacks()
-
     def make_ui(self, vimage=None, share_slider=True):
         """Make Jupyter notebook UI. If qv_image contains another ImageViewer
         instance, the UI will be taken from that image. If share_slider is
@@ -746,7 +746,7 @@ class ImageViewer():
         self.structs_for_jump = {"": None, **{s.name_nice: s for s in
                                               self.im.structs}}
         init_struct = self.init_struct if self.init_struct in \
-                self.structs_for_jump else ""
+            self.structs_for_jump else ""
         self.ui_struct_jump = ipyw.Dropdown(
             options=self.structs_for_jump.keys(),
             value=init_struct,
@@ -867,14 +867,13 @@ class ImageViewer():
         self.upper_ui_box = ipyw.HBox(self.upper_ui)
         self.lower_ui_box = ipyw.VBox(self.lower_ui)
         self.all_ui = self.main_ui + self.extra_ui + self.ui_struct_checkboxes
-        self.interactive = True
 
     def make_lower_ui(self):
 
         # Saving UI
         self.lower_ui = []
         if self.save_as is not None:
-            self.save_name = ipyw.Text(description="Output file:", 
+            self.save_name = ipyw.Text(description="Output file:",
                                        value=self.save_as)
             self.save_button = ipyw.Button(description="Save")
             self.save_button.on_click(self.save_fig)
@@ -912,11 +911,11 @@ class ImageViewer():
 
         if self.struct_info:
             self.update_struct_info()
-            layout = ipyw.Layout(align_items="center", 
+            layout = ipyw.Layout(align_items="center",
                                  padding="0px 0px 0px 50px")
             self.lower_ui.append(ipyw.HBox([
                 ipyw.VBox(self.ui_struct_checkboxes),
-                ipyw.VBox(self.ui_struct_vol, 
+                ipyw.VBox(self.ui_struct_vol,
                           layout=ipyw.Layout(align_items="center")),
                 ipyw.VBox(self.ui_struct_x, layout=layout),
                 ipyw.VBox(self.ui_struct_y, layout=layout)
@@ -936,7 +935,7 @@ class ImageViewer():
         # Update column values
         fmt = "{:.1f}" if self.length_units == "mm" else "{:.0f}"
         for s in self.im.structs:
-            extents = s.get_extents(self.view, self.slice[self.view], 
+            extents = s.get_extents(self.view, self.slice[self.view],
                                     self.length_units)
             extent_strs = []
             for ex in extents:
@@ -973,7 +972,123 @@ class ImageViewer():
     def set_callbacks(self):
         """Set up matplotlib callback functions for interactive plotting."""
 
-        self.interactive = True
+        self.im.fig.canvas.mpl_connect('key_press_event', self.on_key)
+        self.im.fig.canvas.mpl_connect('scroll_event', self.on_scroll)
+        self.callbacks_set = True
+
+    def on_key(self, event):
+        """Events run on keypress outside jupyter notebook."""
+
+        print("detected keypress!")
+
+        # Settings
+        n_small = 1
+        n_big = 5
+
+        # Press v to change view
+        if event.key == "v":
+            next_view = {"x-y": "y-z", "y-z": "x-z", "x-z": "x-y"}
+            self.ui_view.value = next_view[self.ui_view.value]
+            print("Changed view!")
+
+        # Press d to change dose opacity
+        elif event.key == "d":
+            if self.has_dose:
+                doses = [0, 0.15, 0.35, 0.5, 1]
+                next_dose = {doses[i]: doses[i + 1] if i + 1 < len(doses)
+                             else doses[0] for i in range(len(doses))}
+                diffs = [abs(d - self.ui_dose.value) for d in doses]
+                current = doses[diffs.index(min(diffs))]
+                self.dose_slider.value = next_dose[current]
+
+        # Press m to switch mask on and off
+        elif event.key == "m":
+            if self.has_mask:
+                self.ui_mask.value = not self.ui_mask.value
+
+        # Press c to change structure plot type
+        elif event.key == "c":
+            if self.has_structs:
+                next_type = {"mask": "contour", "contour": "none",
+                             "none": "mask"}
+                self.ui_struct_plot_type.value = \
+                    next_type[self.ui_struct_plot_type.value]
+
+        #  # Press i to invert comparisons
+        #  elif event.key == "i":
+            #  if self.show_cb:
+                #  self.invert_cb.value = not self.invert_cb.value
+            #  if self.overlay:
+                #  self.invert_overlay.value = not self.invert_overlay.value
+            #  if self.show_diff:
+                #  self.invert_diff.value = not self.invert_diff.value
+
+        #  # Press o to change overlay opacity
+        #  elif event.key == "o":
+            #  if self.overlay:
+                #  ops = [0.2, 0.35, 0.5, 0.65, 0.8]
+                #  next_op = {ops[i]: ops[i + 1] if i + 1 < len(ops)
+                             #  else ops[0] for i in range(len(ops))}
+                #  diffs = [abs(op - self.overlay_slider.value) for op in ops]
+                #  current = ops[diffs.index(min(diffs))]
+                #  self.overlay_slider.value = next_op[current]
+
+        # Press j to jump between structures
+        elif event.key == "j" and self.has_structs:
+            structs = self.ui_struct_jump.options
+            current_idx = structs.index(self.current_struct)
+            new_idx = current_idx + 1
+            if new_idx == len(structs):
+                new_idx = 0
+            new_struct = structs[new_idx]
+            self.ui_struct_jump.value = new_struct
+
+        # Press arrow keys to scroll through many slices
+        elif event.key == "left":
+            self.decrease_slice(n_small)
+        elif event.key == "right":
+            self.increase_slice(n_small)
+        elif event.key == "down":
+            self.decrease_slice(n_big)
+        elif event.key == "up":
+            self.increase_slice(n_big)
+
+        else:
+            return
+        
+        # Remake plot
+        self.plot()
+
+    def on_scroll(self, event):
+        """Events run on scroll outside jupyter notebook."""
+
+        if event.button == "up":
+            self.increase_slice()
+        elif event.button == "down":
+            self.decrease_slice()
+        else:
+            return
+
+        # Remake plot
+        self.plot()
+
+    def increase_slice(self, n=1):
+        """Increase slice slider value by n slices."""
+
+        new_val = self.ui_slice.value + n * self.ui_slice.step
+        if new_val <= self.ui_slice.max:
+            self.ui_slice.value = new_val
+        else:
+            self.ui_slice.value = self.ui_slice.max
+
+    def decrease_slice(self, n):
+        """Decrease slice slider value by n slices."""
+
+        new_val = self.ui_slice.value - n * self.ui_slice.step
+        if new_val >= self.ui_slice.min:
+            self.ui_slice.value = new_val
+        else:
+            self.ui_slice.value = self.ui_slice.min
 
     def update_slice_slider(self):
         """Update the slice slider to show the axis corresponding to the
@@ -1032,7 +1147,8 @@ class ImageViewer():
         if self.ui_struct_jump.value == "":
             return
 
-        struct = self.structs_for_jump[self.ui_struct_jump.value]
+        self.current_struct = self.ui_struct_jump.value
+        struct = self.structs_for_jump[self.current_struct]
         mid_slice = int(np.mean(list(struct.contours[self.view].keys())))
         self.ui_slice.value = self.idx_to_slider(
             mid_slice, _slider_axes[self.view])
@@ -1041,12 +1157,7 @@ class ImageViewer():
     def show(self):
         """Display plot and UI."""
 
-        # Ensure interactive elements are created
-        if not self.interactive:
-            self.set_interactive()
-
-        # Make output
-        if in_notebook():
+        if self.in_notebook:
             self.show_in_notebook()
         else:
             self.plot()
@@ -1086,10 +1197,13 @@ class ImageViewer():
     def plot(self, **kwargs):
         """Plot a slice with current settings."""
 
+        print("plotting!!")
+
         if self.plotting:
             return
         self.plotting = True
         self.set_slice_and_view()
+        print("current view:", self.view)
 
         # Get dose settings
         dose_kwargs = {}
@@ -1120,9 +1234,15 @@ class ImageViewer():
         for s in self.im.structs:
             s.visible = s.checkbox.value
 
+        # Get axes
+        ax = None
+        if not self.in_notebook:
+            ax = getattr(self.im, "ax", None)
+
         # Make plot
         self.im.plot(self.view,
                      self.slice[self.view],
+                     ax=ax,
                      gs=self.gs,
                      mpl_kwargs=self.v_min_max,
                      figsize=self.figsize,
@@ -1142,6 +1262,10 @@ class ImageViewer():
                      annotate_slice=self.annotate_slice,
                      show=False)
         self.plotting = False
+
+        # Ensure callbacks are set if outside jupyter
+        if not self.in_notebook and not self.callbacks_set:
+            self.set_callbacks()
 
     def save_fig(self, _):
         """Save figure to a file."""
@@ -1170,14 +1294,15 @@ class OrthogViewer(ImageViewer):
         self.im.orthog_slices[_slider_axes[orthog_view]] = mid_slice
 
 
-
 def in_notebook():
     try:
-        if 'IPKernelApp' not in get_ipython().config:
+        shell = get_ipython().__class__.__name__
+        if shell == 'ZMQInteractiveShell':
+            return True
+        else:
             return False
     except NameError:
         return False
-    return True
 
 
 def write_translation_to_file(
