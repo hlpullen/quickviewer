@@ -621,11 +621,14 @@ class ImageViewer():
 
         # Assign plot settings
         # General settings
+        self.in_notebook = in_notebook()
         self.v = v
         self.figsize = figsize
         self.continuous_update = continuous_update
         self.colorbar = colorbar
         self.annotate_slice = annotate_slice
+        if self.annotate_slice is None and not self.in_notebook:
+            self.annotate_slice = True
         self.save_as = save_as
         self.plotting = False
         self.callbacks_set = False
@@ -662,7 +665,6 @@ class ImageViewer():
 
         # Make UI
         self.make_ui()
-        self.in_notebook = in_notebook()
 
         # Display plot
         self.standalone = standalone
@@ -979,8 +981,6 @@ class ImageViewer():
     def on_key(self, event):
         """Events run on keypress outside jupyter notebook."""
 
-        print("detected keypress!")
-
         # Settings
         n_small = 1
         n_big = 5
@@ -989,7 +989,6 @@ class ImageViewer():
         if event.key == "v":
             next_view = {"x-y": "y-z", "y-z": "x-z", "x-z": "x-y"}
             self.ui_view.value = next_view[self.ui_view.value]
-            print("Changed view!")
 
         # Press d to change dose opacity
         elif event.key == "d":
@@ -1197,13 +1196,10 @@ class ImageViewer():
     def plot(self, **kwargs):
         """Plot a slice with current settings."""
 
-        print("plotting!!")
-
         if self.plotting:
             return
         self.plotting = True
         self.set_slice_and_view()
-        print("current view:", self.view)
 
         # Get dose settings
         dose_kwargs = {}
@@ -1236,8 +1232,9 @@ class ImageViewer():
 
         # Get axes
         ax = None
-        if not self.in_notebook:
-            ax = getattr(self.im, "ax", None)
+        if not self.in_notebook and hasattr(self.im, "ax"):
+            ax = getattr(self.im, "ax")
+            ax.clear()
 
         # Make plot
         self.im.plot(self.view,
@@ -1266,6 +1263,11 @@ class ImageViewer():
         # Ensure callbacks are set if outside jupyter
         if not self.in_notebook and not self.callbacks_set:
             self.set_callbacks()
+
+        # Update figure
+        if not self.in_notebook:
+            self.im.fig.canvas.draw_idle()
+            self.im.fig.canvas.flush_events()
 
     def save_fig(self, _):
         """Save figure to a file."""
