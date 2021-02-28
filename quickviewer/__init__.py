@@ -46,6 +46,8 @@ class QuickViewer:
         show_overlay=False,
         show_diff=False,
         comparison_only=False,
+        cb_splits=2,
+        overlay_opacity=0.5,
         translation=False,
         suptitle=None,
         **kwargs
@@ -96,6 +98,8 @@ class QuickViewer:
                 self.viewer.append(viewer)
 
         # Load comparison images
+        self.cb_splits = cb_splits
+        self.overlay_opacity = overlay_opacity
         self.load_comparison(show_cb, show_overlay, show_diff)
         self.comparison_only = comparison_only
         self.translation = translation
@@ -272,8 +276,9 @@ class QuickViewer:
         self.comp_ui = []
 
         if self.has_chequerboard:
+            max_splits = max([10, self.cb_splits])
             self.ui_cb = ipyw.IntSlider(
-                min=1, max=10, value=2, step=1,
+                min=1, max=max_splits, value=self.cb_splits, step=1,
                 continuous_update=self.viewer[0].continuous_update,
                 description="Chequerboard splits",
                 style=_style,
@@ -282,7 +287,7 @@ class QuickViewer:
 
         if self.has_overlay:
             self.ui_overlay = ipyw.FloatSlider(
-                value=0.5, min=0, max=1, step=0.1,
+                value=self.overlay_opacity, min=0, max=1, step=0.1,
                 description="Overlay opacity",
                 continuous_update=self.viewer[0].continuous_update,
                 readout_format=".1f",
@@ -580,6 +585,7 @@ class ImageViewer():
         vol_units=None,
         struct_legend=True,
         legend_loc='lower left',
+        init_struct=None,
         standalone=True,
         init_view="x-y",
         init_idx=None,
@@ -648,6 +654,7 @@ class ImageViewer():
             self.vol_units = "mm" if self.im.scale_in_mm else "voxels"
         if self.length_units is None:
             self.length_units = "mm" if self.im.scale_in_mm else "voxels"
+        self.init_struct = init_struct
 
         # Display plot
         self.standalone = standalone
@@ -738,9 +745,11 @@ class ImageViewer():
         # Structure jumping menu
         self.structs_for_jump = {"": None, **{s.name_nice: s for s in
                                               self.im.structs}}
+        init_struct = self.init_struct if self.init_struct in \
+                self.structs_for_jump else ""
         self.ui_struct_jump = ipyw.Dropdown(
             options=self.structs_for_jump.keys(),
-            value="",
+            value=init_struct,
             description="Jump to",
             style=_style,
         )
@@ -878,7 +887,7 @@ class ImageViewer():
         self.ui_struct_x = []
         self.ui_struct_y = []
         if self.struct_info:
-            self.ui_struct_checkboxes.append(ipyw.HTML(value=""))
+            self.ui_struct_checkboxes.append(ipyw.HTML(value=" "))
             vol_units = self.vol_units if self.vol_units != "mm" \
                 else "mm<sup>3</sup>"
             self.ui_struct_vol.append(ipyw.HTML(
