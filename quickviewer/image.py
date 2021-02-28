@@ -1271,24 +1271,25 @@ class MultiImage(NiftiImage):
         # Plot image
         self.set_ax(view, ax, gs, figsize, colorbar)
         self.set_masks()
-        NiftiImage.plot(self, view, sl, self.ax, mpl_kwargs=mpl_kwargs, 
-                        show=False, colorbar=colorbar, masked=masked,
-                        invert_mask=invert_mask,
-                        mask_colour=mask_colour, figsize=figsize)
+        NiftiImage.plot(
+            self, view, sl, self.ax, mpl_kwargs=mpl_kwargs,
+            show=False, colorbar=colorbar, masked=masked,
+            invert_mask=invert_mask, mask_colour=mask_colour, figsize=figsize)
 
         # Plot dose field
-        self.dose.plot(view, sl, self.ax,
-                       self.get_kwargs(dose_kwargs, default=self.dose_kwargs),
-                       show=False, masked=masked, invert_mask=invert_mask,
-                       mask_colour=mask_colour, colorbar=colorbar,
-                       colorbar_label="Dose (Gy)")
+        self.dose.plot(
+            view, sl, self.ax,
+            mpl_kwargs=self.get_kwargs(dose_kwargs, default=self.dose_kwargs),
+            show=False, masked=masked, invert_mask=invert_mask,
+            mask_colour=mask_colour, colorbar=colorbar,
+            colorbar_label="Dose (Gy)")
 
         # Plot jacobian
-        self.jacobian.plot(view, sl, self.ax,
-                           self.get_kwargs(jacobian_kwargs,
-                                           default=self.jacobian_kwargs),
-                           show=False, colorbar=colorbar,
-                           colorbar_label="Jacobian determinant")
+        self.jacobian.plot(
+            view, sl, self.ax, mpl_kwargs=self.get_kwargs(
+                jacobian_kwargs, default=self.jacobian_kwargs),
+            show=False, colorbar=colorbar,
+            colorbar_label="Jacobian determinant")
 
         # Plot structures
         struct_handles = []
