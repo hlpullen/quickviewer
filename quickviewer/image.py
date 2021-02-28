@@ -377,6 +377,7 @@ class NiftiImage:
                 print(f"Warning: slice {sl} outside valid range. "
                       f"Will plot slice {max_slice}.")
                 sl = max_slice
+        self.sl = sl
 
         # Get 2D slice and adjust orientation
         im_slice = np.transpose(data, _orient[view])[:, :, sl]
@@ -419,7 +420,8 @@ class NiftiImage:
              masked=False,
              invert_mask=False, 
              mask_colour="black", 
-             no_ylabel=False
+             no_ylabel=False,
+             annotate_slice=None
             ):
         """Plot a 2D slice of the image.
 
@@ -469,6 +471,9 @@ class NiftiImage:
         no_ylabel : bool, default=False
             If True, the y axis will not be labelled.
 
+        annotate_slice : str, default=None
+            Color for annotation of slice number. If None, no annotation will 
+            be added. If True, the default colour (white) will be used.
         """
 
         if not self.valid:
@@ -488,7 +493,7 @@ class NiftiImage:
                               extent=self.extent[view],
                               aspect=self.aspect[view],
                               cmap=cmap, **kwargs)
-        self.label_ax(view, no_ylabel)
+        self.label_ax(view, no_ylabel, annotate_slice)
         self.apply_zoom(view)
 
         # Draw colorbar
@@ -501,7 +506,7 @@ class NiftiImage:
             plt.tight_layout()
             plt.show()
 
-    def label_ax(self, view, no_ylabel=False):
+    def label_ax(self, view, no_ylabel=False, annotate_slice=None):
         """Assign x/y axis labels and title to the plot."""
 
         units = " (mm)" if self.scale_in_mm else ""
@@ -512,6 +517,25 @@ class NiftiImage:
             self.ax.set_yticks([])
         if self.title is not None:
             self.ax.set_title(self.title)
+
+        # Slice annotation
+        if annotate_slice is not None:
+
+            # Make annotation string
+            ax = _slider_axes[view]
+            if self.scale_in_mm:
+                z_str = "{} = {:.1f} mm".format(
+                    ax, self.idx_to_pos(self.sl, ax))
+            else:
+                z_str = f"{ax} = {self.sl}"
+
+            # Add annotation
+            if matplotlib.colors.is_color_like(annotate_slice):
+                col = annotate_slice
+            else:
+                col = "white"
+            self.ax.annotate(z_str, xy=(0.05, 0.93), xycoords='axes fraction',
+                             color=col)
 
     def get_ax_dict(self, val):
         """Convert a single value or tuple of values in order (x, y, z) to a 
@@ -899,7 +923,6 @@ class StructImage(NiftiImage):
             self.plot_contour(view, sl, ax, mpl_kwargs)
         elif plot_type == "mask":
             self.plot_mask(view, sl, ax, mpl_kwargs)
-        self.apply_zoom(view)
 
     def plot_mask(self, view, sl, ax, mpl_kwargs=None):
         """Plot structure as a coloured mask."""
@@ -1168,8 +1191,8 @@ class MultiImage(NiftiImage):
 
     def plot(
         self,
-        view,
-        sl,
+        view="x-y",
+        sl=None,
         ax=None,
         gs=None,
         figsize=None,
@@ -1187,7 +1210,8 @@ class MultiImage(NiftiImage):
         struct_kwargs=None,
         struct_plot_type="contour",
         struct_legend=True,
-        legend_loc='lower left'
+        legend_loc='lower left',
+        annotate_slice=None
     ):
         """Plot a 2D slice of this image and all extra features.
 
@@ -1266,6 +1290,10 @@ class MultiImage(NiftiImage):
 
         legend_loc : str, default='lower left'
             Position for the structure legend, if used.
+
+        annotate_slice : str, default=None
+            Color for annotation of slice number. If None, no annotation will 
+            be added. If True, the default colour (white) will be used.
         """
 
         # Plot image
@@ -1278,7 +1306,7 @@ class MultiImage(NiftiImage):
 
         # Plot dose field
         self.dose.plot(
-            view, sl, self.ax,
+            view, self.sl, self.ax,
             mpl_kwargs=self.get_kwargs(dose_kwargs, default=self.dose_kwargs),
             show=False, masked=masked, invert_mask=invert_mask,
             mask_colour=mask_colour, colorbar=colorbar,
@@ -1286,7 +1314,7 @@ class MultiImage(NiftiImage):
 
         # Plot jacobian
         self.jacobian.plot(
-            view, sl, self.ax, mpl_kwargs=self.get_kwargs(
+            view, self.sl, self.ax, mpl_kwargs=self.get_kwargs(
                 jacobian_kwargs, default=self.jacobian_kwargs),
             show=False, colorbar=colorbar,
             colorbar_label="Jacobian determinant")
@@ -1296,13 +1324,13 @@ class MultiImage(NiftiImage):
         for struct in self.structs:
             if not struct.visible:
                 continue
-            struct.plot(view, sl, self.ax, struct_kwargs, struct_plot_type)
+            struct.plot(view, self.sl, self.ax, struct_kwargs, struct_plot_type)
             if struct.on_slice(view, sl) and struct_plot_type != "none":
                 struct_handles.append(mpatches.Patch(color=struct.color,
                                                      label=struct.name_nice))
 
         # Plot deformation field
-        self.df.plot(view, sl, self.ax,
+        self.df.plot(view, self.sl, self.ax,
                      mpl_kwargs=df_kwargs,
                      plot_type=df_plot_type,
                      spacing=df_spacing)
@@ -1311,6 +1339,8 @@ class MultiImage(NiftiImage):
         if struct_legend and len(struct_handles):
             self.ax.legend(handles=struct_handles, loc=legend_loc,
                            facecolor="white", framealpha=1)
+
+        self.label_ax(view, annotate_slice=annotate_slice)
 
         # Display image
         if show:

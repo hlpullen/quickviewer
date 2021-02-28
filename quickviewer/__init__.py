@@ -580,6 +580,7 @@ class ImageViewer():
         init_pos=None,
         v=(-300, 200),
         continuous_update=False,
+        annotate_slice=None,
         save_as=None,
         **kwargs
     ):
@@ -609,6 +610,7 @@ class ImageViewer():
         self.figsize = figsize
         self.continuous_update = continuous_update
         self.colorbar = colorbar
+        self.annotate_slice = annotate_slice
         self.save_as = save_as
         self.plotting = False
 
@@ -1122,6 +1124,7 @@ class ImageViewer():
                      struct_kwargs=struct_kwargs,
                      struct_legend=self.struct_legend,
                      legend_loc=self.legend_loc,
+                     annotate_slice=self.annotate_slice,
                      show=False)
         self.plotting = False
 
