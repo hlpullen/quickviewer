@@ -481,6 +481,7 @@ class NiftiImage:
 
         # Get slice
         self.set_ax(view, ax, gs, figsize, colorbar)
+        self.ax.set_facecolor("black")
         self.set_slice(view, sl, masked, invert_mask)
 
         # Get colourmap
@@ -1472,6 +1473,7 @@ class ComparisonImage(NiftiImage):
                 self.ims.append(NiftiImage(nii, **kwargs))
 
         self.scale_in_mm = self.ims[0].scale_in_mm
+        self.zoom = self.ims[0].zoom
         self.valid = all([im.valid for im in self.ims])
         self.title = title
         self.gs = None
@@ -1480,8 +1482,8 @@ class ComparisonImage(NiftiImage):
         """Get relative width of widest of the two images."""
         
         x, y = _plot_axes[view]
-        height = max([im.lengths[y] for im in self.ims])
-        width = max([im.lengths[x] for im in self.ims])
+        height = max([im.get_length(y) for im in self.ims])
+        width = max([im.get_length(x) for im in self.ims])
         return width / height
 
     def plot(self, view=None, sl=None, invert=False, ax=None,

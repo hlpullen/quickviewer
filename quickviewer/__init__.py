@@ -430,15 +430,21 @@ class QuickViewer:
             if self.match_axes == "x":
                 self.ylim = None
                 x_range = abs(self.xlim[1] - self.xlim[0])
-                width_ratios = [x_range / v.im.lengths[y] for v in self.viewer]
+                width_ratios = [x_range / v.im.get_length(y) for v in 
+                                self.viewer]
             elif self.match_axes == "y":
                 self.xlim = None
                 y_range = abs(self.ylim[1] - self.ylim[0])
-                width_ratios = [v.im.lengths[x] / y_range for v in self.viewer]
+                width_ratios = [v.im.get_length(x) / y_range for v in 
+                                self.viewer]
             else:
                 ratio = abs(self.xlim[1] - self.xlim[0]) \
                         / abs(self.ylim[1] - self.ylim[0])
                 width_ratios = [ratio for i in range(self.n)]
+
+            # Add ratios for comparison images
+            for i in range(len(self.comparison)):
+                width_ratios.append(width_ratios[0])
 
         # Get rows and columns
         n_plots = (not self.comparison_only) * self.n \
@@ -449,7 +455,7 @@ class QuickViewer:
             n_cols = min([self.plots_per_row, n_plots])
             n_rows = int(np.ceil(n_plots / n_cols))
             width_ratios_padded = width_ratios + \
-                [0 for i in range(n_rows * n_cols - n_plots)]
+                [0 for i in range((n_rows * n_cols) - n_plots)]
             ratios_per_row = np.array(width_ratios_padded).reshape(n_rows, 
                                                                    n_cols)
             width_ratios = np.amax(ratios_per_row, axis=0)
