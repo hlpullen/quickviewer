@@ -359,12 +359,24 @@ class NiftiImage:
             data = self.data
 
         # Apply shift to slice number
-        sl += self.shift[_slider_axes[view]]
-        if sl < 0 or sl >= self.n_voxels[_slider_axes[view]]:
-            self.current_slice = np.zeros((
-                self.n_voxels[_plot_axes[view][0]],
-                self.n_voxels[_plot_axes[view][1]]))
-            return
+        slice_shift = self.shift[_slider_axes[view]]
+        if slice_shift:
+            sl += self.shift[_slider_axes[view]]
+            if sl < 0 or sl >= self.n_voxels[_slider_axes[view]]:
+                self.current_slice = np.zeros((
+                    self.n_voxels[_plot_axes[view][0]],
+                    self.n_voxels[_plot_axes[view][1]]))
+                return
+        else:
+            if sl < 0:
+                print(f"Warning: slice {sl} outside valid range. "
+                      "Will plot slice 0.")
+                sl = 0
+            elif sl >= self.n_voxels[_slider_axes[view]]:
+                max_slice = self.n_voxels[_slider_axes[view]] - 1
+                print(f"Warning: slice {sl} outside valid range. "
+                      f"Will plot slice {max_slice}.")
+                sl = max_slice
 
         # Get 2D slice and adjust orientation
         im_slice = np.transpose(data, _orient[view])[:, :, sl]
@@ -547,6 +559,7 @@ class NiftiImage:
         for ax, d_ax in self.downsample.items():
             self.voxel_sizes[ax] *= d_ax
         self.data = self.downsample_array(self.data)
+        self.n_voxels = {ax: self.data.shape[n] for ax, n in _axes.items()}
         self.set_geom()
 
     def downsample_array(self, data_array):
