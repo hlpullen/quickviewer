@@ -112,6 +112,7 @@ class QuickViewer:
         self.match_axes = match_axes
         if self.match_axes is not None and not self.scale_in_mm:
             self.match_axes = None
+        self.in_notebook = in_notebook()
         self.plotting = False
 
         # Make UI
@@ -572,12 +573,13 @@ class ImageViewer():
         nii,
         figsize=_default_figsize,
         colorbar=False,
+        mpl_kwargs=None,
         dose_opacity=0.5,
-        dose_cmap="jet",
+        dose_kwargs=None,
         invert_mask=False,
         mask_colour="black",
         jacobian_opacity=0.5,
-        jacobian_cmap="seismic",
+        jacobian_kwargs=None,
         df_plot_type="grid",
         df_spacing=30,
         df_kwargs=None,
@@ -622,6 +624,7 @@ class ImageViewer():
         # Assign plot settings
         # General settings
         self.in_notebook = in_notebook()
+        self.mpl_kwargs = mpl_kwargs
         self.v = v
         self.figsize = figsize
         self.continuous_update = continuous_update
@@ -639,11 +642,11 @@ class ImageViewer():
 
         # Dose settings
         self.init_dose_opacity = dose_opacity
-        self.dose_cmap = dose_cmap
+        self.dose_kwargs = dose_kwargs
 
         # Jacobian/deformation field settings
         self.init_jac_opacity = jacobian_opacity
-        self.jacobian_cmap = jacobian_cmap
+        self.jacobian_kwargs = jacobian_kwargs
         self.df_plot_type = df_plot_type
         self.df_spacing = df_spacing
         self.df_kwargs = df_kwargs
@@ -888,7 +891,8 @@ class ImageViewer():
         self.ui_struct_x = []
         self.ui_struct_y = []
         if self.struct_info:
-            self.ui_struct_checkboxes.append(ipyw.HTML(value=" "))
+            self.ui_struct_checkboxes.append(
+                ipyw.HTML(value="<b>Structures:</b>"))
             vol_units = self.vol_units if self.vol_units != "mm" \
                 else "mm<sup>3</sup>"
             self.ui_struct_vol.append(ipyw.HTML(
@@ -1100,7 +1104,7 @@ class ImageViewer():
         ax = _slider_axes[self.view]
         if self.im.scale_in_mm:
             new_min = min(self.im.lims[ax])
-            new_max = max(self.im.lims[ax]) - self.im.voxel_sizes[ax]
+            new_max = max(self.im.lims[ax])
         else:
             new_min = 1
             new_max = self.im.n_voxels[ax]
@@ -1157,7 +1161,7 @@ class ImageViewer():
         """Display plot and UI."""
 
         if self.in_notebook:
-            self.show_in_notebook()
+            ImageViewer.show_in_notebook(self)
         else:
             self.plot()
             plt.show()
@@ -1201,19 +1205,26 @@ class ImageViewer():
         self.plotting = True
         self.set_slice_and_view()
 
+        # Get main image settings
+        mpl_kwargs = self.v_min_max
+        if self.mpl_kwargs is not None:
+            mpl_kwargs.update(self.mpl_kwargs)
+
         # Get dose settings
         dose_kwargs = {}
         if self.im.has_dose:
-            dose_kwargs = {"alpha": self.ui_dose.value,
-                           "cmap": self.dose_cmap}
+            dose_kwargs = {"alpha": self.ui_dose.value}
+            if self.dose_kwargs is not None:
+                dose_kwargs.update(self.dose_kwargs)
 
         # Get jacobian settings
         jacobian_kwargs = {}
         if self.im.has_jacobian:
             jacobian_kwargs = {"alpha": self.ui_jac_opacity.value,
-                               "cmap": self.jacobian_cmap,
                                "vmin": self.ui_jac_range.value[0],
                                "vmax": self.ui_jac_range.value[1]}
+            if self.jacobian_kwargs is not None:
+                jacobian_kwargs.update(jacobian_kwargs)
 
         # Get structure settings
         self.update_struct_info()
@@ -1239,9 +1250,9 @@ class ImageViewer():
         # Make plot
         self.im.plot(self.view,
                      self.slice[self.view],
-                     ax=ax,
+                     #  ax=ax,
                      gs=self.gs,
-                     mpl_kwargs=self.v_min_max,
+                     mpl_kwargs=mpl_kwargs,
                      figsize=self.figsize,
                      colorbar=self.colorbar,
                      masked=self.ui_mask.value,

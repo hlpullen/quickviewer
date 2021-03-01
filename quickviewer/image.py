@@ -19,7 +19,7 @@ import matplotlib.patches as mpatches
 _axes = {"x": 1, "y": 0, "z": 2}
 _slider_axes = {"x-y": "z", "x-z": "y", "y-z": "x"}
 _plot_axes = {"x-y": ("x", "y"), "x-z": ("z", "x"), "y-z": ("z", "y")}
-_orient = {"y-z": [1, 2, 0], "x-z": [0, 2, 1], "x-y": [0, 1, 2]}
+_orient = {"y-z": [0, 2, 1], "x-z": [1, 2, 0], "x-y": [1, 0, 2]}
 _n_rot = {"y-z": 2, "x-z": 2, "x-y": 1}
 _orthog = {'x-y': 'y-z', 'y-z': 'x-z', 'x-z': 'y-z'}
 _df_plot_types = ["grid", "quiver", "none"]
@@ -149,7 +149,7 @@ class NiftiImage:
 
         # Axis limits in each direction
         self.lims = {
-            ax: (self.origin[ax], self.idx_to_pos(self.n_voxels[ax], ax))
+            ax: (self.origin[ax], self.idx_to_pos(self.n_voxels[ax] - 1, ax))
             for ax in _axes
         }
 
@@ -381,11 +381,13 @@ class NiftiImage:
 
         # Get 2D slice and adjust orientation
         im_slice = np.transpose(data, _orient[view])[:, :, sl]
-        if view == "y-z":
-            im_slice = im_slice[:, ::-1]
-        elif view == "x-z":
-            im_slice = im_slice[::-1, ::-1]
-        im_slice = np.rot90(im_slice, _n_rot[view])
+        if view != "y-z":
+            im_slice = im_slice[::-1, :]
+        #  if view == "y-z":
+            #  im_slice = im_slice[:, ::-1]
+        #  elif view == "x-z":
+            #  im_slice = im_slice[:, ::-1]
+        #  im_slice = np.rot90(im_slice, _n_rot[view])
 
         # Apply 2D translation
         x, y = _plot_axes[view]
@@ -421,6 +423,7 @@ class NiftiImage:
              invert_mask=False, 
              mask_colour="black", 
              no_ylabel=False,
+             no_title=False,
              annotate_slice=None
             ):
         """Plot a 2D slice of the image.
@@ -494,7 +497,7 @@ class NiftiImage:
                               extent=self.extent[view],
                               aspect=self.aspect[view],
                               cmap=cmap, **kwargs)
-        self.label_ax(view, no_ylabel, annotate_slice)
+        self.label_ax(view, no_ylabel, no_title, annotate_slice)
         self.apply_zoom(view)
 
         # Draw colorbar
@@ -507,7 +510,8 @@ class NiftiImage:
             plt.tight_layout()
             plt.show()
 
-    def label_ax(self, view, no_ylabel=False, annotate_slice=None):
+    def label_ax(self, view, no_ylabel=False, no_title=False, 
+                 annotate_slice=None):
         """Assign x/y axis labels and title to the plot."""
 
         units = " (mm)" if self.scale_in_mm else ""
@@ -516,7 +520,7 @@ class NiftiImage:
             self.ax.set_ylabel(_plot_axes[view][1] + units)
         else:
             self.ax.set_yticks([])
-        if self.title is not None:
+        if self.title is not None and not no_title:
             self.ax.set_title(self.title)
 
         # Slice annotation
@@ -1162,7 +1166,9 @@ class MultiImage(NiftiImage):
 
         # Assign user-input mask
         if self.has_mask:
-            mask_array = self.mask.data
+            mask_array = np.zeros(self.shape)
+            if self.mask.valid:
+                mask_array += self.mask.data
             if self.structs_as_mask:
                 for struct in self.structs:
                     mask_array += struct.data
@@ -1422,7 +1428,8 @@ class OrthogonalImage(MultiImage):
                         mpl_kwargs=mpl_kwargs,
                         show=False,
                         colorbar=False,
-                        no_ylabel=True)
+                        no_ylabel=True,
+                        no_title=True)
 
         # Plot structures on orthogonal image
         for struct in self.structs:
