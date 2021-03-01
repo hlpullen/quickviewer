@@ -17,8 +17,8 @@ import copy
 import matplotlib.patches as mpatches
 
 from quickviewer.structs import StructMask
-from quickviewer.image import *
-from quickviewer.viewer import in_notebook
+from quickviewer.image import _plot_axes, _axes, _slider_axes
+from quickviewer import in_notebook
 
 _shrunk_to_aspect = matplotlib.transforms.Bbox.shrunk_to_aspect
 _style = {"description_width": "initial"}
@@ -2944,3 +2944,36 @@ matplotlib.rcParams["font.serif"] = "Times New Roman"
 matplotlib.rcParams["font.family"] = "serif"
 matplotlib.rcParams["font.size"] = 14.0
 matplotlib.rcParams["axes.facecolor"] = "black"
+
+
+def same_shape(imgs):
+    """Check whether images in a list all have the same shape (in the 
+    first 3 dimensions)."""
+
+    for i in range(len(imgs) - 1):
+        if imgs[i].shape[:3] != imgs[i + 1].shape[:3]:
+            return False
+    return True
+
+
+def get_image_slice(image, view, sl):
+    """Get 2D slice of an image in a given orienation."""
+
+    orient = {"y-z": [1, 2, 0], "x-z": [0, 2, 1], "x-y": [0, 1, 2]}
+    n_rot = {"y-z": 2, "x-z": 2, "x-y": 1}
+    if image.ndim == 3:
+        im_to_show = np.transpose(image, orient[view])[:, :, sl]
+        if view == "y-z":
+            im_to_show = im_to_show[:, ::-1]
+        elif view == "x-z":
+            im_to_show = im_to_show[::-1, ::-1]
+        return np.rot90(im_to_show, n_rot[view])
+    else:
+        transpose = orient[view] + [3]
+        im_to_show = np.transpose(image, transpose)[:, :, sl, :]
+        if view == "y-z":
+            im_to_show = im_to_show[:, ::-1, :]
+        elif view == "x-z":
+            im_to_show = im_to_show[::-1, ::-1, :]
+        return np.rot90(im_to_show, n_rot[view])
+

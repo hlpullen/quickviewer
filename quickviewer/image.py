@@ -16,15 +16,16 @@ import matplotlib.patches as mpatches
 
 
 # Shared parameters
-_axes = {"x": 1, "y": 0, "z": 2}
+_axes = {"x": 0, "y": 1, "z": 2}
 _slider_axes = {"x-y": "z", "x-z": "y", "y-z": "x"}
 _plot_axes = {"x-y": ("x", "y"), "x-z": ("z", "x"), "y-z": ("z", "y")}
-_orient = {"y-z": [0, 2, 1], "x-z": [1, 2, 0], "x-y": [1, 0, 2]}
+_orient = {"y-z": [1, 2, 0], "x-z": [0, 2, 1], "x-y": [1, 0, 2]}
 _n_rot = {"y-z": 2, "x-z": 2, "x-y": 1}
 _orthog = {'x-y': 'y-z', 'y-z': 'x-z', 'x-z': 'y-z'}
 _df_plot_types = ["grid", "quiver", "none"]
 _struct_plot_types = ["contour", "mask", "none"]
 _default_figsize = 5
+_default_spacing = 30
 
 
 class NiftiImage:
@@ -86,7 +87,6 @@ class NiftiImage:
         self.title = title
         self.scale_in_mm = scale_in_mm
         self.data_mask = None
-        self.shift = {ax: 0 for ax in _axes}
         self.zoom = self.get_ax_dict(zoom)
         if nii is None:
             self.valid = False
@@ -134,6 +134,7 @@ class NiftiImage:
             self.voxel_sizes = {ax: voxel_sizes[n] for ax, n in _axes.items()}
             self.origin = {ax: origin[n] for ax, n in _axes.items()}
         self.set_geom()
+        self.set_shift(0, 0, 0)
         self.set_plotting_defaults()
 
         # Apply downsampling
@@ -178,6 +179,14 @@ class NiftiImage:
             length /= self.zoom[ax]
         return length
 
+    def set_shift(self, dx, dy, dz):
+        """Set the current translation to apply, where dx/dy/dz are in voxels.
+        """
+
+        self.shift = {"x": dx, "y": dx, "z": dz}
+        self.shift_mm = {ax: d * abs(self.voxel_sizes[ax]) for ax, d in 
+                         self.shift.items()}
+
     def same_frame(self, im):
         """Check whether this image is in the same frame of reference as 
         another NiftiImage <im> (i.e. same origin and shape)."""
@@ -213,6 +222,9 @@ class NiftiImage:
         x_length = self.get_length(x)
         y_length = self.get_length(y)
         width = x_length / y_length
+
+        # Account for zoom
+        width *= self.zoom[x] / self.zoom[y]
 
         # Add extra width for colorbars
         colorbar_frac = 0.3
@@ -381,13 +393,8 @@ class NiftiImage:
 
         # Get 2D slice and adjust orientation
         im_slice = np.transpose(data, _orient[view])[:, :, sl]
-        if view != "y-z":
+        if view != "x-z":
             im_slice = im_slice[::-1, :]
-        #  if view == "y-z":
-            #  im_slice = im_slice[:, ::-1]
-        #  elif view == "x-z":
-            #  im_slice = im_slice[:, ::-1]
-        #  im_slice = np.rot90(im_slice, _n_rot[view])
 
         # Apply 2D translation
         x, y = _plot_axes[view]
@@ -542,7 +549,7 @@ class NiftiImage:
             self.ax.annotate(z_str, xy=(0.05, 0.93), xycoords='axes fraction',
                              color=col)
 
-    def get_ax_dict(self, val):
+    def get_ax_dict(self, val, default=1):
         """Convert a single value or tuple of values in order (x, y, z) to a 
         dictionary containing x/y/z as keys."""
 
@@ -552,8 +559,11 @@ class NiftiImage:
             val = float(val)
             return {ax: val for ax in _axes}
         except TypeError:
-            axes = {"x": 0, "y": 1, "z": 2}
-            return {ax: val[n] for ax, n in axes.items()}
+            ax_dict = {ax: val[n] for ax, n in _axes.items()}
+            for ax in ax_dict:
+                if ax_dict[ax] is None:
+                    ax_dict[ax] = default
+            return ax_dict
 
     def apply_zoom(self, view, zoom_x=True, zoom_y=True):
         """Zoom in on axes by the factors in self.zoom after axes have 
@@ -594,15 +604,16 @@ class NiftiImage:
     def downsample_array(self, data_array):
         """Downsample a NumPy array by amount set in self.downsample."""
 
-        return data_array[::round(self.downsample["y"]),
-                          ::round(self.downsample["x"]),
+        return data_array[::round(self.downsample["x"]),
+                          ::round(self.downsample["y"]),
                           ::round(self.downsample["z"])]
 
 
 class DeformationImage(NiftiImage):
     """Class for loading a plotting a deformation field."""
 
-    def __init__(self, nii, spacing=30, plot_type="grid", **kwargs):
+    def __init__(self, nii, spacing=_default_spacing, plot_type="grid", 
+                 **kwargs):
         """Load deformation field.
 
         Parameters
@@ -631,7 +642,7 @@ class DeformationImage(NiftiImage):
         if spacing is None:
             return
 
-        spacing = self.get_ax_dict(spacing)
+        spacing = self.get_ax_dict(spacing, _default_spacing)
         if self.scale_in_mm:
             self.spacing = {ax: abs(round(sp / self.voxel_sizes[ax]))
                             for ax, sp in spacing.items()}
@@ -655,11 +666,8 @@ class DeformationImage(NiftiImage):
         a given orientation."""
 
         im_slice = np.transpose(self.data, _orient[view] + [3])[:, :, sl, :]
-        if view == "y-z":
+        if view != "x-z":
             im_slice = im_slice[:, ::-1, :]
-        elif view == "x-z":
-            im_slice = im_slice[::-1, ::-1, :]
-        im_slice = np.rot90(im_slice, _n_rot[view])
         self.current_slice = im_slice
 
     def get_deformation_slice(self, view, sl):
