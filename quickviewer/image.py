@@ -781,10 +781,6 @@ class DeformationImage(NiftiImage):
         # Get x/y displacement vectors
         df_x = np.squeeze(self.current_slice[:, :, _axes[x_ax]])
         df_y = np.squeeze(self.current_slice[:, :, _axes[y_ax]])
-        if view == "x-y":
-            df_x = -df_x
-        elif view == "x-z":
-            df_y = -df_y
         if not self.scale_in_mm:
             df_x /= self.voxel_sizes[x_ax]
             df_y /= self.voxel_sizes[y_ax]
@@ -1615,7 +1611,7 @@ class OrthogonalImage(MultiImage):
                         struct_plot_type)
 
         # Plot indicator line
-        pos = sl if not self.scale_in_mm else self.idx_to_pos(
+        pos = sl if not self.scale_in_mm else self.slice_to_pos(
             sl, _slider_axes[view])
         if view == "x-y":
             full_y = self.extent[orthog_view][2:] if self.scale_in_mm else \

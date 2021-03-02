@@ -637,6 +637,7 @@ class ImageViewer():
         self.save_as = save_as
         self.plotting = False
         self.callbacks_set = False
+        self.standalone = standalone
 
         # Mask settings
         self.invert_mask = invert_mask
@@ -672,7 +673,6 @@ class ImageViewer():
         self.make_ui()
 
         # Display plot
-        self.standalone = standalone
         if standalone:
             self.show()
 
