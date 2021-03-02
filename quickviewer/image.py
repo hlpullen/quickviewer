@@ -151,7 +151,7 @@ class NiftiImage:
 
         # Min and max voxel position
         self.lims = {
-            ax: (self.origin[ax], self.origin[ax] + self.n_voxels[ax] *
+            ax: (self.origin[ax], self.origin[ax] + (self.n_voxels[ax] - 1) *
                  self.voxel_sizes[ax])
             for ax in _axes
         }
@@ -184,7 +184,8 @@ class NiftiImage:
         None, the length will be divided by the factor given in self.zoom
         for the chosen axis."""
 
-        length =  abs(self.lims[ax][0] - self.lims[ax][1])
+        length = abs(self.lims[ax][0] - self.lims[ax][1]) \
+                + abs(self.voxel_sizes[ax])
         if self.zoom is not None:
             length /= self.zoom[ax]
         return length
@@ -305,7 +306,7 @@ class NiftiImage:
             return self.origin[ax] + idx * self.voxel_sizes[ax]
         else:
             return self.origin[ax] \
-                    + (self.n_voxels[ax] - idx) * self.voxel_sizes[ax]
+                    + (self.n_voxels[ax] - 1 - idx) * self.voxel_sizes[ax]
 
     def pos_to_idx(self, pos, ax):
         """Convert a position in mm to an index along a given axis."""
@@ -313,7 +314,7 @@ class NiftiImage:
         if ax == "z":
             idx = round((pos - self.origin[ax]) / self.voxel_sizes[ax])
         else:
-            idx = round(self.n_voxels[ax] + (self.origin[ax] - pos) / 
+            idx = round(self.n_voxels[ax] - 1 + (self.origin[ax] - pos) / 
                         self.voxel_sizes[ax])
 
         if idx < 0 or idx >= self.n_voxels[ax]:
@@ -482,7 +483,7 @@ class NiftiImage:
         # Get 2D slice and adjust orientation
         im_slice = np.transpose(data, _orient[view])[:, :, idx]
         x, y = _plot_axes[view]
-        if self.lims[y][1] > self.lims[y][0]:
+        if y != "x":
             im_slice = im_slice[::-1, :]
 
         # Apply 2D translation
@@ -763,7 +764,7 @@ class DeformationImage(NiftiImage):
         idx = self.get_idx(view, sl, pos, default_centre=False)
         im_slice = np.transpose(self.data, _orient[view] + [3])[:, :, idx, :]
         x, y = _plot_axes[view]
-        if self.lims[y][1] > self.lims[y][0]:
+        if y != "x":
             im_slice = im_slice[::-1, :, :]
         self.current_slice = im_slice
 
