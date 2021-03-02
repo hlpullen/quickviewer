@@ -171,8 +171,9 @@ class NiftiImage:
                 self.aspect[view] = 1
             else:
                 self.extent[view] = (
-                    0.5, self.n_voxels[x] + 0.5,
-                    0.5, self.n_voxels[y] + 0.5
+                    self.idx_to_slice(0, x) - 0.5, 
+                    self.idx_to_slice(self.n_voxels[x], x) + 0.5,
+                    self.n_voxels[y] + 0.5, 0.5
                 )
                 self.aspect[view] = abs(self.voxel_sizes[y] /
                                         self.voxel_sizes[x])
@@ -319,12 +320,18 @@ class NiftiImage:
     def idx_to_slice(self, idx, ax):
         """Convert an index to a slice number along a given axis."""
 
-        return idx + 1
+        if ax == "x":
+            return idx + 1
+        else:
+            return self.n_voxels[ax] - idx
 
     def slice_to_idx(self, sl, ax):
         """Convert a slice number to an index along a given axis."""
 
-        idx =  sl - 1
+        if ax == "x":
+            idx = sl - 1
+        else:
+            idx = self.n_voxels[ax] - sl
 
         if idx < 0 or idx >= self.n_voxels[ax]:
             if idx < 0:
@@ -464,6 +471,7 @@ class NiftiImage:
                 return
 
         # Get 2D slice and adjust orientation
+        print("INDEX BEING PLOTTED:", idx)
         im_slice = np.transpose(data, _orient[view])[:, :, idx]
         x, y = _plot_axes[view]
         if self.lims[y][1] > self.lims[y][0]:
