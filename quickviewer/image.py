@@ -25,7 +25,7 @@ _n_rot = {"y-z": 2, "x-z": 2, "x-y": 1}
 _orthog = {'x-y': 'y-z', 'y-z': 'x-z', 'x-z': 'y-z'}
 _df_plot_types = ["grid", "quiver", "none"]
 _struct_plot_types = ["contour", "mask", "none"]
-_default_figsize = 5
+_default_figsize = 6
 _default_spacing = 30
 
 
@@ -151,7 +151,8 @@ class NiftiImage:
 
         # Min and max voxel position
         self.lims = {
-            ax: (self.origin[ax], self.idx_to_pos(self.n_voxels[ax] - 1, ax))
+            ax: (self.origin[ax], self.origin[ax] + self.n_voxels[ax] *
+                 self.voxel_sizes[ax])
             for ax in _axes
         }
 
@@ -300,12 +301,20 @@ class NiftiImage:
     def idx_to_pos(self, idx, ax):
         """Convert an index to a position in mm along a given axis."""
 
-        return self.origin[ax] + idx * self.voxel_sizes[ax]
+        if ax == "z":
+            return self.origin[ax] + idx * self.voxel_sizes[ax]
+        else:
+            return self.origin[ax] \
+                    + (self.n_voxels[ax] - idx) * self.voxel_sizes[ax]
 
     def pos_to_idx(self, pos, ax):
         """Convert a position in mm to an index along a given axis."""
 
-        idx = round((pos - self.origin[ax]) / self.voxel_sizes[ax])
+        if ax == "z":
+            idx = round((pos - self.origin[ax]) / self.voxel_sizes[ax])
+        else:
+            idx = round(self.n_voxels[ax] + (self.origin[ax] - pos) / 
+                        self.voxel_sizes[ax])
 
         if idx < 0 or idx >= self.n_voxels[ax]:
             if idx < 0:
@@ -471,7 +480,6 @@ class NiftiImage:
                 return
 
         # Get 2D slice and adjust orientation
-        print("INDEX BEING PLOTTED:", idx)
         im_slice = np.transpose(data, _orient[view])[:, :, idx]
         x, y = _plot_axes[view]
         if self.lims[y][1] > self.lims[y][0]:
