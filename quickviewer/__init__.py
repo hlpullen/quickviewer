@@ -1342,7 +1342,7 @@ def write_translation_to_file(
     """
 
     # Make dictionary of shifts
-    delta = {"x": dx, "y": dy, "z": dz}
+    delta = {"x": dx, "y": dy, "z": -dz}
 
     # Create elastix formatted text
     if input_file is not None:

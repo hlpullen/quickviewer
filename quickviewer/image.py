@@ -471,9 +471,13 @@ class NiftiImage:
             data = self.data
 
         # Apply shift to slice index
-        slice_shift = self.shift[_slider_axes[view]]
+        z = _slider_axes[view]
+        slice_shift = self.shift[z]
         if slice_shift:
-            idx += self.shift[_slider_axes[view]]
+            if z == "y":
+                idx += slice_shift
+            else:
+                idx -= slice_shift
             if idx < 0 or idx >= self.n_voxels[_slider_axes[view]]:
                 self.current_slice = np.ones((
                     self.n_voxels[_plot_axes[view][0]],
