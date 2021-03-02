@@ -13,6 +13,7 @@ import os
 import re
 import skimage.measure
 import matplotlib.patches as mpatches
+from timeit import default_timer as timer
 
 
 # Shared parameters
@@ -148,7 +149,7 @@ class NiftiImage:
         # Number of voxels in each direction
         self.n_voxels = {ax: self.data.shape[n] for ax, n in _axes.items()}
 
-        # Axis limits in each direction
+        # Min and max voxel position
         self.lims = {
             ax: (self.origin[ax], self.idx_to_pos(self.n_voxels[ax] - 1, ax))
             for ax in _axes
@@ -159,13 +160,20 @@ class NiftiImage:
         self.aspect = {}
         for view, (x, y) in _plot_axes.items():
             if self.scale_in_mm:
+                vx = self.voxel_sizes[x]
+                vy = self.voxel_sizes[y]
                 self.extent[view] = (
-                    min(self.lims[x]), max(self.lims[x]),
-                    max(self.lims[y]), min(self.lims[y])
+                    min(self.lims[x]) - abs(vx / 2), 
+                    max(self.lims[x]) + abs(vx / 2),
+                    max(self.lims[y]) + abs(vy / 2),
+                    min(self.lims[y]) - abs(vy / 2)
                 )
                 self.aspect[view] = 1
             else:
-                self.extent[view] = None
+                self.extent[view] = (
+                    0.5, self.n_voxels[x] + 0.5,
+                    0.5, self.n_voxels[y] + 0.5
+                )
                 self.aspect[view] = abs(self.voxel_sizes[y] /
                                         self.voxel_sizes[x])
 
@@ -183,7 +191,7 @@ class NiftiImage:
         """Set the current translation to apply, where dx/dy/dz are in voxels.
         """
 
-        self.shift = {"x": dx, "y": dx, "z": dz}
+        self.shift = {"x": dx, "y": dy, "z": dz}
         self.shift_mm = {ax: d * abs(self.voxel_sizes[ax]) for ax, d in 
                          self.shift.items()}
 
@@ -224,7 +232,8 @@ class NiftiImage:
         width = x_length / y_length
 
         # Account for zoom
-        width *= self.zoom[x] / self.zoom[y]
+        if self.zoom is not None:
+            width *= self.zoom[x] / self.zoom[y]
 
         # Add extra width for colorbars
         colorbar_frac = 0.3
@@ -295,7 +304,47 @@ class NiftiImage:
     def pos_to_idx(self, pos, ax):
         """Convert a position in mm to an index along a given axis."""
 
-        return round((pos - self.origin[ax]) / self.voxel_sizes[ax])
+        idx = round((pos - self.origin[ax]) / self.voxel_sizes[ax])
+
+        if idx < 0 or idx >= self.n_voxels[ax]:
+            if idx < 0:
+                idx = 0
+            if idx >= self.n_voxels[ax]:
+                idx = self.n_voxels[ax] -1
+            print(f"Warning: position {pos} outside valid range. Will "
+                  f"plot slice at {self.idx_to_pos(idx, ax):.1f}")
+
+        return idx
+
+    def idx_to_slice(self, idx, ax):
+        """Convert an index to a slice number along a given axis."""
+
+        return idx + 1
+
+    def slice_to_idx(self, sl, ax):
+        """Convert a slice number to an index along a given axis."""
+
+        idx =  sl - 1
+
+        if idx < 0 or idx >= self.n_voxels[ax]:
+            if idx < 0:
+                idx = 0
+            if idx >= self.n_voxels[ax]:
+                idx = self.n_voxels[ax] -1
+            print(f"Warning: slice {sl} outside valid range. Will "
+                  f"plot slice {self.idx_to_slice(idx, ax)}.")
+
+        return idx
+
+    def pos_to_slice(self, pos, ax):
+        """Convert a position in mm to a slice number."""
+
+        return self.idx_to_slice(self.pos_to_idx(pos, ax), ax)
+
+    def slice_to_pos(self, sl, ax):
+        """Convert a slice number to a position in mm."""
+
+        return self.idx_to_pos(self.slice_to_idx(sl, ax), ax)
 
     def set_mask(self, mask):
         """Set a mask for this image. This mask will be used when self.plot
@@ -332,7 +381,33 @@ class NiftiImage:
         else:
             self.data_mask = data_mask
 
-    def set_slice(self, view, sl=None, masked=False, invert_mask=False):
+    def get_idx(self, view, sl, pos, default_centre=True):
+        """Convert a slice number or position in mm to an array index. If
+        <default_centre> is set and <sl> and <pos> are both None, the middle
+        slice will be taken; otherwise, an error will be raised."""
+
+        z = _slider_axes[view]
+        if sl is None and pos is None:
+            if default_centre:
+                idx = int(self.n_voxels[z] / 2)
+            else:
+                raise TypeError("Either <sl> or <pos> must be provided!")
+        elif sl is not None:
+            idx = self.slice_to_idx(sl, z)
+        else:
+            idx = self.pos_to_idx(pos, z)
+
+        return idx
+
+    def get_min_hu(self):
+        """Get the minimum HU in the image."""
+
+        if not hasattr(self, "min_hu"):
+            self.min_hu = self.data.min()
+        return self.min_hu
+
+    def set_slice(self, view, sl=None, pos=None, masked=False, 
+                  invert_mask=False):
         """Assign a 2D array corresponding to a slice of the image in a given
         orientation to class variable self.current_slice. If the variable
         self.shift contains nonzero elements, the slice will be translated by
@@ -344,7 +419,13 @@ class NiftiImage:
             Orientation ("x-y"/"y-z"/"x-z").
 
         sl : int, default=None
-            Index of the slice to use. If None, the middle slice will be used.
+            Slice number. If <sl> and <pos> are both None, the middle slice 
+            will be plotted. 
+
+        pos : float, default=None
+            Position in mm of the slice to plot (will be rounded to the nearest
+            slice). If <sl> and <pos> are both None, the middle slice will be 
+            plotted. If <sl> and <pos> are both given, <sl> supercedes <pos>.
 
         masked : bool, default=False
             If True and self.data_mask is not None, the mask in data_mask
@@ -356,11 +437,13 @@ class NiftiImage:
             mask the image instead of above 0.5. Ignored if masked is False.
         """
 
-        # Assign current orientation and slice
+        # Assign current orientation and slice index
         self.view = view
-        if sl is None:
-            sl = int(self.n_voxels[_slider_axes[view]] / 2)
+        idx = self.get_idx(view, sl, pos)
+        self.idx = idx
+        self.sl = self.idx_to_slice(idx, _slider_axes[view])
 
+        # Get array index of the slice to plot
         # Apply mask if needed
         if masked and self.data_mask is not None:
             if invert_mask:
@@ -370,48 +453,37 @@ class NiftiImage:
         else:
             data = self.data
 
-        # Apply shift to slice number
+        # Apply shift to slice index
         slice_shift = self.shift[_slider_axes[view]]
         if slice_shift:
-            sl += self.shift[_slider_axes[view]]
-            if sl < 0 or sl >= self.n_voxels[_slider_axes[view]]:
-                self.current_slice = np.zeros((
+            idx += self.shift[_slider_axes[view]]
+            if idx < 0 or idx >= self.n_voxels[_slider_axes[view]]:
+                self.current_slice = np.ones((
                     self.n_voxels[_plot_axes[view][0]],
-                    self.n_voxels[_plot_axes[view][1]]))
+                    self.n_voxels[_plot_axes[view][1]])) * self.get_min_hu()
                 return
-        else:
-            if sl < 0:
-                print(f"Warning: slice {sl} outside valid range. "
-                      "Will plot slice 0.")
-                sl = 0
-            elif sl >= self.n_voxels[_slider_axes[view]]:
-                max_slice = self.n_voxels[_slider_axes[view]] - 1
-                print(f"Warning: slice {sl} outside valid range. "
-                      f"Will plot slice {max_slice}.")
-                sl = max_slice
-        self.sl = sl
 
         # Get 2D slice and adjust orientation
-        im_slice = np.transpose(data, _orient[view])[:, :, sl]
-        if view != "x-z":
+        im_slice = np.transpose(data, _orient[view])[:, :, idx]
+        x, y = _plot_axes[view]
+        if self.lims[y][1] > self.lims[y][0]:
             im_slice = im_slice[::-1, :]
 
         # Apply 2D translation
-        x, y = _plot_axes[view]
         shift_x = self.shift[x]
         shift_y = self.shift[y]
         if shift_x:
             im_slice = np.roll(im_slice, shift_x, axis=1)
             if shift_x > 0:
-                im_slice[:, :shift_x] = 0
+                im_slice[:, :shift_x] = self.get_min_hu()
             else:
-                im_slice[:, shift_x:] = 0
+                im_slice[:, shift_x:] = self.get_min_hu()
         if shift_y:
-            im_slice = np.roll(im_slice, -shift_y, axis=0)
-            if shift_y < 0:
-                im_slice[:-shift_y, :] = 0
+            im_slice = np.roll(im_slice, shift_y, axis=0)
+            if shift_y > 0:
+                im_slice[:shift_y, :] = self.get_min_hu()
             else:
-                im_slice[-shift_y:, :] = 0
+                im_slice[shift_y:, :] = self.get_min_hu()
 
         # Assign 2D array to current slice
         self.current_slice = im_slice
@@ -419,6 +491,8 @@ class NiftiImage:
     def plot(self, 
              view="x-y",
              sl=None, 
+             pos=None,
+             idx=None,
              ax=None, 
              gs=None, 
              figsize=None, 
@@ -441,8 +515,13 @@ class NiftiImage:
             Orientation in which to plot ("x-y"/"y-z"/"x-z").
 
         sl : int, default=None
-            Index of the slice to plot. If None, the middle slice will be
-            plotted.
+            Slice number. If <sl> and <pos> are both None, the middle slice 
+            will be plotted. 
+
+        pos : float, default=None
+            Position in mm of the slice to plot (will be rounded to the nearest
+            slice). If <sl> and <pos> are both None, the middle slice will be 
+            plotted. If <sl> and <pos> are both given, <sl> supercedes <pos>.
 
         ax : matplotlib.pyplot.Axes, default=None
             Axes on which to plot. If None, new axes will be created.
@@ -492,7 +571,7 @@ class NiftiImage:
         # Get slice
         self.set_ax(view, ax, gs, figsize, colorbar)
         self.ax.set_facecolor("black")
-        self.set_slice(view, sl, masked, invert_mask)
+        self.set_slice(view, sl, pos, masked, invert_mask)
 
         # Get colourmap
         kwargs = self.get_kwargs(mpl_kwargs)
@@ -537,9 +616,9 @@ class NiftiImage:
             ax = _slider_axes[view]
             if self.scale_in_mm:
                 z_str = "{} = {:.1f} mm".format(
-                    ax, self.idx_to_pos(self.sl, ax))
+                    ax, self.idx_to_pos(self.idx, ax))
             else:
-                z_str = f"{ax} = {self.sl}"
+                z_str = f"{ax} = {self.idx_to_slice(self.idx, ax)}"
 
             # Add annotation
             if matplotlib.colors.is_color_like(annotate_slice):
@@ -661,19 +740,21 @@ class DeformationImage(NiftiImage):
         self.quiver_kwargs = {"cmap": "jet"}
         self.grid_kwargs = {"color": "green"}
 
-    def set_slice(self, view, sl=None):
+    def set_slice(self, view, sl=None, pos=None):
         """Set 2D array corresponding to a slice of the deformation field in 
         a given orientation."""
 
-        im_slice = np.transpose(self.data, _orient[view] + [3])[:, :, sl, :]
-        if view != "x-z":
-            im_slice = im_slice[:, ::-1, :]
+        idx = self.get_idx(view, sl, pos, default_centre=False)
+        im_slice = np.transpose(self.data, _orient[view] + [3])[:, :, idx, :]
+        x, y = _plot_axes[view]
+        if self.lims[y][1] > self.lims[y][0]:
+            im_slice = im_slice[::-1, :, :]
         self.current_slice = im_slice
 
-    def get_deformation_slice(self, view, sl):
+    def get_deformation_slice(self, view, sl=None, pos=None):
         """Get voxel positions and displacement vectors on a 2D slice."""
 
-        self.set_slice(view, sl)
+        self.set_slice(view, sl, pos)
         x_ax, y_ax = _plot_axes[view]
 
         # Get x/y displacement vectors
@@ -698,8 +779,16 @@ class DeformationImage(NiftiImage):
         y = y.T
         return x, y, df_x, df_y
 
-    def plot(self, view, sl, ax=None, mpl_kwargs=None, plot_type="grid",
-             spacing=30):
+    def plot(
+        self, 
+        view, 
+        sl=None, 
+        pos=None, 
+        ax=None, 
+        mpl_kwargs=None, 
+        plot_type="grid", 
+        spacing=30
+    ):
         """Plot deformation field.
 
         Parameters
@@ -707,8 +796,15 @@ class DeformationImage(NiftiImage):
         view : str
             Orientation in which to plot ("x-y"/"y-z"/"x-z").
 
-        sl : int
-            Index of the slice to plot.
+        sl : int, default=None
+            Slice number. If <sl> and <pos> are both None, the middle slice 
+            will be plotted. 
+
+        pos : float, default=None
+            Position in mm of the slice to plot (will be rounded to the nearest
+            slice). If <sl> and <pos> are both None, the middle slice will be 
+            plotted. If <sl> and <pos> are both given, <sl> supercedes <pos>.
+
 
         ax : matplotlib.pyplot.Axes, default=None
             Axes on which to plot. If None, new axes will be created.
@@ -737,17 +833,24 @@ class DeformationImage(NiftiImage):
 
         self.set_spacing(spacing)
         if plot_type == "grid":
-            self.plot_grid(view, sl, ax, mpl_kwargs)
+            self.plot_grid(view, sl, pos, ax, mpl_kwargs)
         elif plot_type == "quiver":
-            self.plot_quiver(view, sl, ax, mpl_kwargs)
+            self.plot_quiver(view, sl, pos, ax, mpl_kwargs)
 
-    def plot_quiver(self, view, sl, ax=None, mpl_kwargs=None):
+    def plot_quiver(
+        self, 
+        view, 
+        sl, 
+        pos, 
+        ax, 
+        mpl_kwargs=None
+    ):
         """Draw a quiver plot on a set of axes."""
 
         # Get arrow positions and lengths
         self.set_ax(view, ax)
         x_ax, y_ax = _plot_axes[view]
-        x, y, df_x, df_y = self.get_deformation_slice(view, sl)
+        x, y, df_x, df_y = self.get_deformation_slice(view, sl, pos)
         arrows_x = df_x[::self.spacing[y_ax], ::self.spacing[x_ax]]
         arrows_y = -df_y[::self.spacing[y_ax], ::self.spacing[x_ax]]
         plot_x = x[::self.spacing[y_ax], ::self.spacing[x_ax]]
@@ -763,14 +866,21 @@ class DeformationImage(NiftiImage):
             ax.scatter(plot_x, plot_y, c="navy", marker=".")
         self.apply_zoom(view)
 
-    def plot_grid(self, view, sl, ax=None, mpl_kwargs=None):
+    def plot_grid(
+        self, 
+        view, 
+        sl, 
+        pos, 
+        ax, 
+        mpl_kwargs=None
+    ):
         """Draw a grid plot on a set of axes."""
 
         # Get gridline positions
         self.set_ax(view, ax)
         self.ax.autoscale(False)
         x_ax, y_ax = _plot_axes[view]
-        x, y, df_x, df_y = self.get_deformation_slice(view, sl)
+        x, y, df_x, df_y = self.get_deformation_slice(view, sl, pos)
         grid_x = x + df_x
         grid_y = y + df_y
 
@@ -866,10 +976,10 @@ class StructImage(NiftiImage):
         self.contours = {}
         for view, z in _slider_axes.items():
             self.contours[view] = {}
-            for i in range(self.n_voxels[z]):
-                contour = self.get_contour_slice(view, i)
+            for sl in range(1, self.n_voxels[z] + 1):
+                contour = self.get_contour_slice(view, sl)
                 if contour is not None:
-                    self.contours[view][i] = contour
+                    self.contours[view][sl] = contour
 
     def get_contour_slice(self, view, sl):
         """Convert mask to contours on a given slice <sl> in a given
@@ -906,7 +1016,15 @@ class StructImage(NiftiImage):
         else:
             print(f"Colour {color} is not a valid colour.")
 
-    def plot(self, view, sl, ax=None, mpl_kwargs=None, plot_type="contour"):
+    def plot(
+        self, 
+        view, 
+        sl=None, 
+        pos=None, 
+        ax=None, 
+        mpl_kwargs=None, 
+        plot_type="contour"
+    ):
         """Plot structure.
 
         Parameters
@@ -914,8 +1032,14 @@ class StructImage(NiftiImage):
         view : str
             Orientation in which to plot ("x-y"/"y-z"/"x-z").
 
-        sl : int
-            Index of the slice to plot.
+        sl : int, default=None
+            Slice number. If <sl> and <pos> are both None, the middle slice 
+            will be plotted. 
+
+        pos : float, default=None
+            Position in mm of the slice to plot (will be rounded to the nearest
+            slice). If <sl> and <pos> are both None, the middle slice will be 
+            plotted. If <sl> and <pos> are both given, <sl> supercedes <pos>.
 
         ax : matplotlib.pyplot.Axes, default=None
             Axes on which to plot. If None, new axes will be created.
@@ -933,16 +1057,23 @@ class StructImage(NiftiImage):
 
         # Make plot
         if plot_type == "contour":
-            self.plot_contour(view, sl, ax, mpl_kwargs)
+            self.plot_contour(view, sl, pos, ax, mpl_kwargs)
         elif plot_type == "mask":
-            self.plot_mask(view, sl, ax, mpl_kwargs)
+            self.plot_mask(view, sl, pos, ax, mpl_kwargs)
 
-    def plot_mask(self, view, sl, ax, mpl_kwargs=None):
+    def plot_mask(
+        self, 
+        view, 
+        sl, 
+        pos, 
+        ax, 
+        mpl_kwargs=None
+    ):
         """Plot structure as a coloured mask."""
 
         # Get slice
         self.set_ax(view, ax)
-        self.set_slice(view, sl)
+        self.set_slice(view, sl, pos)
 
         # Make colormap
         norm = matplotlib.colors.Normalize()
@@ -960,7 +1091,14 @@ class StructImage(NiftiImage):
         )
         self.apply_zoom(view)
 
-    def plot_contour(self, view, sl, ax, mpl_kwargs=None):
+    def plot_contour(
+        self, 
+        view, 
+        sl, 
+        pos, 
+        ax, 
+        mpl_kwargs=None
+    ):
         """Plot structure as a contour."""
 
         if not self.on_slice(view, sl):
@@ -969,6 +1107,7 @@ class StructImage(NiftiImage):
         self.set_ax(view, ax)
         kwargs = self.get_kwargs(mpl_kwargs, default=self.contour_kwargs)
         kwargs.setdefault("color", self.color)
+        idx = self.get_idx(view, sl, pos, default_centre=False)
 
         for points in self.contours[view][sl]:
             points_x = [p[0] for p in points]
@@ -1208,6 +1347,7 @@ class MultiImage(NiftiImage):
         self,
         view="x-y",
         sl=None,
+        pos=None,
         ax=None,
         gs=None,
         figsize=None,
@@ -1235,8 +1375,14 @@ class MultiImage(NiftiImage):
         view : str
             Orientation in which to plot ("x-y"/"y-z"/"x-z").
 
-        sl : int
-            Index of the slice to plot.
+        sl : int, default=None
+            Slice number. If <sl> and <pos> are both None, the middle slice 
+            will be plotted. 
+
+        pos : float, default=None
+            Position in mm of the slice to plot (will be rounded to the nearest
+            slice). If <sl> and <pos> are both None, the middle slice will be 
+            plotted. If <sl> and <pos> are both given, <sl> supercedes <pos>.
 
         ax : matplotlib.pyplot.Axes, default=None
             Axes on which to plot. If None, new axes will be created.
@@ -1315,13 +1461,13 @@ class MultiImage(NiftiImage):
         self.set_ax(view, ax, gs, figsize, colorbar)
         self.set_masks()
         NiftiImage.plot(
-            self, view, sl, self.ax, mpl_kwargs=mpl_kwargs,
+            self, view, sl, pos, ax=self.ax, mpl_kwargs=mpl_kwargs,
             show=False, colorbar=colorbar, masked=masked,
             invert_mask=invert_mask, mask_colour=mask_colour, figsize=figsize)
 
         # Plot dose field
         self.dose.plot(
-            view, self.sl, self.ax,
+            view, self.sl, ax=self.ax,
             mpl_kwargs=self.get_kwargs(dose_kwargs, default=self.dose_kwargs),
             show=False, masked=masked, invert_mask=invert_mask,
             mask_colour=mask_colour, colorbar=colorbar,
@@ -1329,7 +1475,7 @@ class MultiImage(NiftiImage):
 
         # Plot jacobian
         self.jacobian.plot(
-            view, self.sl, self.ax, mpl_kwargs=self.get_kwargs(
+            view, self.sl, ax=self.ax, mpl_kwargs=self.get_kwargs(
                 jacobian_kwargs, default=self.jacobian_kwargs),
             show=False, colorbar=colorbar,
             colorbar_label="Jacobian determinant")
@@ -1339,13 +1485,14 @@ class MultiImage(NiftiImage):
         for struct in self.structs:
             if not struct.visible:
                 continue
-            struct.plot(view, self.sl, self.ax, struct_kwargs, struct_plot_type)
-            if struct.on_slice(view, sl) and struct_plot_type != "none":
+            struct.plot(view, self.sl, ax=self.ax, mpl_kwargs=struct_kwargs, 
+                        plot_type=struct_plot_type)
+            if struct.on_slice(view, self.sl) and struct_plot_type != "none":
                 struct_handles.append(mpatches.Patch(color=struct.color,
                                                      label=struct.name_nice))
 
         # Plot deformation field
-        self.df.plot(view, self.sl, self.ax,
+        self.df.plot(view, self.sl, ax=self.ax,
                      mpl_kwargs=df_kwargs,
                      plot_type=df_plot_type,
                      spacing=df_spacing)

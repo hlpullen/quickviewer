@@ -304,14 +304,14 @@ class QuickViewer:
     def make_translation_ui(self):
 
         self.trans_ui = []
-        self.translation *= self.n > 1
         if not self.translation:
             return
 
+        self.trans_viewer = self.viewer[int(self.n > 1)]
         self.trans_ui.append(ipyw.HTML(value="<b>Translation:</b>"))
 
         # Make input/output filename UI
-        tfile = self.find_translation_file(self.viewer[1].im)
+        tfile = self.find_translation_file(self.trans_viewer.im)
         self.has_translation_input = tfile is not None
         tfile_out = "translation.txt"
         if self.has_translation_input:
@@ -328,7 +328,7 @@ class QuickViewer:
         # Make translation sliders
         self.tsliders = {}
         for ax in _axes:
-            n = self.viewer[1].im.n_voxels[ax]
+            n = self.trans_viewer.im.n_voxels[ax]
             self.tsliders[ax] = ipyw.IntSlider(
                 min=-n,
                 max=n,
@@ -375,12 +375,14 @@ class QuickViewer:
 
         # Set shift for image
         self.current_trans = new_trans
-        self.viewer[1].im.shift = self.current_trans
+        self.trans_viewer.im.set_shift(self.current_trans["x"],
+                                       self.current_trans["y"],
+                                       self.current_trans["z"])
 
         # Adjust descriptions
         for ax, slider in self.tsliders.items():
             slider.description = "{} ({:.0f} mm)".format(
-                ax, self.viewer[1].im.voxel_sizes[ax] * slider.value)
+                ax, self.trans_viewer.im.shift_mm[ax])
 
     def set_slider_widths(self):
         """Adjust widths of slider UI."""
@@ -594,7 +596,7 @@ class ImageViewer():
         init_struct=None,
         standalone=True,
         init_view="x-y",
-        init_idx=None,
+        init_sl=None,
         init_pos=None,
         v=(-300, 200),
         continuous_update=False,
@@ -619,7 +621,7 @@ class ImageViewer():
         if init_pos is not None and self.im.scale_in_mm:
             self.set_slice_from_pos(init_view, init_pos)
         else:
-            self.set_slice(init_view, init_idx)
+            self.set_slice(init_view, init_sl)
 
         # Assign plot settings
         # General settings
@@ -683,8 +685,8 @@ class ImageViewer():
 
         if sl is None:
             return
-        max_slice = self.im.n_voxels[_slider_axes[view]] - 1
-        min_slice = 0
+        max_slice = self.im.n_voxels[_slider_axes[view]]
+        min_slice = 1
         if self.slice[view] < min_slice:
             self.slice[view] = min_slice
         elif self.slice[view] > max_slice:
@@ -696,34 +698,30 @@ class ImageViewer():
         """Set the current slice number from a position in mm."""
 
         ax = _slider_axes[view]
-        idx = self.im.pos_to_idx(pos, ax)
-        self.set_slice(view, idx)
+        sl = self.im.pos_to_slice(pos, ax)
+        self.set_slice(view, sl)
 
-    def slider_to_idx(self, val, ax=None):
-        """Convert a slider value to a slice index."""
-
-        if ax is None:
-            ax = _slider_axes[self.view]
-        if self.im.scale_in_mm:
-            return self.im.pos_to_idx(val, ax)
-        else:
-            if ax == "z":
-                return int(self.im.n_voxels[ax] - val)
-            else:
-                return int(val - 1)
-
-    def idx_to_slider(self, idx, ax=None):
-        """Convert a slice index to a slider value."""
+    def slider_to_sl(self, val, ax=None):
+        """Convert a slider value to a slice number."""
 
         if ax is None:
             ax = _slider_axes[self.view]
+
         if self.im.scale_in_mm:
-            return self.im.idx_to_pos(idx, ax)
+            return self.im.pos_to_slice(val, ax)
         else:
-            if ax == "z":
-                return self.im.n_voxels[ax] - idx
-            else:
-                return idx + 1
+            return int(val)
+
+    def slice_to_slider(self, sl, ax=None):
+        """Convert a slice number to a slider value."""
+
+        if ax is None:
+            ax = _slider_axes[self.view]
+
+        if self.im.scale_in_mm:
+            return self.im.slice_to_pos(sl, ax)
+        else:
+            return sl
 
     def make_ui(self, vimage=None, share_slider=True):
         """Make Jupyter notebook UI. If qv_image contains another ImageViewer
@@ -775,10 +773,11 @@ class ImageViewer():
             self.main_ui.append(self.ui_hu)
 
             # Make slice slider
+            readout = ".1f" if self.im.scale_in_mm else ".0f"
             self.ui_slice = ipyw.FloatSlider(
                 continuous_update=self.continuous_update,
                 style=_style,
-                readout_format=".1f"
+                readout_format=readout
             )
             self.own_ui_slice = True
             self.update_slice_slider()
@@ -1116,7 +1115,7 @@ class ImageViewer():
             self.ui_slice.max = new_max
 
         # Set new value
-        val = self.idx_to_slider(self.slice[self.view])
+        val = self.slice_to_slider(self.slice[self.view])
         self.ui_slice.value = val
 
         # Set to final axis limits
@@ -1140,8 +1139,8 @@ class ImageViewer():
         if self.im.scale_in_mm:
             self.ui_slice.description = f"{ax} (mm)"
         else:
-            pos = self.idx_to_pos(
-                self.slider_to_idx(self.ui_slice.value), ax)
+            pos = self.im.slice_to_pos(
+                self.slider_to_sl(self.ui_slice.value), ax)
             self.ui_slice.description = f"{ax} ({pos:.1f} mm)"
 
     def jump_to_struct(self):
@@ -1153,7 +1152,7 @@ class ImageViewer():
         self.current_struct = self.ui_struct_jump.value
         struct = self.structs_for_jump[self.current_struct]
         mid_slice = int(np.mean(list(struct.contours[self.view].keys())))
-        self.ui_slice.value = self.idx_to_slider(
+        self.ui_slice.value = self.slice_to_slider(
             mid_slice, _slider_axes[self.view])
         self.ui_struct_jump.value = ""
 
@@ -1189,7 +1188,7 @@ class ImageViewer():
 
         # Get slice
         self.jump_to_struct()
-        self.slice[self.view] = self.slider_to_idx(self.ui_slice.value)
+        self.slice[self.view] = self.slider_to_sl(self.ui_slice.value)
         if not self.im.scale_in_mm:
             self.update_slice_slider_desc()
 
