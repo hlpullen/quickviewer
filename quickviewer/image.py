@@ -1025,7 +1025,7 @@ class StructImage(NiftiImage):
         # Assign a random colour
         self.assign_color(np.random.rand(3, 1).flatten())
 
-    def set_geom_properties(self):
+    def set_geom_properties(self, volume=True, length=True):
         """Find structure volume and length in each direction."""
 
         # Empty structure: return zeros
@@ -1202,6 +1202,20 @@ class StructImage(NiftiImage):
 
         return sl in self.contours[view]
 
+    def get_area(self, view, sl, units="voxels"):
+        """Get the area on a given slice."""
+
+        if not self.on_slice(view, sl):
+            return
+
+        self.set_slice(view, sl)
+        non_zero = np.argwhere(self.current_slice)
+        area = len(non_zero)
+        if units == "mm":
+            x, y = _plot_axes[view]
+            area *= abs(self.voxel_sizes[x] * self.voxel_sizes[y])
+        return area
+
     def get_extents(self, view, sl, units="voxels"):
         """Get extents along the x/y axes in a given view on a given slice."""
 
@@ -1209,7 +1223,7 @@ class StructImage(NiftiImage):
             return None, None
 
         self.set_slice(view, sl)
-        non_zero = np.argwhere(self.current_slice > 0.5)
+        non_zero = np.argwhere(self.current_slice)
         x, y = _plot_axes[view]
         if len(non_zero):
             mins = non_zero.min(0)
@@ -1367,8 +1381,7 @@ class MultiImage(NiftiImage):
             + list(matplotlib.cm.tab20.colors)
         )
         custom = struct_colours if struct_colours is not None else {}
-        custom_lower = {n.lower().replace(" ", "_"): col for n, col in
-                        custom.items()}
+        custom_lower = {standard_str(n): col for n, col in custom.items()}
         for i, struct in enumerate(self.structs):
 
             # Assign standard colour
@@ -1927,3 +1940,13 @@ class DiffImage(ComparisonImage):
                        aspect=self.ims[0].aspect[self.view],
                        cmap=self.cmap, 
                        **self.plot_kwargs)
+
+
+def standard_str(string):
+    """Convert a string to lowercase and replace all spaces with 
+    underscores."""
+
+    try:
+        return string.lower().replace(" ", "_")
+    except AttributeError:
+        return

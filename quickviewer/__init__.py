@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 import matplotlib as mpl
 
 from quickviewer.image import MultiImage, OrthogonalImage, ChequerboardImage, \
-        OverlayImage, DiffImage
+        OverlayImage, DiffImage, standard_str
 from quickviewer.image import _slider_axes, _df_plot_types, \
         _struct_plot_types, _orthog, _default_figsize, _plot_axes, _axes
 
@@ -279,6 +279,13 @@ class QuickViewer:
 
         length_units : str, default=None
             Units in which to display the lengths of structures if 
+            <struct_info> if True. If None, units will be voxels if 
+            <scale_in_mm> is False, or mm if <scale_in_mm> is True. Options:
+                (a) "mm"
+                (b) "voxels"
+
+        area_units : str, default=None
+            Units in which to display the areas of structures if 
             <struct_info> if True. If None, units will be voxels if 
             <scale_in_mm> is False, or mm if <scale_in_mm> is True. Options:
                 (a) "mm"
@@ -1001,6 +1008,7 @@ class ImageViewer():
         struct_linewidth=2,
         struct_info=False,
         length_units=None,
+        area_units=None,
         vol_units=None,
         struct_legend=True,
         legend_loc="lower left",
@@ -1078,13 +1086,14 @@ class ImageViewer():
         self.struct_info = struct_info
         if self.struct_info:
             for s in self.im.structs:
-                s.set_geom_properties()
-        self.vol_units = vol_units
-        self.length_units = length_units
-        if self.vol_units is None:
-            self.vol_units = "mm" if self.im.scale_in_mm else "voxels"
-        if self.length_units is None:
-            self.length_units = "mm" if self.im.scale_in_mm else "voxels"
+                s.set_geom_properties(length=False)
+        def get_units(units):
+            if units is None:
+                return "mm" if self.im.scale_in_mm else "voxels"
+            return units
+        self.area_units = get_units(area_units)
+        self.length_units = get_units(length_units)
+        self.vol_units = get_units(vol_units)
 
         # Make UI
         self.make_ui()
@@ -1164,10 +1173,14 @@ class ImageViewer():
             self.view = self.ui_view.value
 
         # Structure jumping menu
+        # Get list of structures
         self.structs_for_jump = {"": None, **{s.name_nice: s for s in
                                               self.im.structs}}
-        init_struct = self.init_struct if self.init_struct in \
-            self.structs_for_jump else ""
+        structs_standard = {standard_str(s): s for s in self.structs_for_jump}
+        if standard_str(self.init_struct) in structs_standard:
+            init_struct = structs_standard[standard_str(self.init_struct)]
+        else:
+            init_struct = ""
         self.ui_struct_jump = ipyw.Dropdown(
             options=self.structs_for_jump.keys(),
             value=init_struct,
@@ -1305,6 +1318,7 @@ class ImageViewer():
         # Columns for structure info
         self.ui_struct_checkboxes = []
         self.ui_struct_vol = []
+        self.ui_struct_area = []
         self.ui_struct_x = []
         self.ui_struct_y = []
         if self.struct_info:
@@ -1314,6 +1328,10 @@ class ImageViewer():
                 else "mm<sup>3</sup>"
             self.ui_struct_vol.append(ipyw.HTML(
                 value=f"<b>Volume ({vol_units})</b>"))
+            area_units = self.area_units if self.area_units != "mm" \
+                else "mm<sup>2</sup>"
+            self.ui_struct_area.append(ipyw.HTML(
+                value=f"<b>Area ({area_units})</b>"))
             self.ui_struct_x.append(ipyw.HTML())
             self.ui_struct_y.append(ipyw.HTML())
 
@@ -1324,11 +1342,13 @@ class ImageViewer():
             if not self.struct_info:
                 self.lower_ui.append(s.checkbox)
             else:
-                fmt = "{:.0f}" if self.vol_units == "ml" else "{:.0f}"
+                vol_fmt = "{:.0f}" if self.vol_units == "ml" else "{:.0f}"
                 self.ui_struct_vol.append(ipyw.Label(
-                    value=fmt.format(s.volume[self.vol_units])))
+                    value=vol_fmt.format(s.volume[self.vol_units])))
+                s.ui_area = ipyw.Label()
                 s.ui_x = ipyw.Label()
                 s.ui_y = ipyw.Label()
+                self.ui_struct_area.append(s.ui_area)
                 self.ui_struct_x.append(s.ui_x)
                 self.ui_struct_y.append(s.ui_y)
 
@@ -1340,6 +1360,7 @@ class ImageViewer():
                 ipyw.VBox(self.ui_struct_checkboxes),
                 ipyw.VBox(self.ui_struct_vol,
                           layout=ipyw.Layout(align_items="center")),
+                ipyw.VBox(self.ui_struct_area, layout=layout),
                 ipyw.VBox(self.ui_struct_x, layout=layout),
                 ipyw.VBox(self.ui_struct_y, layout=layout)
             ]))
@@ -1357,7 +1378,15 @@ class ImageViewer():
 
         # Update column values
         fmt = "{:.1f}" if self.length_units == "mm" else "{:.0f}"
+        area_fmt = "{:.1f}" if self.area_units == "mm" else "{:.0f}"
         for s in self.im.structs:
+
+            # Get area
+            area = s.get_area(self.view, self.slice[self.view],
+                              self.area_units)
+            s.ui_area.value = "—" if area is None else area_fmt.format(area)
+
+            # Get x/y lengths
             extents = s.get_extents(self.view, self.slice[self.view],
                                     self.length_units)
             extent_strs = []
