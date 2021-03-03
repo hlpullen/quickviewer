@@ -61,7 +61,7 @@ class QuickViewer:
         Parameters
         ----------
 
-        file_path : string/nifti/array/list
+        nii : string/nifti/array/list
             Source of image data for each plot. If multiple plots are to be
             shown, this must be a list. Image sources can be any of:
             (a) The path to a NIfTI file;
@@ -77,11 +77,11 @@ class QuickViewer:
 
         mask : string/nifti/array/list, default=None
             Source(s) of array(s) to with which to mask each plot (see valid
-            image sources for <file_path>).
+            image sources for <nii>).
 
         dose : string/nifti/array/list, default=None
             Source(s) of dose field array(s) to overlay on each plot (see valid
-            image sources for <file_path>).
+            image sources for <nii>).
 
         structs : string/list of strings/list of list of strings, default=None
             A string or list of strings corresponding to each image to be 
@@ -98,11 +98,11 @@ class QuickViewer:
 
         jacobian : string/nifti/array/list, default=None
             Source(s) of jacobian determinant array(s) to overlay on each plot 
-            (see valid image sources for <file_path>).
+            (see valid image sources for <nii>).
 
         df : string/nifti/array/list, default=None
             Source(s) of deformation field(s) to overlay on each plot 
-            (see valid image sources for <file_path>).
+            (see valid image sources for <nii>).
 
         share_slider : bool, default=True
             If True and all displayed images are in the same frame of 
@@ -137,16 +137,16 @@ class QuickViewer:
 
         show_cb : bool, default=False
             If True, a chequerboard image will be displayed. This option will 
-            only be applied if the number of images in <file_path> is 2.
+            only be applied if the number of images in <nii> is 2.
 
         show_overlay : bool, default=False
             If True, a blue/red transparent overlaid image will be displayed.
             This option will only be applied if the number of images in 
-            <file_path> is 2.
+            <nii> is 2.
 
         show_diff : bool, default=False
             If True, a the difference between two images will be shown. This 
-            option will only be applied if the number of images in <file_path> 
+            option will only be applied if the number of images in <nii> 
             is 2.
 
         comparison_only : bool, False
@@ -836,6 +836,21 @@ class QuickViewer:
                 elif event.key == "up":
                     v.increase_slice(n_big)
 
+        # Press i to invert comparisons
+        elif event.key == "i":
+            if len(self.comparison):
+                self.ui_invert.value = not self.ui_invert.value
+
+        # Press o to change overlay opacity
+        elif event.key == "o":
+            if self.show_overlay:
+                ops = [0.2, 0.35, 0.5, 0.65, 0.8]
+                next_op = {ops[i]: ops[i + 1] if i + 1 < len(ops)
+                             else ops[0] for i in range(len(ops))}
+                diffs = [abs(op - self.ui_overlay.value) for op in ops]
+                current = ops[diffs.index(min(diffs))]
+                self.ui_overlay.value = next_op[current]
+
         # Remake plot
         self.plotting = False
         self.plot(tight_layout=(event.key == "v"))
@@ -897,20 +912,28 @@ class QuickViewer:
 
         # Plot all comparison images
         if len(self.comparison):
+
             invert = self.ui_invert.value
+
+            # Plot chequerboard
             if self.has_chequerboard:
-                self.chequerboard.plot(invert=invert,
+                ImageViewer.plot_image(self, self.chequerboard, invert=invert, 
                                        n_splits=self.ui_cb.value,
                                        mpl_kwargs=self.viewer[0].v_min_max)
+
+            # Plot overlay
             if self.has_overlay:
-                self.overlay.plot(invert=invert,
-                                  opacity=self.ui_overlay.value,
-                                  mpl_kwargs=self.viewer[0].v_min_max,
-                                  legend=self.overlay_legend,
-                                  legend_loc=self.legend_loc)
+                ImageViewer.plot_image(self, self.overlay, invert=invert,
+                                       opacity=self.ui_overlay.value,
+                                       mpl_kwargs=self.viewer[0].v_min_max,
+                                       legend=self.overlay_legend,
+                                       legend_loc=self.legend_loc)
+
+            # Plot difference image
             if self.has_diff:
-                self.diff.plot(invert=invert,
-                               mpl_kwargs=self.viewer[0].v_min_max)
+                ImageViewer.plot_image(self, self.diff, invert=invert,
+                                       mpl_kwargs=self.viewer[0].v_min_max)
+
             for c in self.comparison:
                 self.adjust_axes(c)
 
@@ -1386,25 +1409,6 @@ class ImageViewer():
                 self.ui_struct_plot_type.value = \
                     next_type[self.ui_struct_plot_type.value]
 
-        #  # Press i to invert comparisons
-        #  elif event.key == "i":
-            #  if self.show_cb:
-                #  self.invert_cb.value = not self.invert_cb.value
-            #  if self.overlay:
-                #  self.invert_overlay.value = not self.invert_overlay.value
-            #  if self.show_diff:
-                #  self.invert_diff.value = not self.invert_diff.value
-
-        #  # Press o to change overlay opacity
-        #  elif event.key == "o":
-            #  if self.overlay:
-                #  ops = [0.2, 0.35, 0.5, 0.65, 0.8]
-                #  next_op = {ops[i]: ops[i + 1] if i + 1 < len(ops)
-                             #  else ops[0] for i in range(len(ops))}
-                #  diffs = [abs(op - self.overlay_slider.value) for op in ops]
-                #  current = ops[diffs.index(min(diffs))]
-                #  self.overlay_slider.value = next_op[current]
-
         # Press j to jump between structures
         elif event.key == "j" and self.has_structs:
             structs = self.ui_struct_jump.options
@@ -1613,34 +1617,28 @@ class ImageViewer():
         for s in self.im.structs:
             s.visible = s.checkbox.value
 
-        # Get axes
-        ax = None
-        if not self.in_notebook and hasattr(self.im, "ax"):
-            ax = getattr(self.im, "ax")
-            ax.clear()
-
         # Make plot
-        self.im.plot(self.view,
-                     self.slice[self.view],
-                     ax=ax,
-                     gs=self.gs,
-                     mpl_kwargs=mpl_kwargs,
-                     figsize=self.figsize,
-                     colorbar=self.colorbar,
-                     masked=self.ui_mask.value,
-                     invert_mask=self.invert_mask,
-                     mask_colour=self.mask_colour,
-                     dose_kwargs=dose_kwargs,
-                     jacobian_kwargs=jacobian_kwargs,
-                     df_plot_type=self.ui_df.value,
-                     df_spacing=self.df_spacing,
-                     df_kwargs=self.df_kwargs,
-                     struct_plot_type=self.struct_plot_type,
-                     struct_kwargs=struct_kwargs,
-                     struct_legend=self.struct_legend,
-                     legend_loc=self.legend_loc,
-                     annotate_slice=self.annotate_slice,
-                     show=False)
+        self.plot_image(self.im,
+                        view=self.view,
+                        sl=self.slice[self.view],
+                        gs=self.gs,
+                        mpl_kwargs=mpl_kwargs,
+                        figsize=self.figsize,
+                        colorbar=self.colorbar,
+                        masked=self.ui_mask.value,
+                        invert_mask=self.invert_mask,
+                        mask_colour=self.mask_colour,
+                        dose_kwargs=dose_kwargs,
+                        jacobian_kwargs=jacobian_kwargs,
+                        df_plot_type=self.ui_df.value,
+                        df_spacing=self.df_spacing,
+                        df_kwargs=self.df_kwargs,
+                        struct_plot_type=self.struct_plot_type,
+                        struct_kwargs=struct_kwargs,
+                        struct_legend=self.struct_legend,
+                        legend_loc=self.legend_loc,
+                        annotate_slice=self.annotate_slice,
+                        show=False)
         self.plotting = False
 
         # Ensure callbacks are set if outside jupyter
@@ -1651,6 +1649,19 @@ class ImageViewer():
         if not self.in_notebook:
             self.im.fig.canvas.draw_idle()
             self.im.fig.canvas.flush_events()
+
+    def plot_image(self, im, **kwargs):
+        """Plot a NiftiImage, reusing existing axes if outside a Jupyter 
+        notebook."""
+
+        # Get axes
+        ax = None
+        if not self.in_notebook and hasattr(im, "ax"):
+            ax = getattr(im, "ax")
+            ax.clear()
+
+        # Plot image
+        im.plot(ax=ax, **kwargs)
 
     def save_fig(self, _=None):
         """Save figure to a file."""
