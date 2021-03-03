@@ -1,5 +1,4 @@
 """Classes for displaying interactive medical image plots."""
-
 import os
 import re
 import itertools
@@ -234,6 +233,10 @@ class QuickViewer:
 
         mask_colour : matplotlib color, default="black"
             Colour in which to display masked areas.
+
+        mask_threshold : float, default=0.5
+            Threshold on mask array; voxels with values below this threshold
+            will be masked (or values above, if <invert_mask> is True).
 
         jacobian_opacity : float, default=0.5
             Initial opacity of the overlaid jacobian determinant. Can later 
@@ -858,6 +861,22 @@ class QuickViewer:
     def on_scroll(self, event):
         """Callbacks for scroll events."""
 
+        # First viewers
+        self.plotting = True
+        self.viewer[0].on_scroll(event)
+
+        # Extra callbacks for scrolling each plot
+        if len(self.per_image_ui):
+            for v in self.viewer[1:]:
+                if event.button == "up":
+                    self.increase_slice()
+                elif event.button == "down":
+                    self.decrease_slice()
+
+        # Remake plot
+        self.plotting = False
+        self.plot(tight_layout=False)
+
     def adjust_axes(self, im):
         """Match the axis range of a view to the viewers whose indices are
         stored in self.match_viewers."""
@@ -972,6 +991,7 @@ class ImageViewer():
         dose_kwargs=None,
         invert_mask=False,
         mask_colour="black",
+        mask_threshold=0.5,
         jacobian_opacity=0.5,
         jacobian_kwargs=None,
         df_plot_type="grid",
@@ -1001,13 +1021,15 @@ class ImageViewer():
 
         # Set initial view
         view_map = {"y-x": "x-y", "z-x": "x-z", "z-y": "y-z"}
+        if self.im.dim2:
+            init_view = self.im.orientation
         if init_view in view_map:
             self.view = view_map[init_view]
         else:
             self.view = init_view
 
         # Set initial slice numbers
-        self.slice = {view: int(self.im.n_voxels[z] / 2) for view, z
+        self.slice = {view: np.ceil(self.im.n_voxels[z] / 2) for view, z
                       in _slider_axes.items()}
         if init_pos is not None and self.im.scale_in_mm:
             self.set_slice_from_pos(init_view, init_pos)
@@ -1033,6 +1055,7 @@ class ImageViewer():
         # Mask settings
         self.invert_mask = invert_mask
         self.mask_colour = mask_colour
+        self.mask_threshold = mask_threshold
 
         # Dose settings
         self.init_dose_opacity = dose_opacity
@@ -1136,7 +1159,8 @@ class ImageViewer():
                 disabled=False,
                 style=_style,
             )
-            self.main_ui.append(self.ui_view)
+            if not self.im.dim2:
+                self.main_ui.append(self.ui_view)
         else:
             self.ui_view = vimage.ui_view
             self.view = self.ui_view.value
@@ -1177,7 +1201,8 @@ class ImageViewer():
             )
             self.own_ui_slice = True
             self.update_slice_slider()
-            self.main_ui.append(self.ui_slice)
+            if not self.im.dim2:
+                self.main_ui.append(self.ui_slice)
 
         else:
             self.ui_hu = vimage.ui_hu
@@ -1415,9 +1440,12 @@ class ImageViewer():
                     next_type[self.ui_struct_plot_type.value]
 
         # Press j to jump between structures
-        elif event.key == "j" and self.has_structs:
-            structs = self.ui_struct_jump.options
-            current_idx = structs.index(self.current_struct)
+        elif event.key == "j" and self.im.has_structs:
+            structs = self.ui_struct_jump.options[1:]
+            if not hasattr(self, "current_struct"):
+                current_idx = 0
+            else:
+                current_idx = structs.index(self.current_struct)
             new_idx = current_idx + 1
             if new_idx == len(structs):
                 new_idx = 0
@@ -1634,6 +1662,7 @@ class ImageViewer():
                         masked=self.ui_mask.value,
                         invert_mask=self.invert_mask,
                         mask_colour=self.mask_colour,
+                        mask_threshold=self.mask_threshold,
                         dose_kwargs=dose_kwargs,
                         jacobian_kwargs=jacobian_kwargs,
                         df_plot_type=self.ui_df.value,

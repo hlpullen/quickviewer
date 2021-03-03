@@ -41,7 +41,8 @@ class NiftiImage:
         title=None,
         scale_in_mm=True, 
         downsample=None,
-        zoom=None
+        zoom=None,
+        orientation="x-y"
     ):
         """Initialise from a NIfTI file, NIfTI object, or numpy array.
 
@@ -82,6 +83,10 @@ class NiftiImage:
             directions. If a tuple of three values is given, these will be used
             as the zoom factors in each direction in the order (x, y, z). If
             None, the image will not be zoomed in.
+
+        orientation : str, default="x-y"
+            String specifying the orientation of the image if a 2D array is 
+            given for <nii>. Must be "x-y", "y-z", or "x-z".
         """
 
         # Assign settings
@@ -124,10 +129,19 @@ class NiftiImage:
             else:
                 raise TypeError("<nii> must be a string, nibabel object, or "
                                 "numpy array.")
+
         # Assign geometric properties
         self.data = np.nan_to_num(self.data)
         self.shape = self.data.shape
         self.valid = True
+
+        # Check number of dimensions
+        self.dim2 = self.data.ndim == 2
+        if self.dim2:
+            affine, voxel_sizes, origin = self.convert_to_3d(
+                affine, voxel_sizes, origin, orientation)
+
+        # Assign geometric properties
         if affine is not None:
             self.voxel_sizes = {ax: affine[n, n] for ax, n in _axes.items()}
             self.origin = {ax: affine[n, 3] for ax, n in _axes.items()}
@@ -141,6 +155,36 @@ class NiftiImage:
         # Apply downsampling
         if downsample is not None:
             self.downsample(downsample)
+
+    def convert_to_3d(self, affine, voxel_sizes, origin, orientation):
+        """Convert own image array to 3D and fill voxel sizes/origin."""
+
+        if self.data.ndim != 2:
+            return
+
+        self.orientation = orientation
+        self.data = self.data[..., np.newaxis]
+
+        if affine is not None:
+            voxel_sizes = [affine[0, 0], affine[1, 1]]
+            origin = [affine[0, 2], affine[1,2]]
+            affine = None
+        if orientation == "x-y":
+            voxel_sizes = [voxel_sizes[0], voxel_sizes[1], 1]
+            origin = [origin[0], origin[2], 0]
+        elif orientation == "x-z":
+            self.data = np.transpose(self.data, [0, 2, 1])
+            voxel_sizes = [voxel_sizes[0], 1, voxel_sizes[1]]
+            origin = [0, origin[0], origin[2]]
+        elif orientation == "y-z":
+            self.data = np.transpose(self.data, [2, 0, 1])
+            voxel_sizes = [1, voxel_sizes[0], voxel_sizes[1]]
+            origin = [0, origin[0], origin[2]]
+        else:
+            raise TypeError("Orientation of 2D image must be x-y, y-z, "
+                            "or x-z.")
+
+        return affine, voxel_sizes, origin
 
     def set_geom(self):
         """Assign geometric properties based on image data, origin, and
@@ -406,7 +450,7 @@ class NiftiImage:
         z = _slider_axes[view]
         if sl is None and pos is None:
             if default_centre:
-                idx = int(self.n_voxels[z] / 2)
+                idx = np.ceil(self.n_voxels[z] / 2)
             else:
                 raise TypeError("Either <sl> or <pos> must be provided!")
         elif sl is not None:
@@ -424,7 +468,7 @@ class NiftiImage:
         return self.min_hu
 
     def set_slice(self, view, sl=None, pos=None, masked=False, 
-                  invert_mask=False):
+                  invert_mask=False, mask_threshold=0.5):
         """Assign a 2D array corresponding to a slice of the image in a given
         orientation to class variable self.current_slice. If the variable
         self.shift contains nonzero elements, the slice will be translated by
@@ -446,12 +490,17 @@ class NiftiImage:
 
         masked : bool, default=False
             If True and self.data_mask is not None, the mask in data_mask
-            will be applied to the image. Voxels above a threshold of 0.5
+            will be applied to the image. Voxels above the mask threshold
             in self.data_mask will be masked.
 
         invert_mask : bool, default=False
-            If True, values below the mask threshold of 0.5 will be used to
-            mask the image instead of above 0.5. Ignored if masked is False.
+            If True, values below the mask threshold will be used to
+            mask the image instead of above threshold. Ignored if masked is 
+            False.
+
+        mask_threshold : float, default=0.5
+            Threshold on mask array; voxels with values below this threshold
+            will be masked (or values above, if <invert_mask> is True).
         """
 
         # Assign current orientation and slice index
@@ -464,9 +513,11 @@ class NiftiImage:
         # Apply mask if needed
         if masked and self.data_mask is not None:
             if invert_mask:
-                data = np.ma.masked_where(self.data_mask > 0.5, self.data)
+                data = np.ma.masked_where(self.data_mask > mask_threshold, 
+                                          self.data)
             else:
-                data = np.ma.masked_where(self.data_mask < 0.5, self.data)
+                data = np.ma.masked_where(self.data_mask < mask_threshold, 
+                                          self.data)
         else:
             data = self.data
 
@@ -524,6 +575,7 @@ class NiftiImage:
              masked=False,
              invert_mask=False, 
              mask_colour="black", 
+             mask_threshold=0.5,
              no_ylabel=False,
              no_title=False,
              annotate_slice=None
@@ -578,6 +630,10 @@ class NiftiImage:
         mask_colour : matplotlib colour, default="black"
             Colour in which to plot masked areas.
 
+        mask_threshold : float, default=0.5
+            Threshold on mask array; voxels with values below this threshold
+            will be masked (or values above, if <invert_mask> is True).
+
         no_ylabel : bool, default=False
             If True, the y axis will not be labelled.
 
@@ -592,7 +648,7 @@ class NiftiImage:
         # Get slice
         self.set_ax(view, ax, gs, figsize, colorbar)
         self.ax.set_facecolor("black")
-        self.set_slice(view, sl, pos, masked, invert_mask)
+        self.set_slice(view, sl, pos, masked, invert_mask, mask_threshold)
 
         # Get colourmap
         kwargs = self.get_kwargs(mpl_kwargs)
@@ -1384,6 +1440,7 @@ class MultiImage(NiftiImage):
         masked=False,
         invert_mask=False,
         mask_colour="black",
+        mask_threshold=0.5,
         jacobian_kwargs=None,
         df_kwargs=None,
         df_plot_type="grid",
@@ -1446,6 +1503,10 @@ class MultiImage(NiftiImage):
         mask_colour : matplotlib colour, default="black"
             Colour in which to plot masked areas.
 
+        mask_threshold : float, default=0.5
+            Threshold on mask array; voxels with values below this threshold
+            will be masked (or values above, if <invert_mask> is True).
+
         jacobian_kwargs : dict, default=None
             Dictionary of keyword arguments to pass to matplotlib.imshow() for
             the jacobian determinant.
@@ -1489,15 +1550,16 @@ class MultiImage(NiftiImage):
         NiftiImage.plot(
             self, view, sl, pos, ax=self.ax, mpl_kwargs=mpl_kwargs,
             show=False, colorbar=colorbar, masked=masked,
-            invert_mask=invert_mask, mask_colour=mask_colour, figsize=figsize)
+            invert_mask=invert_mask, mask_colour=mask_colour, 
+            mask_threshold=mask_threshold, figsize=figsize)
 
         # Plot dose field
         self.dose.plot(
             view, self.sl, ax=self.ax,
             mpl_kwargs=self.get_kwargs(dose_kwargs, default=self.dose_kwargs),
             show=False, masked=masked, invert_mask=invert_mask,
-            mask_colour=mask_colour, colorbar=colorbar,
-            colorbar_label="Dose (Gy)")
+            mask_threshold=mask_threshold, mask_colour=mask_colour, 
+            colorbar=colorbar, colorbar_label="Dose (Gy)")
 
         # Plot jacobian
         self.jacobian.plot(

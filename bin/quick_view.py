@@ -61,6 +61,8 @@ parser.add_argument("--invert_mask", "-mi", action="store_true",
                     help="Invert mask")
 parser.add_argument("--mask_colour", "-mc", type=str,
                     help="Colour in which to display masked areas")
+parser.add_argument("--mask_threshold", "-mt", type=float,
+                    help="Threshold for masking.")
 
 # Get comparison options
 parser.add_argument("--show_cb", "-cb", action="store_true",
