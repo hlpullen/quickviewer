@@ -780,9 +780,16 @@ class QuickViewer:
             n_cols = n_plots
             n_rows = 1
 
-        # Make figure
+        # Calculate height and width
         height = self.figsize * n_rows
         width = self.figsize * sum(width_ratios)
+
+        # Outside notebook, just resize figure
+        if not self.in_notebook and hasattr(self, "fig"):
+            self.fig.set_size_inches(width, height)
+            return
+
+        # Make new figure
         self.fig = plt.figure(figsize=(width, height))
 
         # Make gridspec
@@ -797,8 +804,44 @@ class QuickViewer:
             i += 1
 
         # Assign callbacks to figure
-        #  if not self.in_notebook:
-            #  self.set_callbacks()
+        if not self.in_notebook:
+            self.set_callbacks()
+
+    def set_callbacks(self):
+        """Set callbacks for scrolls and keypresses."""
+
+        self.fig.canvas.mpl_connect('key_press_event', self.on_key)
+        self.fig.canvas.mpl_connect('scroll_event', self.on_scroll)
+
+    def on_key(self, event):
+        """Callbacks for key presses."""
+
+        # Apply all callbacks to first viewer
+        self.plotting = True
+        self.viewer[0].on_key(event)
+
+        # Extra callbacks for scrolling each plot
+        if len(self.per_image_ui):
+            for v in self.viewer[1:]:
+
+                # Scrolling
+                n_small = 1
+                n_big = 5
+                if event.key == "left":
+                    v.decrease_slice(n_small)
+                elif event.key == "right":
+                    v.increase_slice(n_small)
+                elif event.key == "down":
+                    v.decrease_slice(n_big)
+                elif event.key == "up":
+                    v.increase_slice(n_big)
+
+        # Remake plot
+        self.plotting = False
+        self.plot(tight_layout=(event.key == "v"))
+
+    def on_scroll(self, event):
+        """Callbacks for scroll events."""
 
     def adjust_axes(self, im):
         """Match the axis range of a view to the viewers whose indices are
@@ -811,7 +854,7 @@ class QuickViewer:
             im.ax.set_ylim(self.ylim)
             im.apply_zoom(self.view, zoom_x=False)
 
-    def plot(self, **kwargs):
+    def plot(self, tight_layout=True, **kwargs):
         """Plot all images."""
 
         if self.plotting:
@@ -874,13 +917,19 @@ class QuickViewer:
         if self.suptitle is not None:
             self.fig.suptitle(self.suptitle)
 
-        plt.tight_layout()
+        if tight_layout:
+            plt.tight_layout()
         self.plotting = False
 
         # Automatic saving on first plot
         if self.viewer[0].save_as is not None and not self.saved:
             self.viewer[0].save_fig()
             self.saved = True
+
+        # Update figure
+        if not self.in_notebook:
+            self.fig.canvas.draw_idle()
+            self.fig.canvas.flush_events()
 
 
 class ImageViewer():
@@ -1295,6 +1344,9 @@ class ImageViewer():
     def set_callbacks(self):
         """Set up matplotlib callback functions for interactive plotting."""
 
+        if not self.standalone or self.callbacks_set:
+            return
+
         self.im.fig.canvas.mpl_connect('key_press_event', self.on_key)
         self.im.fig.canvas.mpl_connect('scroll_event', self.on_scroll)
         self.callbacks_set = True
@@ -1377,7 +1429,8 @@ class ImageViewer():
             return
         
         # Remake plot
-        self.plot()
+        if self.standalone:
+            self.plot()
 
     def on_scroll(self, event):
         """Events run on scroll outside jupyter notebook."""
@@ -1390,7 +1443,8 @@ class ImageViewer():
             return
 
         # Remake plot
-        self.plot()
+        if self.standalone:
+            self.plot()
 
     def increase_slice(self, n=1):
         """Increase slice slider value by n slices."""
@@ -1401,7 +1455,7 @@ class ImageViewer():
         else:
             self.ui_slice.value = self.ui_slice.max
 
-    def decrease_slice(self, n):
+    def decrease_slice(self, n=1):
         """Decrease slice slider value by n slices."""
 
         new_val = self.ui_slice.value - n * self.ui_slice.step
@@ -1568,7 +1622,7 @@ class ImageViewer():
         # Make plot
         self.im.plot(self.view,
                      self.slice[self.view],
-                     #  ax=ax,
+                     ax=ax,
                      gs=self.gs,
                      mpl_kwargs=mpl_kwargs,
                      figsize=self.figsize,
@@ -1590,7 +1644,7 @@ class ImageViewer():
         self.plotting = False
 
         # Ensure callbacks are set if outside jupyter
-        if not self.in_notebook and not self.callbacks_set:
+        if not self.in_notebook:
             self.set_callbacks()
 
         # Update figure

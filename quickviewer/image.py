@@ -1539,10 +1539,16 @@ class OrthogonalImage(MultiImage):
         width_orthog = MultiImage.get_relative_width(self, _orthog[view])
         return width_own + width_orthog
 
-    def set_axes(self, view, gs=None, figsize=None, colorbar=False):
-        """Set up axes for the plot. If <gs> is not None, the axes will 
-        be created within a gridspec on the current matplotlib figure. 
-        Otherwise, a new figure with height <figsize> will be produced."""
+    def set_axes(self, view, ax=None, gs=None, figsize=None, 
+                 colorbar=False):
+        """Set up axes for the plot. If <ax> is not None and <orthog_ax> has
+        already been set, these axes will be used. Otherwise if <gs> is not 
+        None, the axes will be created within a gridspec on the current 
+        matplotlib figure.  Otherwise, a new figure with height <figsize> 
+        will be produced."""
+
+        if ax is not None and hasattr(self, "orthog_ax"):
+            self.ax = ax
 
         width_ratios = [
             MultiImage.get_relative_width(self, view, colorbar),
@@ -1556,13 +1562,14 @@ class OrthogonalImage(MultiImage):
             fig = plt.gcf()
             self.gs = gs.subgridspec(1, 2, width_ratios=width_ratios)
 
-        self.own_ax = fig.add_subplot(self.gs[0])
+        self.ax = fig.add_subplot(self.gs[0])
         self.orthog_ax = fig.add_subplot(self.gs[1])
 
     def plot(self,
              view,
              sl=None,
              pos=None,
+             ax=None,
              gs=None,
              figsize=None,
              mpl_kwargs=None,
@@ -1574,10 +1581,10 @@ class OrthogonalImage(MultiImage):
             ):
         """Plot MultiImage and orthogonal view of main image and structs."""
 
-        self.set_axes(view, gs, figsize, colorbar)
+        self.set_axes(view, ax, gs, figsize, colorbar)
 
         # Plot the MultiImage
-        MultiImage.plot(self, view, sl=sl, pos=pos, ax=self.own_ax, 
+        MultiImage.plot(self, view, sl=sl, pos=pos, ax=self.ax, 
                         colorbar=colorbar, show=False, mpl_kwargs=mpl_kwargs,
                         struct_kwargs=struct_kwargs,
                         struct_plot_type=struct_plot_type,
