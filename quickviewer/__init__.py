@@ -53,8 +53,68 @@ class QuickViewer:
         **kwargs
     ):
         """
+        Display one or more interactive images.
+
         Parameters
         ----------
+
+        file_path : string/nifti/array/list
+            Source of image data for each plot. If multiple plots are to be
+            shown, this must be a list. Image sources can be any of:
+            (a) The path to a NIfTI file;
+            (b) A nibabel.nifti1.Nifti1Image object;
+            (c) The path to a file containing a NumPy array;
+            (d) A NumPy array.
+
+        title : string or list of strings, default=None
+            Custom title(s) to use for the image(s) to be displayed. If the 
+            number of titles given, n, is less than the number of images, only
+            the first n figures will be given custom titles. If any titles are
+            None, the name of the image file will be used as the title.
+
+        mask : string/nifti/array/list, default=None
+            Source(s) of array(s) to with which to mask each plot (see valid
+            image sources for <file_path>).
+
+        dose : string/nifti/array/list, default=None
+            Source(s) of dose field array(s) to overlay on each plot (see valid
+            image sources for <file_path>).
+
+        structs : string/list of strings/list of list of strings, default=None
+            A string or list of strings corresponding to each image to be 
+            shown. These strings can be:
+                (a) A path to a NIfTI structure file;
+                (b) A path to a directory containing NIfTI structure files;
+                (c) A wildcard matching path(s) to NIfTI structure file(s);
+                (d) A wildcard matching path(s) to directories containing 
+                    NIfTI structure file(s).
+            For each image, the structures in all NIfTI files matching the 
+            contents of the corresponding string or list of strings will be
+            overlaid on the image. If the item corresponding to the image is 
+            None, no structures will be overlaid on that image.
+
+        jacobian : string/nifti/array/list, default=None
+            Source(s) of jacobian determinant array(s) to overlay on each plot 
+            (see valid image sources for <file_path>).
+
+        df : string/nifti/array/list, default=None
+            Source(s) of deformation field(s) to overlay on each plot 
+            (see valid image sources for <file_path>).
+
+        share_slider : bool, default=True
+            If True and all displayed images are in the same frame of 
+            reference, a single slice slider will be shared between all plots.
+            If plots have different frames of reference, this option will be 
+            ignored.
+
+        orthog_view : bool, default=False
+            If True, an orthgonal view with an indicator line showing the 
+            current slice will be displayed alongside each plot.
+
+        plots_per_row : int, default=None
+            Number of plots to display before starting a new row. If None,
+            all plots will be shown on a single row.
+
         match_axes : int/str, default=None
             Method for adjusting axis limits. Can either be:
             - An integer n, where 0 < n < number of plots, or n is -1. The axes
@@ -65,8 +125,225 @@ class QuickViewer:
               overlapping region.
             - "x": axes will be adjusted to cover the same range across
               whatever the x axis is in the current view.
-            - "x": axes will be adjusted to cover the same range across
+            - "y": axes will be adjusted to cover the same range across
               whatever the y axis is in the current view.
+
+        scale_in_mm : bool, default=True
+            If True, the axis scales will be shown in mm instead of array
+            indices.
+
+        show_cb : bool, default=False
+            If True, a chequerboard image will be displayed. This option will 
+            only be applied if the number of images in <file_path> is 2.
+
+        show_overlay : bool, default=False
+            If True, a blue/red transparent overlaid image will be displayed.
+            This option will only be applied if the number of images in 
+            <file_path> is 2.
+
+        show_diff : bool, default=False
+            If True, a the difference between two images will be shown. This 
+            option will only be applied if the number of images in <file_path> 
+            is 2.
+
+        comparison_only : bool, False
+            If True, only comparison images (overlay/chequerboard/difference)
+            will be shown. If no comparison options are selected, this 
+            parameter will be ignored.
+
+        cb_splits : int, default=2
+            Number of sections to show for chequerboard image. Minimum = 1
+            (corresponding to no chequerboard). Can later be changed 
+            interactively.
+
+        overlay_opacity : float, default=0.5
+            Initial opacity of overlay. Can later be changed interactively.
+
+        translation : bool, default=False
+            If True, widgets will be displayed allowing the user to apply a 
+            translation to the image and write this to an elastix transform 
+            file or plain text file.
+
+        translation_file_to_overwrite : str, default=None
+            If not None and the <translation> option is used, this parameter
+            will be used to populate the "Original" and "Output" file fields in 
+            the translation user interface.
+
+        suptitle : string, default=None
+            Global title for all subplots. If None, no suptitle will be added.
+
+        kwargs
+        ------
+
+        init_view : string, default='x-y'
+            Orientation at which to initially display the image(s).
+
+        init_sl : integer, default=None
+            Slice number in the initial orientation direction at which to 
+            display the first image (can be changed interactively later). If
+            None, the central slice will be displayed.
+
+        init_pos : float, default=None
+            Position in mm of the first slice to display. This will be rounded
+            to the nearest slice. If <init_pos> and <init_idx> are both given,
+            <init_pos> will override <init_idx> only if <scale_in_mm> is True.
+
+        v : tuple, default=(-300, 200)
+            HU thresholds at which to display the first image. Can later be 
+            changed interactively.
+
+        figsize : float, default=5
+            Height of the displayed figure in inches. If None, the value in
+            _default_figsize is used.
+
+        colorbar : bool, default=False
+            If True, colorbars will be displayed for HU, dose and Jacobian 
+            determinant.
+
+        mpl_kwargs : dict, default=None
+            Dictionary of keyword arguments to pass to matplotlib.pyplot.imshow
+            for the main image (e.g. to change colormap to red, set 
+            mpl_kwargs={"cmap": "Reds"}). Note that "vmin" and "vmax" are
+            set separately via the <v> argument.
+
+        dose_opacity : float, default=0.5
+            Initial opacity of the overlaid dose field. Can later be changed
+            interactively.
+
+        dose_kwargs : dict, default=None
+            Dictionary of keyword arguments to pass to matplotlib.pyplot.imshow
+            for the dose field.
+
+        invert_mask : bool, default=False
+            If True, any masks applied will be inverted.
+
+        mask_colour : matplotlib color, default="black"
+            Colour in which to display masked areas.
+
+        jacobian_opacity : float, default=0.5
+            Initial opacity of the overlaid jacobian determinant. Can later 
+            be changed interactively.
+
+        jacobian_kwargs : dict, default=None
+            Dictionary of keyword arguments to pass to matplotlib.pyplot.imshow
+            for the jacobian determinant.
+
+        df_plot_type : str, default="grid"
+            Option for initial plotting of deformation field. Can be 'grid', 
+            'quiver', or 'none'. Can later be changed interactively.
+
+        df_spacing : int/tuple, default=30
+            Spacing between arrows on the quiver plot/gridlines on the grid 
+            plot of a deformation field. Can be a single value for spacing in 
+            all directions, or a tuple with values for (x, y, z). Dimensions
+            are mm if <scale_in_mm> is True, or voxels if <scale_in_mm> is 
+            False.
+
+        df_kwargs : dict, default=None
+            Dictionary of keyword arguments to pass to matplotlib when plotting
+            the deformation field.
+
+        struct_plot_type : str, default='contour'
+            Option for initial plot of structures. Can be 'contour', 'mask', or
+            'none'. Can later be changed interactively.
+
+        struct_opacity : float, default=1
+            Initial opacity of structures when plotted as masks. Can later 
+            be changed interactively.
+
+        struct_linewidth : float, default=2
+            Initial linewidth of structures when plotted as contours. Can later 
+            be changed interactively.
+
+        struct_info : bool, default=True
+            If True, the lengths and volumes of each structure will be 
+            displayed below the plot.
+
+        length_units : str, default=None
+            Units in which to display the lengths of structures if 
+            <struct_info> if True. If None, units will be voxels if 
+            <scale_in_mm> is False, or mm if <scale_in_mm> is True. Options:
+                (a) "mm"
+                (b) "voxels"
+
+        vol_units : str, default=None
+            Units in which to display the volumes of structures if 
+            <struct_info> if True. If None, units will be voxels if 
+            <scale_in_mm> is False, or mm^3 if <scale_in_mm> is True. Options:
+                (a) "mm" for mm^3
+                (b) "voxels" for voxels
+                (c) "ml" for ml
+
+        struct_legend : bool, default=True
+            If True, a legend will be displayed for any plot with structures.
+
+        legend_loc : str, default='lower left'
+            Location for any legends being displayed. Must be a valid 
+            matplotlib legend location.
+
+        init_struct : str, default=None
+            If set to a structure name, the first slice to be displayed will
+            be the central slice of that structure. This supercedes <init_pos>
+            and <init_sl>.
+
+        struct_colours : dict, default=None
+            Map between structures and colours to use for that structure. The
+            key can either be: 
+                (a) The path corresponding to the structure NIfTI file;
+                (b) The name of the structure (i.e. the name of the NIfTI file
+                    without the extension, optionally with underscores replaced
+                    by spaces);
+                (c) A wildcard matching the name(s) of structure(s) to be 
+                    coloured, optionally with underscores replace by spaces;
+                (d) A wildcard string matching the path(s) of the structure 
+                    file(s) to be given the chosen colour.
+            Matching structures will be searched for in that order. If more 
+            than one structure matches, all matching structures will have that
+            colour. (Note: structure names are case insensitive).
+
+        structs_as_mask : bool, default=True
+            If True, any loaded structures will be used to mask the image and
+            dose field.
+
+        continuous_update : bool, default=False
+            If True, sliders in the UI will continuously update the figure as 
+            they are adjusted. Can cause lag.
+
+        annotate_slice : str, default=None
+            Color for annotation of slice number. If None, no annotation will 
+            be added unless viewing outside jupyter, in which case the 
+            annotation will be white by default.
+
+        save_as : str, default=None
+            File to which the figure will be saved upon creation. If not None,
+            a text input and button will be added to the UI, allowing the 
+            user to save the figure again at a later point.
+
+        zoom : double/tuple, default=None
+            Amount between by which to zoom in (e.g. zoom=2 would give a 
+            2x zoom). Can be a single value for all directions or a tuple of
+            values for the (x, y, z) directions.
+            
+        downsample : int/tuple, default=None
+            Factor by which to downsample an image. Can be a single value for
+            all directions or a tuple of values in the (x, y, z) directions.
+            For no downsampling, set values to None or 1, e.g. to downsample
+            in the z direction only: downsample=(1, 1, 3).
+
+        affine : 4x4 array, default=None
+            Affine matrix to be used if image source(s) are NumPy array(s). If 
+            image sources are nifti file paths or nibabel objects, this 
+            parameter is ignored. If None, the arguments <voxel_sizes> and 
+            <origin> will be used to set the affine matrix.
+
+        voxel_sizes : tuple, default=(1, 1, 1)
+            Voxel sizes in mm, given in the order (y, x, z). Only used if
+            image source is a numpy array and <affine> is None.
+
+        origin : tuple, default=(0, 0, 0)
+            Origin position in mm, given in the order (y, x, z). Only used if
+            image source is a numpy array and <affine> is None.
+
         """
 
         # Get image file inputs
@@ -573,6 +850,10 @@ class ImageViewer():
     def __init__(
         self,
         nii,
+        init_view="x-y",
+        init_sl=None,
+        init_pos=None,
+        v=(-300, 200),
         figsize=_default_figsize,
         colorbar=False,
         mpl_kwargs=None,
@@ -595,10 +876,6 @@ class ImageViewer():
         legend_loc='lower left',
         init_struct=None,
         standalone=True,
-        init_view="x-y",
-        init_sl=None,
-        init_pos=None,
-        v=(-300, 200),
         continuous_update=False,
         annotate_slice=None,
         save_as=None,
