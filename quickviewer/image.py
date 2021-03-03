@@ -1272,8 +1272,8 @@ class MultiImage(NiftiImage):
             + list(matplotlib.cm.tab20.colors)
         )
         custom = struct_colours if struct_colours is not None else {}
-        custom = {n.lower().replace(" ", "_"): col for n, col in
-                  custom.items()}
+        custom_lower = {n.lower().replace(" ", "_"): col for n, col in
+                        custom.items()}
         for i, struct in enumerate(self.structs):
 
             # Assign standard colour
@@ -1281,16 +1281,22 @@ class MultiImage(NiftiImage):
 
             # Check for exact match
             matched = False
-            for name in custom:
-                if name == struct.name.lower():
-                    struct.assign_color(custom[name])
-                    matched = True
+            if struct.name.lower() in custom_lower:
+                struct.assign_color(custom_lower[struct.name.lower()])
+                matched = True
 
             # If no exact match, check for first matching wildcard
             if not matched:
-                for name in custom:
+                for name in custom_lower:
                     if fnmatch.fnmatch(struct.name.lower(), name):
-                        struct.assign_color(custom[name])
+                        struct.assign_color(custom_lower[name])
+                        matched = True
+
+            # Otherwise, check for matching filepath
+            if not matched:
+                for path in custom:
+                    if fnmatch.fnmatch(struct.path, os.path.abspath(path)):
+                        struct.assign_color(custom[path])
                         break
 
     def set_plotting_defaults(self):

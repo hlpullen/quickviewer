@@ -14,8 +14,7 @@ from quickviewer.image import _slider_axes, _df_plot_types, \
         _struct_plot_types, _orthog, _default_figsize, _plot_axes, _axes
 
 
-_style = {"description_width": "initial",
-          "value_width": "initial"}
+_style = {"description_width": "initial"}
 
 
 # Matplotlib settings
@@ -53,6 +52,7 @@ class QuickViewer:
         translation=False,
         translation_file_to_overwrite=None,
         suptitle=None,
+        show=True,
         **kwargs
     ):
         """
@@ -181,6 +181,11 @@ class QuickViewer:
 
         suptitle : string, default=None
             Global title for all subplots. If None, no suptitle will be added.
+
+        show : bool, default=True
+            If True, the plot will be displayed when the QuickViewer object is 
+            created. Otherwise, the plot can be displayed later via
+            QuickViewer.show().
 
         kwargs
         ------
@@ -379,6 +384,10 @@ class QuickViewer:
                 scale_in_mm=scale_in_mm, legend_loc=legend_loc, **kwargs)
             if viewer.im.valid:
                 self.viewer.append(viewer)
+        self.n = len(self.viewer)
+        if not self.n:
+            print("No valid images found.")
+            return
 
         # Load comparison images
         self.cb_splits = cb_splits
@@ -399,13 +408,17 @@ class QuickViewer:
         if self.match_axes is not None and not self.scale_in_mm:
             self.match_axes = None
         self.in_notebook = in_notebook()
+        self.saved = False
         self.plotting = False
 
         # Make UI
         self.make_ui(share_slider)
 
         # Display
-        ImageViewer.show(self)
+        self.show(show)
+
+    def show(self, show):
+        ImageViewer.show(self, show)
 
     def get_input_list(self, inp):
         """Convert an input to a list with one item per image to be
@@ -784,8 +797,8 @@ class QuickViewer:
             i += 1
 
         # Assign callbacks to figure
-        if not self.in_notebook:
-            self.set_callbacks()
+        #  if not self.in_notebook:
+            #  self.set_callbacks()
 
     def adjust_axes(self, im):
         """Match the axis range of a view to the viewers whose indices are
@@ -864,6 +877,11 @@ class QuickViewer:
         plt.tight_layout()
         self.plotting = False
 
+        # Automatic saving on first plot
+        if self.viewer[0].save_as is not None and not self.saved:
+            self.viewer[0].save_fig()
+            self.saved = True
+
 
 class ImageViewer():
     """Class for displaying a MultiImage with interactive elements."""
@@ -900,10 +918,13 @@ class ImageViewer():
         continuous_update=False,
         annotate_slice=None,
         save_as=None,
+        show=True,
         **kwargs
     ):
 
         self.im = self.make_image(nii, **kwargs)
+        if not self.im.valid:
+            return
         self.gs = None  # Gridspec in which to place plot axes
 
         # Set initial view
@@ -972,7 +993,7 @@ class ImageViewer():
 
         # Display plot
         if standalone:
-            self.show()
+            self.show(show)
 
     def make_image(self, *args, **kwargs):
         """Set up image object."""
@@ -1093,8 +1114,7 @@ class ImageViewer():
 
             # Mask checkbox
             self.ui_mask = ipyw.Checkbox(value=self.im.has_mask,
-                                         description="Apply mask",
-                                         width=200)
+                                         description="Apply mask")
             if self.im.has_mask:
                 self.extra_ui.append(self.ui_mask)
 
@@ -1454,14 +1474,15 @@ class ImageViewer():
             mid_slice, _slider_axes[self.view])
         self.ui_struct_jump.value = ""
 
-    def show(self):
+    def show(self, show=True):
         """Display plot and UI."""
 
         if self.in_notebook:
             ImageViewer.show_in_notebook(self)
         else:
             self.plot()
-            plt.show()
+            if show:
+                plt.show()
 
     def show_in_notebook(self):
         """Display interactive output in a jupyter notebook."""
@@ -1577,7 +1598,7 @@ class ImageViewer():
             self.im.fig.canvas.draw_idle()
             self.im.fig.canvas.flush_events()
 
-    def save_fig(self, _):
+    def save_fig(self, _=None):
         """Save figure to a file."""
 
         self.im.fig.savefig(self.save_name.value)
