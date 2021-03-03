@@ -655,8 +655,9 @@ class QuickViewer:
         if input_file == "":
             input_file = None
         output_file = self.translation_output.value
-        translations = {f"d{ax}": self.tsliders[ax].value for ax in
-                        self.tsliders}
+        translations = {f"d{ax}": self.tsliders[ax].value 
+                        * abs(self.trans_viewer.im.voxel_sizes[ax])
+                        for ax in self.tsliders}
         write_translation_to_file(output_file, input_file=input_file,
                                   **translations)
 
@@ -1639,12 +1640,15 @@ def write_translation_to_file(
     """
 
     # Make dictionary of shifts
-    delta = {"x": dx, "y": dy, "z": -dz}
+    delta = {"x": dx, "y": dy, "z": dz}
 
     # Create elastix formatted text
     if input_file is not None:
 
         infile = open(input_file, "r")
+
+        # Reverse directions of deltas for consistency with elastix
+        delta = {ax: -d for ax, d in delta.items()}
 
         # Create output text
         out_text = ""
