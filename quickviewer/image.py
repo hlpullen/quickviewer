@@ -1755,20 +1755,37 @@ class ChequerboardImage(ComparisonImage):
 class OverlayImage(ComparisonImage):
     """Class for plotting two NiftiImages overlaid in red and blue."""
 
-    def plot_comparison(self, invert=False, opacity=0.5):
+    def plot_comparison(self, invert=False, opacity=0.5, legend=False,
+                        legend_loc='auto'):
         """Produce an overlay plot with a given opacity."""
 
         order = [0, 1] if not invert else [1, 0]
         cmaps = ["Reds", "Blues"]
         alphas = [1, opacity]
         self.ax.set_facecolor("w")
+        handles = []
         for n, i in enumerate(order):
+
+            # Show image
             self.ax.imshow(self.slices[i],
                            extent=self.ims[i].extent[self.view],
                            aspect=self.ims[i].aspect[self.view],
                            cmap=cmaps[n],
                            alpha=alphas[n],
                            **self.plot_kwargs)
+
+            # Make handle for legend
+            if legend:
+                patch_color = cmaps[n].lower()[:-1]
+                alpha = 1 - opacity if alphas[n] == 1 else opacity
+                handles.append(mpatches.Patch(
+                    color=patch_color, alpha=alpha,
+                    label=self.ims[i].title))
+            
+        # Draw legend
+        if legend:
+            self.ax.legend(handles=handles, loc=legend_loc, facecolor="white", 
+                           framealpha=1)
 
 
 class DiffImage(ComparisonImage):

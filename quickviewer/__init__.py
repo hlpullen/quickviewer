@@ -48,6 +48,8 @@ class QuickViewer:
         comparison_only=False,
         cb_splits=2,
         overlay_opacity=0.5,
+        overlay_legend=False,
+        legend_loc="lower left",
         translation=False,
         translation_file_to_overwrite=None,
         suptitle=None,
@@ -159,6 +161,13 @@ class QuickViewer:
 
         overlay_opacity : float, default=0.5
             Initial opacity of overlay. Can later be changed interactively.
+
+        overlay_legend : bool default=False
+            If True, a legend will be displayed on the overlay plot.
+
+        legend_loc : str, default='lower left'
+            Location for any legends being displayed. Must be a valid 
+            matplotlib legend location.
 
         translation : bool, default=False
             If True, widgets will be displayed allowing the user to apply a 
@@ -278,10 +287,6 @@ class QuickViewer:
         struct_legend : bool, default=True
             If True, a legend will be displayed for any plot with structures.
 
-        legend_loc : str, default='lower left'
-            Location for any legends being displayed. Must be a valid 
-            matplotlib legend location.
-
         init_struct : str, default=None
             If set to a structure name, the first slice to be displayed will
             be the central slice of that structure. This supercedes <init_pos>
@@ -371,13 +376,15 @@ class QuickViewer:
                 self.nii[i], title=self.title[i], dose=self.dose[i],
                 mask=self.mask[i], structs=self.structs[i],
                 jacobian=self.jacobian[i], df=self.df[i], standalone=False,
-                scale_in_mm=scale_in_mm, **kwargs)
+                scale_in_mm=scale_in_mm, legend_loc=legend_loc, **kwargs)
             if viewer.im.valid:
                 self.viewer.append(viewer)
 
         # Load comparison images
         self.cb_splits = cb_splits
         self.overlay_opacity = overlay_opacity
+        self.overlay_legend = overlay_legend
+        self.legend_loc = legend_loc
         self.load_comparison(show_cb, show_overlay, show_diff)
         self.comparison_only = comparison_only
         self.translation = translation
@@ -594,7 +601,6 @@ class QuickViewer:
             tfile = self.find_translation_file(self.trans_viewer.im)
             self.has_translation_input = tfile is not None
             if self.has_translation_input:
-                self.trans_ui.append(self.translation_input)
                 tfile_out = re.sub(".0.txt", "_custom.txt", tfile)
             else:
                 tfile_out = "translation.txt"
@@ -607,6 +613,7 @@ class QuickViewer:
         if self.has_translation_input:
             self.translation_input = ipyw.Text(description="Original:",
                                                value=tfile)
+            self.trans_ui.append(self.translation_input)
         self.translation_output = ipyw.Text(description="Save as:",
                                             value=tfile_out)
         self.tbutton = ipyw.Button(description="Write translation")
@@ -841,7 +848,9 @@ class QuickViewer:
             if self.has_overlay:
                 self.overlay.plot(invert=invert,
                                   opacity=self.ui_overlay.value,
-                                  mpl_kwargs=self.viewer[0].v_min_max)
+                                  mpl_kwargs=self.viewer[0].v_min_max,
+                                  legend=self.overlay_legend,
+                                  legend_loc=self.legend_loc)
             if self.has_diff:
                 self.diff.plot(invert=invert,
                                mpl_kwargs=self.viewer[0].v_min_max)
@@ -884,7 +893,7 @@ class ImageViewer():
         length_units=None,
         vol_units=None,
         struct_legend=True,
-        legend_loc='lower left',
+        legend_loc="lower left",
         init_struct=None,
         standalone=True,
         continuous_update=False,
