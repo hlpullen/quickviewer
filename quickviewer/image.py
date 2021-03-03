@@ -1018,9 +1018,9 @@ class StructImage(NiftiImage):
                 for (y, x) in contour:
                     if self.scale_in_mm:
                         x = min(self.lims[x_ax]) + \
-                            (x + 0.5) * abs(self.voxel_sizes[x_ax])
+                            x * abs(self.voxel_sizes[x_ax])
                         y = min(self.lims[y_ax]) + \
-                            (y + 0.5) * abs(self.voxel_sizes[y_ax])
+                            y * abs(self.voxel_sizes[y_ax])
                     contour_points.append((x, y))
                 points.append(contour_points)
             return points
@@ -1078,14 +1078,7 @@ class StructImage(NiftiImage):
         elif plot_type == "mask":
             self.plot_mask(view, sl, pos, ax, mpl_kwargs)
 
-    def plot_mask(
-        self, 
-        view, 
-        sl, 
-        pos, 
-        ax, 
-        mpl_kwargs=None
-    ):
+    def plot_mask(self, view, sl, pos, ax, mpl_kwargs=None):
         """Plot structure as a coloured mask."""
 
         # Get slice
@@ -1108,14 +1101,7 @@ class StructImage(NiftiImage):
         )
         self.apply_zoom(view)
 
-    def plot_contour(
-        self, 
-        view, 
-        sl, 
-        pos, 
-        ax, 
-        mpl_kwargs=None
-    ):
+    def plot_contour(self, view, sl, pos, ax, mpl_kwargs=None):
         """Plot structure as a contour."""
 
         if not self.on_slice(view, sl):
@@ -1569,7 +1555,8 @@ class OrthogonalImage(MultiImage):
 
     def plot(self,
              view,
-             sl,
+             sl=None,
+             pos=None,
              gs=None,
              figsize=None,
              mpl_kwargs=None,
@@ -1584,8 +1571,8 @@ class OrthogonalImage(MultiImage):
         self.set_axes(view, gs, figsize, colorbar)
 
         # Plot the MultiImage
-        MultiImage.plot(self, view, sl, ax=self.own_ax, colorbar=colorbar,
-                        show=False, mpl_kwargs=mpl_kwargs,
+        MultiImage.plot(self, view, sl=sl, pos=pos, ax=self.own_ax, 
+                        colorbar=colorbar, show=False, mpl_kwargs=mpl_kwargs,
                         struct_kwargs=struct_kwargs,
                         struct_plot_type=struct_plot_type,
                         **kwargs)
@@ -1595,7 +1582,7 @@ class OrthogonalImage(MultiImage):
         orthog_sl = self.orthog_slices[_slider_axes[orthog_view]]
         NiftiImage.plot(self,
                         orthog_view,
-                        orthog_sl,
+                        sl=orthog_sl,
                         ax=self.orthog_ax,
                         mpl_kwargs=mpl_kwargs,
                         show=False,
@@ -1607,8 +1594,8 @@ class OrthogonalImage(MultiImage):
         for struct in self.structs:
             if not struct.visible:
                 continue
-            struct.plot(orthog_view, orthog_sl, self.orthog_ax, struct_kwargs,
-                        struct_plot_type)
+            struct.plot(orthog_view, sl=orthog_sl, ax=self.orthog_ax, 
+                        mpl_kwargs=struct_kwargs, plot_type=struct_plot_type)
 
         # Plot indicator line
         pos = sl if not self.scale_in_mm else self.slice_to_pos(

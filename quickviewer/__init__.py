@@ -49,6 +49,7 @@ class QuickViewer:
         cb_splits=2,
         overlay_opacity=0.5,
         translation=False,
+        translation_file_to_overwrite=None,
         suptitle=None,
         **kwargs
     ):
@@ -380,6 +381,7 @@ class QuickViewer:
         self.load_comparison(show_cb, show_overlay, show_diff)
         self.comparison_only = comparison_only
         self.translation = translation
+        self.tfile = translation_file_to_overwrite
 
         # Settings needed for plotting
         self.figsize = kwargs.get("figsize", _default_figsize)
@@ -587,15 +589,24 @@ class QuickViewer:
         self.trans_viewer = self.viewer[int(self.n > 1)]
         self.trans_ui.append(ipyw.HTML(value="<b>Translation:</b>"))
 
-        # Make input/output filename UI
-        tfile = self.find_translation_file(self.trans_viewer.im)
-        self.has_translation_input = tfile is not None
-        tfile_out = "translation.txt"
+        # Get input/output filenames
+        if self.tfile is None:
+            tfile = self.find_translation_file(self.trans_viewer.im)
+            self.has_translation_input = tfile is not None
+            if self.has_translation_input:
+                self.trans_ui.append(self.translation_input)
+                tfile_out = re.sub(".0.txt", "_custom.txt", tfile)
+            else:
+                tfile_out = "translation.txt"
+        else:
+            tfile = self.tfile
+            tfile_out = self.tfile
+            self.has_translation_input = True
+
+        # Make translation file UI
         if self.has_translation_input:
             self.translation_input = ipyw.Text(description="Original:",
                                                value=tfile)
-            self.trans_ui.append(self.translation_input)
-            tfile_out = re.sub(".0.txt", "_custom.txt", tfile)
         self.translation_output = ipyw.Text(description="Save as:",
                                             value=tfile_out)
         self.tbutton = ipyw.Button(description="Write translation")
