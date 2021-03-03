@@ -1051,14 +1051,19 @@ class ImageViewer():
         self.struct_linewidth = struct_linewidth
         self.struct_legend = struct_legend
         self.legend_loc = legend_loc
+        self.init_struct = init_struct
+
+        # Load structure geometric info if needed
         self.struct_info = struct_info
+        if self.struct_info:
+            for s in self.im.structs:
+                s.set_geom_properties()
         self.vol_units = vol_units
         self.length_units = length_units
         if self.vol_units is None:
             self.vol_units = "mm" if self.im.scale_in_mm else "voxels"
         if self.length_units is None:
             self.length_units = "mm" if self.im.scale_in_mm else "voxels"
-        self.init_struct = init_struct
 
         # Make UI
         self.make_ui()

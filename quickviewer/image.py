@@ -951,9 +951,8 @@ class StructImage(NiftiImage):
         nice = self.name.replace("_", " ")
         self.name_nice = nice[0].upper() + nice[1:]
 
-        # Assign geometric properties and get contours
+        # Get contours
         self.visible = True
-        self.set_geom_properties()
         self.set_contours()
 
         # Assign a random colour
@@ -974,7 +973,11 @@ class StructImage(NiftiImage):
         self.length = {"voxels": {}, "mm": {}}
         nonzero = np.argwhere(self.data > 0.5)
         for ax, n in _axes.items():
-            self.length["voxels"][ax] = max(nonzero[:, n]) - min(nonzero[:, n])
+            vals = nonzero[:, n]
+            if len(vals):
+                self.length["voxels"][ax] = max(vals) - min(vals)
+            else:
+                self.length["voxels"][ax] = self.n_voxels[ax]
             self.length["mm"][ax] = self.length["voxels"][ax] \
                 * abs(self.voxel_sizes[ax])
 
