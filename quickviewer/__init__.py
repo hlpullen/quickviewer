@@ -420,7 +420,7 @@ class QuickViewer:
         # Display
         self.show(show)
 
-    def show(self, show):
+    def show(self, show=True):
         ImageViewer.show(self, show)
 
     def get_input_list(self, inp, allow_sublist=False):
@@ -991,7 +991,6 @@ class ImageViewer():
         dose_kwargs=None,
         invert_mask=False,
         mask_colour="black",
-        mask_threshold=0.5,
         jacobian_opacity=0.5,
         jacobian_kwargs=None,
         df_plot_type="grid",
@@ -1055,7 +1054,6 @@ class ImageViewer():
         # Mask settings
         self.invert_mask = invert_mask
         self.mask_colour = mask_colour
-        self.mask_threshold = mask_threshold
 
         # Dose settings
         self.init_dose_opacity = dose_opacity
@@ -1570,13 +1568,13 @@ class ImageViewer():
         """Display plot and UI."""
 
         if self.in_notebook:
-            ImageViewer.show_in_notebook(self)
+            ImageViewer.show_in_notebook(self, show)
         else:
             self.plot()
             if show:
                 plt.show()
 
-    def show_in_notebook(self):
+    def show_in_notebook(self, show):
         """Display interactive output in a jupyter notebook."""
 
         from IPython.display import display
@@ -1586,7 +1584,8 @@ class ImageViewer():
         to_display = [self.upper_ui_box, self.out]
         if len(self.lower_ui):
             to_display.append(self.lower_ui_box)
-        display(*to_display)
+        if show:
+            display(*to_display)
 
     def set_slice_and_view(self):
         """Get the current slice and view to plot from the UI."""
@@ -1662,7 +1661,6 @@ class ImageViewer():
                         masked=self.ui_mask.value,
                         invert_mask=self.invert_mask,
                         mask_colour=self.mask_colour,
-                        mask_threshold=self.mask_threshold,
                         dose_kwargs=dose_kwargs,
                         jacobian_kwargs=jacobian_kwargs,
                         df_plot_type=self.ui_df.value,

@@ -407,9 +407,11 @@ class NiftiImage:
 
         return self.idx_to_pos(self.slice_to_idx(sl, ax), ax)
 
-    def set_mask(self, mask):
-        """Set a mask for this image. This mask will be used when self.plot
-        is called with masked=True."""
+    def set_mask(self, mask, threshold=0.5):
+        """Set a mask for this image. Can be a single mask array or a 
+        dictionary of mask arrays. This mask will be used when self.plot()
+        is called with masked=True. Note: mask_threshold only used if the 
+        provided mask is not already a boolean array."""
 
         if not self.valid:
             return
@@ -419,28 +421,36 @@ class NiftiImage:
         
         # Apply mask from NumPy array
         elif isinstance(mask, np.ndarray):
-            data_mask = mask
+            self.data_mask = self.process_mask(mask, threshold)
 
         # Apply mask from NiftiImage
         elif isinstance(mask, NiftiImage):
             if not mask.valid:
                 self.data_mask = None
                 return
-            data_mask = mask.data
+            self.data_mask = self.process_mask(mask.data, threshold)
+
+        # Dictionary of masks
+        elif isinstance(mask, dict):
+            self.data_mask = mask
+            for view in _orient:
+                if view in self.data_mask:
+                    self.data_mask[view] = self.process_mask(
+                        self.data_mask[view], threshold)
+                else:
+                    self.data_mask[view] = None
+            return
         else:
             raise TypeError("Mask must be a numpy array or a NiftiImage.")
 
-        # Check mask shape is consistent
-        if data_mask.shape != self.data.shape:
-
-            # Downsample mask if it matches original image shape
-            if data_mask.shape == self.shape:
-                self.data_mask = self.downsample_array(data_mask)
-            else:
-                print("Warning: mask does not match shape of image!")
-
-        else:
-            self.data_mask = data_mask
+    def process_mask(self, mask, threshold=0.5):
+        """Convert a mask to boolean and downsample if needed."""
+        
+        if mask.dtype != bool:
+            mask = mask > threshold
+        if mask.shape != self.data.shape and mask.shape == self.shape:
+            mask = self.downsample_array(mask)
+        return mask
 
     def get_idx(self, view, sl, pos, default_centre=True):
         """Convert a slice number or position in mm to an array index. If
@@ -468,7 +478,7 @@ class NiftiImage:
         return self.min_hu
 
     def set_slice(self, view, sl=None, pos=None, masked=False, 
-                  invert_mask=False, mask_threshold=0.5):
+                  invert_mask=False):
         """Assign a 2D array corresponding to a slice of the image in a given
         orientation to class variable self.current_slice. If the variable
         self.shift contains nonzero elements, the slice will be translated by
@@ -497,10 +507,6 @@ class NiftiImage:
             If True, values below the mask threshold will be used to
             mask the image instead of above threshold. Ignored if masked is 
             False.
-
-        mask_threshold : float, default=0.5
-            Threshold on mask array; voxels with values below this threshold
-            will be masked (or values above, if <invert_mask> is True).
         """
 
         # Assign current orientation and slice index
@@ -511,13 +517,13 @@ class NiftiImage:
 
         # Get array index of the slice to plot
         # Apply mask if needed
-        if masked and self.data_mask is not None:
+        mask = self.data_mask[view] if isinstance(self.data_mask, dict) \
+                else self.data_mask
+        if masked and mask is not None:
             if invert_mask:
-                data = np.ma.masked_where(self.data_mask > mask_threshold, 
-                                          self.data)
+                data = np.ma.masked_where(mask, self.data)
             else:
-                data = np.ma.masked_where(self.data_mask < mask_threshold, 
-                                          self.data)
+                data = np.ma.masked_where(~mask, self.data)
         else:
             data = self.data
 
@@ -575,7 +581,6 @@ class NiftiImage:
              masked=False,
              invert_mask=False, 
              mask_colour="black", 
-             mask_threshold=0.5,
              no_ylabel=False,
              no_title=False,
              annotate_slice=None
@@ -630,10 +635,6 @@ class NiftiImage:
         mask_colour : matplotlib colour, default="black"
             Colour in which to plot masked areas.
 
-        mask_threshold : float, default=0.5
-            Threshold on mask array; voxels with values below this threshold
-            will be masked (or values above, if <invert_mask> is True).
-
         no_ylabel : bool, default=False
             If True, the y axis will not be labelled.
 
@@ -648,7 +649,7 @@ class NiftiImage:
         # Get slice
         self.set_ax(view, ax, gs, figsize, colorbar)
         self.ax.set_facecolor("black")
-        self.set_slice(view, sl, pos, masked, invert_mask, mask_threshold)
+        self.set_slice(view, sl, pos, masked, invert_mask)
 
         # Get colourmap
         kwargs = self.get_kwargs(mpl_kwargs)
@@ -660,6 +661,7 @@ class NiftiImage:
                               extent=self.extent[view],
                               aspect=self.aspect[view],
                               cmap=cmap, **kwargs)
+
         self.label_ax(view, no_ylabel, no_title, annotate_slice)
         self.apply_zoom(view)
 
@@ -997,6 +999,9 @@ class StructImage(NiftiImage):
         if not self.valid:
             return
 
+        # Convert to boolean mask
+        self.data = self.data > 0.5
+
         # Set name
         if name is not None:
             self.name = name
@@ -1040,7 +1045,7 @@ class StructImage(NiftiImage):
 
         # Lengths
         self.length = {"voxels": {}, "mm": {}}
-        nonzero = np.argwhere(self.data > 0.5)
+        nonzero = np.argwhere(self.data)
         for ax, n in _axes.items():
             vals = nonzero[:, n]
             if len(vals):
@@ -1233,6 +1238,7 @@ class MultiImage(NiftiImage):
         structs=None,
         struct_colours=None,
         structs_as_mask=False,
+        mask_threshold=0.5,
         **kwargs
     ):
         """Load a MultiImage object.
@@ -1270,6 +1276,10 @@ class MultiImage(NiftiImage):
 
         structs_as_mask : bool, default=False
             If True, structures will be used as masks.
+
+        mask_threshold : float, default=0.5
+            Threshold on mask array; voxels with values below this threshold
+            will be masked (or values above, if <invert_mask> is True).
         """
 
         # Load the scan image
@@ -1278,22 +1288,34 @@ class MultiImage(NiftiImage):
             return
 
         # Load extra overlays
-        self.load_to(dose, "dose")
-        self.load_to(mask, "mask")
-        self.load_to(jacobian, "jacobian")
+        self.load_to(dose, "dose", kwargs)
+        self.load_to(mask, "mask", kwargs)
+        self.load_to(jacobian, "jacobian", kwargs)
         self.load_df(df)
         self.load_structs(structs, struct_colours)
         self.structs_as_mask = structs_as_mask
         if self.has_structs and structs_as_mask:
             self.has_mask = True
+        self.set_masks(mask_threshold)
 
-    def load_to(self, nii, attr):
+    def load_to(self, nii, attr, kwargs):
         """Load image data into a class attribute."""
 
-        data = NiftiImage(nii, scale_in_mm=self.scale_in_mm)
+        # Load single image
+        if not isinstance(nii, dict):
+            data = NiftiImage(nii, **kwargs)
+            setattr(self, attr, data)
+            valid = data.valid
+        else:
+            data = {view: NiftiImage(nii[view], **kwargs) for view in nii}
+            for view in _orient:
+                if view not in data or not data[view].valid:
+                    data[view] = None
+            valid = any([d.valid for d in data.values() if d is not None])
+
         setattr(self, attr, data)
-        valid = data.valid
         setattr(self, f"has_{attr}", valid)
+        setattr(self, f"{attr}_dict", isinstance(nii, dict))
 
     def load_df(self, df):
         """Load deformation field data from a path."""
@@ -1390,29 +1412,44 @@ class MultiImage(NiftiImage):
             "vmax": 1.2
         }
 
-    def set_masks(self):
+    def set_masks(self, threshold):
         """Assign mask(s) to self and dose image."""
 
-        # Assign user-input mask
-        if self.has_mask:
-            mask_array = np.zeros(self.shape)
-            if self.mask.valid:
-                mask_array += self.mask.data
+        if not self.has_mask:
+           mask_array = None 
+
+        else:
+            # Combine user-input mask with structs
+            mask_array = np.zeros(self.shape, dtype=bool)
+            if not self.mask_dict and self.mask.valid:
+                mask_array += self.mask.data > threshold
             if self.structs_as_mask:
                 for struct in self.structs:
                     mask_array += struct.data
 
-        # Layer all structs into a single mask
-        elif self.structs_as_mask and self.has_structs:
-            mask_array = self.structs[0].data
-            for struct in self.structs[1:]:
-                mask_array += struct.data
-        else:
-            mask_array = None
+            # Get separate masks for each orientation
+            if self.mask_dict:
+                view_masks = {}
+                for view in _orient:
+                    mask = self.mask.get(view, None)
+                    if mask is not None:
+                        if isinstance(mask, NiftiImage):
+                            view_masks[view] = mask_array \
+                                    + (self.mask[view].data > threshold)
+                        else:
+                            view_masks[view] = mask_array \
+                                    + (self.mask[view] > threshold)
+                    else:
+                        if self.structs_as_mask:
+                            view_masks[view] = self.mask_array
+                        else:
+                            view_masks[view] = None
+
+                mask_array = view_masks
 
         # Assign mask to main image and dose field
-        self.set_mask(mask_array)
-        self.dose.set_mask(mask_array)
+        self.set_mask(mask_array, threshold)
+        self.dose.data_mask = self.data_mask
 
     def get_n_colorbars(self, colorbar=False):
         """Count the number of colorbars needed for this plot."""
@@ -1440,7 +1477,6 @@ class MultiImage(NiftiImage):
         masked=False,
         invert_mask=False,
         mask_colour="black",
-        mask_threshold=0.5,
         jacobian_kwargs=None,
         df_kwargs=None,
         df_plot_type="grid",
@@ -1546,20 +1582,18 @@ class MultiImage(NiftiImage):
 
         # Plot image
         self.set_ax(view, ax, gs, figsize, colorbar)
-        self.set_masks()
         NiftiImage.plot(
             self, view, sl, pos, ax=self.ax, mpl_kwargs=mpl_kwargs,
             show=False, colorbar=colorbar, masked=masked,
-            invert_mask=invert_mask, mask_colour=mask_colour, 
-            mask_threshold=mask_threshold, figsize=figsize)
+            invert_mask=invert_mask, mask_colour=mask_colour, figsize=figsize)
 
         # Plot dose field
         self.dose.plot(
             view, self.sl, ax=self.ax,
             mpl_kwargs=self.get_kwargs(dose_kwargs, default=self.dose_kwargs),
             show=False, masked=masked, invert_mask=invert_mask,
-            mask_threshold=mask_threshold, mask_colour=mask_colour, 
-            colorbar=colorbar, colorbar_label="Dose (Gy)")
+            mask_colour=mask_colour, colorbar=colorbar, 
+            colorbar_label="Dose (Gy)")
 
         # Plot jacobian
         self.jacobian.plot(
