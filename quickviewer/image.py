@@ -976,10 +976,11 @@ class StructImage(NiftiImage):
             vals = nonzero[:, n]
             if len(vals):
                 self.length["voxels"][ax] = max(vals) - min(vals)
+                self.length["mm"][ax] = self.length["voxels"][ax] \
+                    * abs(self.voxel_sizes[ax])
             else:
-                self.length["voxels"][ax] = self.n_voxels[ax]
-            self.length["mm"][ax] = self.length["voxels"][ax] \
-                * abs(self.voxel_sizes[ax])
+                self.length["voxels"][ax] = 0
+                self.length["mm"][ax] = 0
 
     def set_plotting_defaults(self):
         """Set default matplotlib plotting keywords for both mask and

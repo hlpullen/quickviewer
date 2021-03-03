@@ -8,13 +8,11 @@ from quickviewer import QuickViewer
 parser = argparse.ArgumentParser()
 
 # Get image paths
-parser.add_argument("file_path", nargs="+", type=str,
+parser.add_argument("nii", nargs="+", type=str,
                     help="Path(s) to image file(s)")
 
 #  Get initial viewing options
-parser.add_argument("--no_show", "-n", action="store_true",
-                    help="Don't show figure in matplotlib window")
-parser.add_argument("--init_pos", "-ip", type=float, metavar="POS",
+parser.add_argument("--init_sl", "-is", type=float, metavar="POS",
                     help="Initial slice position to display")
 parser.add_argument("--init_idx", "-ii", type=int, metavar="IDX",
                     help="Initial slice index to display")
@@ -52,6 +50,8 @@ parser.add_argument("--interpolation", "-in", type=str, metavar="INTERP",
                     help="Interpolation method")
 parser.add_argument("--orthog_view", "-ov", action="store_true",
                     help="Display sagittal view next to axial view")
+parser.add_argument("--no_show", "-n", action="store_false",
+                    help="Don't show figure in matplotlib window")
 
 # Get mask options
 parser.add_argument("--mask", "-m", nargs="+",
@@ -67,7 +67,7 @@ parser.add_argument("--show_cb", "-cb", action="store_true",
                     help="Show chequerboard")
 parser.add_argument("--cb_splits", "-cbs", type=int, metavar="N",
                     help="Number of splits in the chequerboard")
-parser.add_argument("--overlay", "-o", action="store_true",
+parser.add_argument("--show_overlay", "-o", action="store_true",
                     help="Show overlay")
 parser.add_argument("--overlay_opacity", "-oo", type=float,
                     metavar="OPACITY",
@@ -84,7 +84,8 @@ parser.add_argument("--dose", "-d", nargs="+", type=str,
                     help="Path(s) to dose file(s)")
 parser.add_argument("--dose_opacity", "-do", type=float, metavar="OPACITY",
                     help="Dose opacity")
-parser.add_argument("--dose_cmap", "-dc", type=str, help="Dose colormap", metavar="CMAP")
+parser.add_argument("--dose_cmap", "-dc", type=str, help="Dose colormap", 
+                    metavar="CMAP")
 
 # Get structure options
 parser.add_argument("--structs", "-st", nargs="+", type=str, metavar="FILE",
@@ -125,15 +126,20 @@ parser.add_argument("--df_linespec", "-dfl", type=str, metavar="SPEC",
 # Parse arguments
 kwargs = vars(parser.parse_args())
 kwargs = {k: v for k, v in kwargs.items() if v is not None}
+
+# Swap negative booleans for positive
 swaps = {
     "no_share_slider": "share_slider",
     "no_struct_legend": "struct_legend",
-    "no_mm": "scale_in_mm"
+    "no_mm": "scale_in_mm",
+    "no_show": "show"
 }
 for sw1, sw2 in swaps.items():
     if sw1 in kwargs:
         kwargs[sw2] = kwargs[sw1]
         del kwargs[sw1]
+
+# Parse structure colours
 if "struct_colours" in kwargs:
     sc = kwargs["struct_colours"]
     if len(sc) % 2 != 0:
@@ -141,4 +147,11 @@ if "struct_colours" in kwargs:
     new_sc = {sc[2 * i]: sc[2 * i + 1] for i in range(0, int(len(sc) / 2))}
     kwargs["struct_colours"] = new_sc
 
+# Set downsample and zoom to be single values
+for opt in ["zoom", "downsample"]:
+    if opt in kwargs:
+        if len(kwargs[opt]) == 1:
+            kwargs[opt] = kwargs[opt][0]
+
+# Launch QuickViewer
 QuickViewer(**kwargs)
