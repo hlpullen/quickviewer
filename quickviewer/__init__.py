@@ -368,7 +368,7 @@ class QuickViewer:
         self.title = self.get_input_list(title)
         self.dose = self.get_input_list(dose)
         self.mask = self.get_input_list(mask)
-        self.structs = self.get_input_list(structs)
+        self.structs = self.get_input_list(structs, allow_sublist=True)
         self.jacobian = self.get_input_list(jacobian)
         self.df = self.get_input_list(df)
 
@@ -420,7 +420,7 @@ class QuickViewer:
     def show(self, show):
         ImageViewer.show(self, show)
 
-    def get_input_list(self, inp):
+    def get_input_list(self, inp, allow_sublist=False):
         """Convert an input to a list with one item per image to be
         displayed."""
 
@@ -430,7 +430,7 @@ class QuickViewer:
         # Convert arg to a list
         input_list = []
         if isinstance(inp, list) or isinstance(inp, tuple):
-            if self.n == 1:
+            if self.n == 1 and allow_sublist:
                 input_list = [inp]
             else:
                 input_list = inp
@@ -843,7 +843,7 @@ class QuickViewer:
 
         # Press o to change overlay opacity
         elif event.key == "o":
-            if self.show_overlay:
+            if self.has_overlay:
                 ops = [0.2, 0.35, 0.5, 0.65, 0.8]
                 next_op = {ops[i]: ops[i + 1] if i + 1 < len(ops)
                              else ops[0] for i in range(len(ops))}
@@ -1393,22 +1393,22 @@ class ImageViewer():
 
         # Press d to change dose opacity
         elif event.key == "d":
-            if self.has_dose:
+            if self.im.has_dose:
                 doses = [0, 0.15, 0.35, 0.5, 1]
                 next_dose = {doses[i]: doses[i + 1] if i + 1 < len(doses)
                              else doses[0] for i in range(len(doses))}
                 diffs = [abs(d - self.ui_dose.value) for d in doses]
                 current = doses[diffs.index(min(diffs))]
-                self.dose_slider.value = next_dose[current]
+                self.ui_dose.value = next_dose[current]
 
         # Press m to switch mask on and off
         elif event.key == "m":
-            if self.has_mask:
+            if self.im.has_mask:
                 self.ui_mask.value = not self.ui_mask.value
 
         # Press c to change structure plot type
         elif event.key == "c":
-            if self.has_structs:
+            if self.im.has_structs:
                 next_type = {"mask": "contour", "contour": "none",
                              "none": "mask"}
                 self.ui_struct_plot_type.value = \
@@ -1532,9 +1532,10 @@ class ImageViewer():
 
         self.current_struct = self.ui_struct_jump.value
         struct = self.structs_for_jump[self.current_struct]
-        mid_slice = int(np.mean(list(struct.contours[self.view].keys())))
-        self.ui_slice.value = self.slice_to_slider(
-            mid_slice, _slider_axes[self.view])
+        if not struct.empty:
+            mid_slice = int(np.mean(list(struct.contours[self.view].keys())))
+            self.ui_slice.value = self.slice_to_slider(
+                mid_slice, _slider_axes[self.view])
         self.ui_struct_jump.value = ""
 
     def show(self, show=True):

@@ -956,8 +956,8 @@ class StructImage(NiftiImage):
         self.set_contours()
 
         # Check whether contours were found
-        self.empty = not sum([len(contours) for contours in 
-                              self.contours.values()])
+        self.empty = not sum(len(contours for contours in 
+                                 self.contours.values()))
         if self.empty:
             self.name_nice += " (empty)"
 
@@ -970,9 +970,7 @@ class StructImage(NiftiImage):
         # Empty structure: return zeros
         if self.empty:
             self.volume = {"voxels": 0, "mm": 0, "ml": 0}
-            zeros = {ax: 0 for ax in _axes}
-            self.lengths = {"voxels": zeros, "mm": zeros}
-            return
+            self.lengths =
 
         # Volume
         self.volume = {
