@@ -41,7 +41,6 @@ class NiftiImage:
         title=None,
         scale_in_mm=True, 
         downsample=None,
-        zoom=None,
         orientation="x-y"
     ):
         """Initialise from a NIfTI file, NIfTI object, or numpy array.
@@ -77,13 +76,6 @@ class NiftiImage:
             If True, plot axes will be in mm; if False, plot axes will be in 
             voxels.
 
-        zoom : int/float/tuple, default=None
-            Factor by which to zoom in when plotting this image. If a single
-            int or float is given, the same zoom factor will be applied in all
-            directions. If a tuple of three values is given, these will be used
-            as the zoom factors in each direction in the order (x, y, z). If
-            None, the image will not be zoomed in.
-
         orientation : str, default="x-y"
             String specifying the orientation of the image if a 2D array is 
             given for <nii>. Must be "x-y", "y-z", or "x-z".
@@ -93,7 +85,6 @@ class NiftiImage:
         self.title = title
         self.scale_in_mm = scale_in_mm
         self.data_mask = None
-        self.zoom = self.get_ax_dict(zoom)
         if nii is None:
             self.valid = False
             return
@@ -236,19 +227,6 @@ class NiftiImage:
                 self.aspect[view] = abs(self.voxel_sizes[y] /
                                         self.voxel_sizes[x])
 
-            # Adjust axis limits for zoom
-            if self.zoom is not None:
-                mid_x = np.mean(self.ax_lims[view][0])
-                self.ax_lims[view][0] = [
-                    mid_x - (mid_x - self.ax_lims[view][0][0]) / self.zoom[x],
-                    mid_x + (self.ax_lims[view][0][1] - mid_x) / self.zoom[x]
-                ]
-                mid_y = np.mean(self.ax_lims[view][1])
-                self.ax_lims[view][1] = [
-                    mid_y - (mid_y - self.ax_lims[view][1][0]) / self.zoom[y],
-                    mid_y + (self.ax_lims[view][1][1] - mid_y) / self.zoom[y]
-                ]
-
     def get_lengths(self, view):
         """Get the x and y lengths of the image in a given orientation."""
 
@@ -287,13 +265,16 @@ class NiftiImage:
                            "vmax": 200}
         self.mask_color = "black"
 
-    def get_relative_width(self, view, n_colorbars=0):
+    def get_relative_width(self, view, zoom=None, n_colorbars=0):
         """Get width:height ratio for this plot.
 
         Parameters
         ----------
         view : str
             Orientation ("x-y"/"y-z"/"x-z").
+
+        zoom : float/tuple/dict, default=None
+            Zoom factor.
     
         n_colorbars : int, default=0
             Number of colorbars to account for in computing the plot width.
@@ -303,12 +284,19 @@ class NiftiImage:
         x_length, y_length = self.get_lengths(view)
         width = x_length / y_length
 
+        # Account for zoom
+        zoom = self.get_ax_dict(zoom)
+        if zoom is not None:
+            x, y = _plot_axes[view]
+            width *= (zoom[y] / zoom[x])
+
         # Add extra width for colorbars
         colorbar_frac = 0.3
         width *= 1 + n_colorbars * colorbar_frac / width
         return width
 
-    def set_ax(self, view, ax=None, gs=None, figsize=None, n_colorbars=0):
+    def set_ax(self, view, ax=None, gs=None, figsize=None, zoom=None, 
+               n_colorbars=0):
         """Assign axes to self or create new axes if needed.
 
         Parameters
@@ -328,6 +316,13 @@ class NiftiImage:
             Size of matplotlib figure in inches. Only used if <ax> and <gs> 
             are both None.
 
+        zoom : int/float/tuple, default=None
+            Factor by which to zoom in. If a single int or float is given, 
+            the same zoom factor will be applied in all directions. If a tuple 
+            of three values is given, these will be used as the zoom factors 
+            in each direction in the order (x, y, z). If None, the image will 
+            not be zoomed in.
+
         n_colorbars : int, default=0
             Number of colorbars that will be plotted on these axes. Used to 
             determine the relative width of the axes. Only used if <ax> and
@@ -344,8 +339,10 @@ class NiftiImage:
             self.ax = ax
             return
 
+        # Get relative width
+        rel_width = self.get_relative_width(view, zoom, n_colorbars)
+
         # Create new figure and axes
-        rel_width = self.get_relative_width(view, n_colorbars)
         figsize = _default_figsize if figsize is None else figsize
         self.fig = plt.figure(figsize=(figsize * rel_width, figsize))
         self.ax = self.fig.add_subplot()
@@ -594,6 +591,7 @@ class NiftiImage:
              ax=None, 
              gs=None, 
              figsize=None, 
+             zoom=None,
              mpl_kwargs=None, 
              show=True, 
              colorbar=False, 
@@ -639,6 +637,13 @@ class NiftiImage:
             Figure height in inches; only used if <ax> and <gs> are None. If 
             None, the value in _default_figsize will be used.
 
+        zoom : int/float/tuple, default=None
+            Factor by which to zoom in. If a single int or float is given, 
+            the same zoom factor will be applied in all directions. If a tuple 
+            of three values is given, these will be used as the zoom factors 
+            in each direction in the order (x, y, z). If None, the image will 
+            not be zoomed in.
+
         colorbar : bool, default=True
             If True, a colorbar will be drawn alongside the plot.
 
@@ -667,7 +672,8 @@ class NiftiImage:
             return
 
         # Get slice
-        self.set_ax(view, ax, gs, figsize, colorbar)
+        zoom = self.get_ax_dict(zoom)
+        self.set_ax(view, ax, gs, figsize, zoom, colorbar)
         self.ax.set_facecolor("black")
         self.set_slice(view, sl, pos, masked, invert_mask)
 
@@ -683,7 +689,7 @@ class NiftiImage:
                               cmap=cmap, **kwargs)
 
         self.label_ax(view, no_ylabel, no_title, annotate_slice)
-        self.adjust_ax(view)
+        self.adjust_ax(view, zoom)
 
         # Draw colorbar
         if colorbar and kwargs.get("alpha", 1) > 0:
@@ -727,11 +733,33 @@ class NiftiImage:
             self.ax.annotate(z_str, xy=(0.05, 0.93), xycoords='axes fraction',
                              color=col)
 
-    def adjust_ax(self, view):
+    def adjust_ax(self, view, zoom=None):
         """Adjust axis limits."""
 
-        self.ax.set_xlim(self.ax_lims[view][0])
-        self.ax.set_ylim(self.ax_lims[view][1])
+        lims = self.get_zoomed_lims(view, zoom)
+        self.ax.set_xlim(lims[0])
+        self.ax.set_ylim(lims[1])
+
+    def get_zoomed_lims(self, view, zoom=None):
+        """Get axis limits zoomed in."""
+
+        init_lims = self.ax_lims[view]
+        if zoom is None:
+            return init_lims
+
+        zoom = self.get_ax_dict(zoom)
+        mid_x = np.mean(init_lims[0])
+        x, y = _plot_axes[view]
+        xlim = [
+            mid_x - (mid_x - init_lims[0][0]) / zoom[x],
+            mid_x + (init_lims[0][1] - mid_x) / zoom[x]
+        ]
+        mid_y = np.mean(init_lims[1])
+        ylim = [
+            mid_y - (mid_y - init_lims[1][0]) / zoom[y],
+            mid_y + (init_lims[1][1] - mid_y) / zoom[y]
+        ]
+        return [xlim, ylim]
 
     def get_ax_dict(self, val, default=1):
         """Convert a single value or tuple of values in order (x, y, z) to a 
@@ -739,6 +767,8 @@ class NiftiImage:
 
         if val is None:
             return None
+        if isinstance(val, dict):
+            return val
         try:
             val = float(val)
             return {ax: val for ax in _axes}
@@ -865,7 +895,8 @@ class DeformationImage(NiftiImage):
         ax=None, 
         mpl_kwargs=None, 
         plot_type="grid", 
-        spacing=30
+        spacing=30,
+        zoom=None
     ):
         """Plot deformation field.
 
@@ -911,9 +942,9 @@ class DeformationImage(NiftiImage):
 
         self.set_spacing(spacing)
         if plot_type == "grid":
-            self.plot_grid(view, sl, pos, ax, mpl_kwargs)
+            self.plot_grid(view, sl, pos, ax, mpl_kwargs, zoom)
         elif plot_type == "quiver":
-            self.plot_quiver(view, sl, pos, ax, mpl_kwargs)
+            self.plot_quiver(view, sl, pos, ax, mpl_kwargs, zoom)
 
     def plot_quiver(
         self, 
@@ -921,12 +952,13 @@ class DeformationImage(NiftiImage):
         sl, 
         pos, 
         ax, 
-        mpl_kwargs=None
+        mpl_kwargs=None,
+        zoom=None
     ):
         """Draw a quiver plot on a set of axes."""
 
         # Get arrow positions and lengths
-        self.set_ax(view, ax)
+        self.set_ax(view, ax, zoom=zoom)
         x_ax, y_ax = _plot_axes[view]
         x, y, df_x, df_y = self.get_deformation_slice(view, sl, pos)
         arrows_x = df_x[::self.spacing[y_ax], ::self.spacing[x_ax]]
@@ -942,7 +974,7 @@ class DeformationImage(NiftiImage):
         else:
             # If arrow lengths are zero, plot dots
             ax.scatter(plot_x, plot_y, c="navy", marker=".")
-        self.adjust_ax(view)
+        self.adjust_ax(view, zoom)
 
     def plot_grid(
         self, 
@@ -950,12 +982,13 @@ class DeformationImage(NiftiImage):
         sl, 
         pos, 
         ax, 
-        mpl_kwargs=None
+        mpl_kwargs=None,
+        zoom=None
     ):
         """Draw a grid plot on a set of axes."""
 
         # Get gridline positions
-        self.set_ax(view, ax)
+        self.set_ax(view, ax, zoom=zoom)
         self.ax.autoscale(False)
         x_ax, y_ax = _plot_axes[view]
         x, y, df_x, df_y = self.get_deformation_slice(view, sl, pos)
@@ -968,7 +1001,7 @@ class DeformationImage(NiftiImage):
             self.ax.plot(grid_x[i, :], grid_y[i, :], **kwargs)
         for j in np.arange(0, x.shape[1], self.spacing[x_ax]):
             self.ax.plot(grid_x[:, j], grid_y[:, j], **kwargs)
-        self.adjust_ax(view)
+        self.adjust_ax(view, zoom)
 
 
 class StructImage(NiftiImage):
@@ -1121,7 +1154,8 @@ class StructImage(NiftiImage):
         pos=None, 
         ax=None, 
         mpl_kwargs=None, 
-        plot_type="contour"
+        plot_type="contour",
+        zoom=None
     ):
         """Plot structure.
 
@@ -1148,6 +1182,9 @@ class StructImage(NiftiImage):
         plot_type : str, default="contour"
             Type of plot to produce. Can be "contour" for a contour plot,
             "mask" for a mask plot.
+
+        zoom : float/tuple, default=None
+            Factor by which to zoom in.
         """
 
         if not self.valid:
@@ -1155,15 +1192,15 @@ class StructImage(NiftiImage):
 
         # Make plot
         if plot_type == "contour":
-            self.plot_contour(view, sl, pos, ax, mpl_kwargs)
+            self.plot_contour(view, sl, pos, ax, mpl_kwargs, zoom)
         elif plot_type == "mask":
-            self.plot_mask(view, sl, pos, ax, mpl_kwargs)
+            self.plot_mask(view, sl, pos, ax, mpl_kwargs, zoom)
 
-    def plot_mask(self, view, sl, pos, ax, mpl_kwargs=None):
+    def plot_mask(self, view, sl, pos, ax, mpl_kwargs=None, zoom=None):
         """Plot structure as a colored mask."""
 
         # Get slice
-        self.set_ax(view, ax)
+        self.set_ax(view, ax, zoom=zoom)
         self.set_slice(view, sl, pos)
 
         # Make colormap
@@ -1180,15 +1217,15 @@ class StructImage(NiftiImage):
             aspect=self.aspect[view],
             **self.get_kwargs(mpl_kwargs, default=self.mask_kwargs)
         )
-        self.adjust_ax(view)
+        self.adjust_ax(view, zoom)
 
-    def plot_contour(self, view, sl, pos, ax, mpl_kwargs=None):
+    def plot_contour(self, view, sl, pos, ax, mpl_kwargs=None, zoom=None):
         """Plot structure as a contour."""
 
         if not self.on_slice(view, sl):
             return
 
-        self.set_ax(view, ax)
+        self.set_ax(view, ax, zoom)
         kwargs = self.get_kwargs(mpl_kwargs, default=self.contour_kwargs)
         kwargs.setdefault("color", self.color)
         idx = self.get_idx(view, sl, pos, default_centre=False)
@@ -1197,7 +1234,7 @@ class StructImage(NiftiImage):
             points_x = [p[0] for p in points]
             points_y = [p[1] for p in points]
             self.ax.plot(points_x, points_y, **kwargs)
-        self.adjust_ax(view)
+        self.adjust_ax(view, zoom)
 
     def on_slice(self, view, sl):
         """Return True if a contour exists for this structure on a given slice.
@@ -1472,11 +1509,11 @@ class MultiImage(NiftiImage):
 
         return colorbar * (1 + self.has_dose + self.has_jacobian)
 
-    def get_relative_width(self, view, colorbar=False):
+    def get_relative_width(self, view, zoom=None, colorbar=False):
         """Get the relative width for this plot, including all colorbars."""
 
         return NiftiImage.get_relative_width(
-            self, view, self.get_n_colorbars(colorbar))
+            self, view, zoom, self.get_n_colorbars(colorbar))
 
     def plot(
         self,
@@ -1486,6 +1523,7 @@ class MultiImage(NiftiImage):
         ax=None,
         gs=None,
         figsize=None,
+        zoom=None,
         mpl_kwargs=None,
         show=True,
         colorbar=False,
@@ -1529,6 +1567,13 @@ class MultiImage(NiftiImage):
         figsize : float, default=None
             Figure height in inches; only used if <ax> and <gs> are None. If 
             None, the value in _default_figsize will be used.
+
+        zoom : int/float/tuple, default=None
+            Factor by which to zoom in. If a single int or float is given, 
+            the same zoom factor will be applied in all directions. If a tuple 
+            of three values is given, these will be used as the zoom factors 
+            in each direction in the order (x, y, z). If None, the image will 
+            not be zoomed in.
 
         mpl_kwargs : dict, default=None
             Dictionary of keyword arguments to pass to matplotlib.imshow() for
@@ -1597,25 +1642,26 @@ class MultiImage(NiftiImage):
         """
 
         # Plot image
-        self.set_ax(view, ax, gs, figsize, colorbar)
+        self.set_ax(view, ax, gs, figsize, zoom, colorbar)
         NiftiImage.plot(
             self, view, sl, pos, ax=self.ax, mpl_kwargs=mpl_kwargs,
             show=False, colorbar=colorbar, masked=masked,
-            invert_mask=invert_mask, mask_color=mask_color, figsize=figsize)
+            invert_mask=invert_mask, mask_color=mask_color, figsize=figsize,
+            zoom=zoom)
 
         # Plot dose field
         self.dose.plot(
             view, self.sl, ax=self.ax,
             mpl_kwargs=self.get_kwargs(dose_kwargs, default=self.dose_kwargs),
             show=False, masked=masked, invert_mask=invert_mask,
-            mask_color=mask_color, colorbar=colorbar, 
+            mask_color=mask_color, colorbar=colorbar, zoom=zoom,
             colorbar_label="Dose (Gy)")
 
         # Plot jacobian
         self.jacobian.plot(
             view, self.sl, ax=self.ax, mpl_kwargs=self.get_kwargs(
                 jacobian_kwargs, default=self.jacobian_kwargs),
-            show=False, colorbar=colorbar,
+            show=False, colorbar=colorbar, zoom=zoom,
             colorbar_label="Jacobian determinant")
 
         # Plot structures
@@ -1624,7 +1670,7 @@ class MultiImage(NiftiImage):
             if not struct.visible:
                 continue
             struct.plot(view, self.sl, ax=self.ax, mpl_kwargs=struct_kwargs, 
-                        plot_type=struct_plot_type)
+                        plot_type=struct_plot_type, zoom=zoom)
             if struct.on_slice(view, self.sl) and struct_plot_type != "none":
                 struct_handles.append(mpatches.Patch(color=struct.color,
                                                      label=struct.name_nice))
@@ -1633,7 +1679,8 @@ class MultiImage(NiftiImage):
         self.df.plot(view, self.sl, ax=self.ax,
                      mpl_kwargs=df_kwargs,
                      plot_type=df_plot_type,
-                     spacing=df_spacing)
+                     spacing=df_spacing,
+                     zoom=zoom)
 
         # Draw legend
         if struct_legend and len(struct_handles):
@@ -1660,15 +1707,15 @@ class OrthogonalImage(MultiImage):
         self.orthog_slices = {ax: int(self.n_voxels[ax] / 2)
                               for ax in _axes}
 
-    def get_relative_width(self, view, colorbar=False):
+    def get_relative_width(self, view, zoom=None, colorbar=False):
         """Get width:height ratio for the full plot (main plot + orthogonal
         view)."""
 
-        width_own = MultiImage.get_relative_width(self, view, colorbar)
+        width_own = MultiImage.get_relative_width(self, view, zoom, colorbar)
         width_orthog = MultiImage.get_relative_width(self, _orthog[view])
         return width_own + width_orthog
 
-    def set_axes(self, view, ax=None, gs=None, figsize=None, 
+    def set_axes(self, view, ax=None, gs=None, figsize=None, zoom=None,
                  colorbar=False):
         """Set up axes for the plot. If <ax> is not None and <orthog_ax> has
         already been set, these axes will be used. Otherwise if <gs> is not 
@@ -1680,7 +1727,7 @@ class OrthogonalImage(MultiImage):
             self.ax = ax
 
         width_ratios = [
-            MultiImage.get_relative_width(self, view, colorbar),
+            MultiImage.get_relative_width(self, view, zoom, colorbar),
             MultiImage.get_relative_width(self, _orthog[view])
         ]
         if gs is None:
@@ -1701,6 +1748,7 @@ class OrthogonalImage(MultiImage):
              ax=None,
              gs=None,
              figsize=None,
+             zoom=None,
              mpl_kwargs=None,
              show=True,
              colorbar=False,
@@ -1710,10 +1758,10 @@ class OrthogonalImage(MultiImage):
             ):
         """Plot MultiImage and orthogonal view of main image and structs."""
 
-        self.set_axes(view, ax, gs, figsize, colorbar)
+        self.set_axes(view, ax, gs, figsize, zoom, colorbar)
 
         # Plot the MultiImage
-        MultiImage.plot(self, view, sl=sl, pos=pos, ax=self.ax, 
+        MultiImage.plot(self, view, sl=sl, pos=pos, ax=self.ax, zoom=zoom,
                         colorbar=colorbar, show=False, mpl_kwargs=mpl_kwargs,
                         struct_kwargs=struct_kwargs,
                         struct_plot_type=struct_plot_type,
@@ -1781,7 +1829,6 @@ class ComparisonImage(NiftiImage):
                 self.ims.append(NiftiImage(nii, **kwargs))
 
         self.scale_in_mm = self.ims[0].scale_in_mm
-        self.zoom = self.ims[0].zoom
         self.ax_lims = self.ims[0].ax_lims
         self.valid = all([im.valid for im in self.ims])
         self.title = title
@@ -1795,7 +1842,7 @@ class ComparisonImage(NiftiImage):
         return width / height
 
     def plot(self, view=None, sl=None, invert=False, ax=None,
-             mpl_kwargs=None, show=True, figsize=None, **kwargs):
+             mpl_kwargs=None, show=True, figsize=None, zoom=None, **kwargs):
         """Create a comparison plot of the two images.
 
         Parameters
@@ -1849,7 +1896,7 @@ class ComparisonImage(NiftiImage):
         self.slices = [im.current_slice for im in self.ims]
 
         # Plot settings
-        self.set_ax(view, ax, self.gs, figsize)
+        self.set_ax(view, ax, self.gs, figsize, zoom)
         self.plot_kwargs = self.ims[0].get_kwargs(mpl_kwargs)
         self.cmap = copy.copy(matplotlib.cm.get_cmap(
             self.plot_kwargs.pop("cmap")))
@@ -1857,7 +1904,7 @@ class ComparisonImage(NiftiImage):
         # Produce the plot
         self.plot_comparison(invert=invert, **kwargs)
         self.label_ax(self.view)
-        self.adjust_ax(self.view)
+        self.adjust_ax(self.view, zoom)
 
 
 class ChequerboardImage(ComparisonImage):
@@ -1866,12 +1913,6 @@ class ChequerboardImage(ComparisonImage):
     def plot_comparison(self, invert=False, n_splits=2):
         """Produce a chequerboard plot with <n_splits> squares in each
         direction."""
-
-        # Adjust number of splits for zooming
-        if self.zoom is not None and n_splits > 1:
-            x, y = _plot_axes[self.view]
-            n_splits *= min([z for ax, z in self.zoom.items() if ax in [x, y]])
-            n_splits = int(round(n_splits))
 
         # Get masked image
         i1 = int(invert)

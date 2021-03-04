@@ -452,6 +452,7 @@ class QuickViewer:
         # Settings needed for plotting
         self.figsize = kwargs.get("figsize", _default_figsize)
         self.colorbar = kwargs.get("colorbar", False)
+        self.zoom = kwargs.get("zoom", None)
         self.plots_per_row = plots_per_row
         self.suptitle = suptitle
         self.match_axes = match_axes
@@ -753,7 +754,8 @@ class QuickViewer:
             return
         for i, slider in enumerate(self.slider_boxes[:-1]):
             width = self.figsize * self.viewer[i].im.get_relative_width(
-                self.view, self.colorbar) * mpl.rcParams["figure.dpi"]
+                self.view, self.zoom, self.colorbar) \
+                    * mpl.rcParams["figure.dpi"]
             slider.layout = ipyw.Layout(width=f"{width}px")
 
     def make_fig(self):
@@ -796,9 +798,10 @@ class QuickViewer:
                     im.ax_lims[self.view][1] = ax_lims[1]
 
         # Get relative width of each subplot
-        width_ratios = [v.im.get_relative_width(self.view, self.colorbar)
+        width_ratios = [v.im.get_relative_width(self.view, self.zoom, 
+                                                self.colorbar)
                         for v in self.viewer]
-        width_ratios.extend([c.get_relative_width(self.view) for
+        width_ratios.extend([c.get_relative_width(self.view, self.zoom) for
                              c in self.comparison])
 
         # Get rows and columns
@@ -1014,6 +1017,7 @@ class ImageViewer():
         xlim=None,
         ylim=None,
         zlim=None,
+        zoom=None,
         colorbar=False,
         mpl_kwargs=None,
         dose_opacity=0.5,
@@ -1080,6 +1084,7 @@ class ImageViewer():
         self.callbacks_set = False
         self.standalone = standalone
         self.set_ax_lims(xlim, ylim, zlim)
+        self.zoom = zoom
 
         # HU range settings
         self.hu = hu
@@ -1762,6 +1767,7 @@ class ImageViewer():
                         gs=self.gs,
                         mpl_kwargs=mpl_kwargs,
                         figsize=self.figsize,
+                        zoom=self.zoom,
                         colorbar=self.colorbar,
                         masked=self.ui_mask.value,
                         invert_mask=self.invert_mask,
