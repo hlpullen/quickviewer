@@ -206,6 +206,9 @@ class QuickViewer:
             HU thresholds at which to display the first image. Can later be 
             changed interactively.
 
+        v_range : tuple, default=(-2000, 2000)
+            Full range to use for the HU slider.
+
         figsize : float, default=5
             Height of the displayed figure in inches. If None, the value in
             _default_figsize is used.
@@ -991,6 +994,7 @@ class ImageViewer():
         init_sl=None,
         init_pos=None,
         v=(-300, 200),
+        v_range=(-2000, 2000),
         figsize=_default_figsize,
         colorbar=False,
         mpl_kwargs=None,
@@ -1048,6 +1052,7 @@ class ImageViewer():
         self.in_notebook = in_notebook()
         self.mpl_kwargs = mpl_kwargs
         self.v = v
+        self.v_range = v_range
         self.figsize = figsize
         self.continuous_update = continuous_update
         self.colorbar = colorbar
@@ -1194,13 +1199,21 @@ class ImageViewer():
         if not share_slider or not shared_ui:
 
             # Make HU slider
-            self.ui_hu = ipyw.IntRangeSlider(
-                min=-2000, max=2000,
-                value=self.v,
-                description="HU range",
-                continuous_update=False,
-                style=_style
-            )
+            vmin = max([self.v[0], self.v_range[0]])
+            vmax = min([self.v[1], self.v_range[1]])
+            ui_hu_kwargs = {
+                "min": self.v_range[0],
+                "max": self.v_range[1],
+                "value": (vmin, vmax),
+                "description": "HU range",
+                "continuous_update": False,
+                "style": _style
+            }
+            if abs(self.v_range[1] - self.v_range[0]) < 1.01:
+                ui_hu_kwargs.update({"step": 0.1, "readout_format": ".1f"})
+                self.ui_hu = ipyw.FloatRangeSlider(**ui_hu_kwargs)
+            else:
+                self.ui_hu = ipyw.IntRangeSlider(**ui_hu_kwargs)
             self.main_ui.append(self.ui_hu)
 
             # Make slice slider
