@@ -165,25 +165,29 @@ class NiftiImage:
         self.orientation = orientation
         self.data = self.data[..., np.newaxis]
 
+        # Put voxel sizes and origin into arrays
         if affine is not None:
-            voxel_sizes = [affine[0, 0], affine[1, 1]]
-            origin = [affine[0, 2], affine[1,2]]
+            voxel_sizes = np.array([affine[0, 0], affine[1, 1]])
+            origin = affine[:2, 2]
             affine = None
-        if orientation == "x-y":
-            voxel_sizes = [voxel_sizes[0], voxel_sizes[1], 1]
-            origin = [origin[0], origin[2], 0]
-        elif orientation == "x-z":
-            self.data = np.transpose(self.data, [0, 2, 1])
-            voxel_sizes = [voxel_sizes[0], 1, voxel_sizes[1]]
-            origin = [0, origin[0], origin[2]]
-        elif orientation == "y-z":
-            self.data = np.transpose(self.data, [2, 0, 1])
-            voxel_sizes = [1, voxel_sizes[0], voxel_sizes[1]]
-            origin = [0, origin[0], origin[2]]
         else:
-            raise TypeError("Orientation of 2D image must be x-y, y-z, "
-                            "or x-z.")
+            voxel_sizes = np.array(voxel_sizes)
+            origin = np.array(voxel_sizes)
+        np.append(voxel_sizes, 1)
+        np.append(origin, 0)
 
+        # Transpose
+        transpose = {
+            "x-y": [0, 1, 2],
+            "y-x": [1, 0, 2],
+            "x-z": [0, 2, 1],
+            "z-x": [1, 2, 0],
+            "y-z": [2, 0, 1],
+            "z-y": [2, 1, 0]
+        }.get(self.orientation, "x-y")
+        self.data = np.transpose(self.data, transpose)
+        voxel_sizes = list(voxel_sizes[transpose])
+        origin = list(origin[transpose])
         return affine, voxel_sizes, origin
 
     def set_geom(self):
