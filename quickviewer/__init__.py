@@ -383,6 +383,13 @@ class QuickViewer:
             2x zoom). Can be a single value for all directions or a tuple of
             values for the (x, y, z) directions.
             
+        zoom_centre : tuple, default=None
+            Centrepoint of zooming in order (x, y, z). If any of the values are
+            None, the midpoint of the image will be used in that direction.
+
+        zoom_ui : bool, default=False
+            If True, a UI for zooming will be displayed.
+            
         downsample : int/tuple, default=None
             Factor by which to downsample an image. Can be a single value for
             all directions or a tuple of values in the (x, y, z) directions.
@@ -541,8 +548,11 @@ class QuickViewer:
 
         # Make main upper UI list (= view radio + single HU/slice slider)
         many_sliders = not share_slider and self.n > 1
+        zoom_ui = []
         if not many_sliders:
             self.main_ui = v0.main_ui
+            if v0.zoom_ui:
+                zoom_ui.extend(list(v0.ui_zoom_centre.values()))
         else:
             self.main_ui = [self.ui_view]
 
@@ -554,15 +564,28 @@ class QuickViewer:
         self.per_image_ui = []
         if many_sliders:
             for v in self.viewer:
-                if v.hu_from_width:
-                    sliders = [v.ui_hu_centre, v.ui_hu_width, v.ui_slice]
-                else:
-                    sliders = [v.ui_hu, v.ui_slice]
+
+                # Structure jumping
+                sliders = []
                 if v.im.has_structs:
-                    sliders.insert(0, v.ui_struct_jump)
+                    sliders.append(v.ui_struct_jump)
                 else:
                     if self.any_attr("structs"):
-                        sliders.insert(0, ipyw.Label())
+                        sliders.append(ipyw.Label())
+
+                # HU sliders
+                if v.hu_from_width:
+                    sliders.extend([v.ui_hu_centre, v.ui_hu_width])
+                else:
+                    sliders.append(v.ui_hu)
+
+                # Zoom sliders
+                if v.zoom_ui:
+                    sliders.extend([v.ui_zoom, v.ui_zoom_centre_box])
+                    zoom_ui.extend(list(v.ui_zoom_centre.values()))
+
+                # Slice slider
+                sliders.append(v.ui_slice)
                 self.per_image_ui.append(sliders)
 
         # Make extra UI list
@@ -597,6 +620,7 @@ class QuickViewer:
             + self.comp_ui
             + self.trans_ui
             + self.ui_struct_checkboxes
+            + zoom_ui
         )
 
     def make_lower_ui(self):
@@ -1018,6 +1042,8 @@ class ImageViewer():
         ylim=None,
         zlim=None,
         zoom=None,
+        zoom_centre=None,
+        zoom_ui=False,
         colorbar=False,
         mpl_kwargs=None,
         dose_opacity=0.5,
@@ -1085,6 +1111,8 @@ class ImageViewer():
         self.standalone = standalone
         self.set_ax_lims(xlim, ylim, zlim)
         self.zoom = zoom
+        self.zoom_centre = zoom_centre
+        self.zoom_ui = zoom_ui
 
         # HU range settings
         self.hu = hu
@@ -1275,6 +1303,47 @@ class ImageViewer():
                 self.main_ui.extend(self.ui_hu_list)
                 self.ui_hu = ipyw.VBox(self.ui_hu_list)
 
+            # Make zoom UI
+            if self.zoom_ui:
+
+                # Get initial zoom level for each view
+                zoom = self.im.get_ax_dict(self.zoom)
+                if zoom is None:
+                    self.current_zoom = {view: 1 for view in _slider_axes}
+                else:
+                    self.current_zoom = {}
+                    for view, (x, y) in _plot_axes.items():
+                        zooms = [zoom[x], zoom[y]]
+                        self.current_zoom[view] = max(zooms)
+
+                # Zoom level slider
+                self.ui_zoom = ipyw.FloatSlider(
+                    min=1, max=5, step=0.1, description="Zoom",
+                    readout_format=".1f", value=self.current_zoom[self.view], 
+                    continuous_update=False, style=_style)
+
+                # Zoom centre boxes
+                width = "{}px".format(int(mpl.rcParams["figure.dpi"]))
+                zoom_centre = self.im.get_ax_dict(self.zoom_centre, 
+                                                  default=None)
+                self.ui_zoom_centre = {}
+                for ax in _axes:
+                    if zoom_centre is None or zoom_centre[ax] is None:
+                        init_centre = float(f"{np.mean(self.im.lims[ax]):.2f}")
+                    else:
+                        init_centre = zoom_centre[ax]
+                    self.ui_zoom_centre[ax] = ipyw.FloatText(
+                        value=init_centre,
+                        description="", 
+                        layout=ipyw.Layout(width=width))
+
+                # Combine boxes
+                self.ui_zoom_centre_label = ipyw.Label(value="Centre")
+                self.ui_zoom_centre_box = ipyw.HBox(
+                    [self.ui_zoom_centre_label] 
+                    + list(self.ui_zoom_centre.values()))
+                self.main_ui.extend([self.ui_zoom, self.ui_zoom_centre_box]) 
+
             # Make slice slider
             readout = ".1f" if self.im.scale_in_mm else ".0f"
             self.ui_slice = ipyw.FloatSlider(
@@ -1288,9 +1357,16 @@ class ImageViewer():
                 self.main_ui.append(self.ui_slice)
 
         else:
-            self.ui_hu = vimage.ui_hu
+            if self.hu_from_width:
+                self.ui_hu_width = vimage.ui_hu_width
+                self.ui_hu_centre = vimage.ui_hu_centre
+            else:
+                self.ui_hu = vimage.ui_hu
             self.ui_slice = vimage.ui_slice
             self.slice[self.view] = self.ui_slice.value
+            if self.zoom_ui:
+                self.ui_zoom = vimage.ui_zoom
+                self.ui_zoom_centre = vimage.ui_zoom_centre
             self.own_ui_slice = False
 
         # Extra sliders
@@ -1374,6 +1450,8 @@ class ImageViewer():
         self.upper_ui_box = ipyw.HBox(self.upper_ui)
         self.lower_ui_box = ipyw.VBox(self.lower_ui)
         self.all_ui = self.main_ui + self.extra_ui + self.ui_struct_checkboxes
+        if self.zoom_ui:
+            self.all_ui.extend(list(self.ui_zoom_centre.values()))
 
     def make_lower_ui(self):
 
@@ -1637,6 +1715,10 @@ class ImageViewer():
             self.im.scale_in_mm else 1
         self.update_slice_slider_desc()
 
+        # Update zoom slider
+        if self.zoom_ui:
+            self.ui_zoom.value = self.current_zoom[self.view]
+
     def update_slice_slider_desc(self):
         """Update slice slider description to reflect current axis and
         position."""
@@ -1706,6 +1788,12 @@ class ImageViewer():
         # Get HU range
         self.v_min_max = self.get_hu_range()
 
+        # Get zoom settings
+        if self.zoom_ui:
+            self.zoom = self.ui_zoom.value
+            self.current_zoom[self.view] = self.zoom
+            self.zoom_centre = [self.ui_zoom_centre[ax].value for ax in _axes]
+
     def get_hu_range(self):
         """Get vmin and vmax from HU sliders."""
 
@@ -1768,6 +1856,7 @@ class ImageViewer():
                         mpl_kwargs=mpl_kwargs,
                         figsize=self.figsize,
                         zoom=self.zoom,
+                        zoom_centre=self.zoom_centre,
                         colorbar=self.colorbar,
                         masked=self.ui_mask.value,
                         invert_mask=self.invert_mask,
