@@ -186,8 +186,8 @@ class QuickViewer:
             created. Otherwise, the plot can be displayed later via
             QuickViewer.show().
 
-        kwargs
-        ------
+        Keyword arguments
+        -----------------
 
         init_view : string, default='x-y'
             Orientation at which to initially display the image(s).
@@ -226,9 +226,11 @@ class QuickViewer:
 
         mpl_kwargs : dict, default=None
             Dictionary of keyword arguments to pass to matplotlib.pyplot.imshow
-            for the main image (e.g. to change colormap to red, set 
-            mpl_kwargs={"cmap": "Reds"}). Note that "vmin" and "vmax" are
-            set separately via the <v> argument.
+            for the main image.See https://matplotlib.org/stable/api/_as_gen/matplotlib.pyplot.imshow.html 
+            for options.
+            Some useful keywords are:
+                - "cmap": colormap (default="gray").
+                - "interpolation": interpolation method (default="antialiased")
 
         dose_opacity : float, default=0.5
             Initial opacity of the overlaid dose field. Can later be changed
@@ -236,13 +238,17 @@ class QuickViewer:
 
         dose_kwargs : dict, default=None
             Dictionary of keyword arguments to pass to matplotlib.pyplot.imshow
-            for the dose field.
+            for the dose image. See https://matplotlib.org/stable/api/_as_gen/matplotlib.pyplot.imshow.html 
+            for options.
+            Some useful keywords are:
+                - "cmap": colormap (default="jet").
+                - "interpolation": interpolation method (default="antialiased")
 
         invert_mask : bool, default=False
             If True, any masks applied will be inverted.
 
-        mask_colour : matplotlib color, default="black"
-            Colour in which to display masked areas.
+        mask_color : matplotlib color, default="black"
+            color in which to display masked areas.
 
         mask_threshold : float, default=0.5
             Threshold on mask array; voxels with values below this threshold
@@ -254,7 +260,11 @@ class QuickViewer:
 
         jacobian_kwargs : dict, default=None
             Dictionary of keyword arguments to pass to matplotlib.pyplot.imshow
-            for the jacobian determinant.
+            for the jacobian determinant. See https://matplotlib.org/stable/api/_as_gen/matplotlib.pyplot.imshow.html
+            for options.
+            Some useful keywords are:
+                - "cmap": colormap (default="seismic").
+                - "interpolation": interpolation method (default="antialiased")
 
         df_plot_type : str, default="grid"
             Option for initial plotting of deformation field. Can be 'grid', 
@@ -270,6 +280,13 @@ class QuickViewer:
         df_kwargs : dict, default=None
             Dictionary of keyword arguments to pass to matplotlib when plotting
             the deformation field.
+
+            For grid plotting options, see https://matplotlib.org/stable/api/_as_gen/matplotlib.pyplot.plot.html.
+            Some useful keywords are:
+                - "linewidth": default=2
+                - "color": default="green"
+
+            For quiver plotting options, see https://matplotlib.org/stable/api/_as_gen/matplotlib.pyplot.quiver.html.
 
         struct_plot_type : str, default='contour'
             Option for initial plot of structures. Can be 'contour', 'mask', or
@@ -317,20 +334,20 @@ class QuickViewer:
             be the central slice of that structure. This supercedes <init_pos>
             and <init_sl>.
 
-        struct_colours : dict, default=None
-            Map between structures and colours to use for that structure. The
+        struct_colors : dict, default=None
+            Map between structures and colors to use for that structure. The
             key can either be: 
                 (a) The path corresponding to the structure NIfTI file;
                 (b) The name of the structure (i.e. the name of the NIfTI file
                     without the extension, optionally with underscores replaced
                     by spaces);
                 (c) A wildcard matching the name(s) of structure(s) to be 
-                    coloured, optionally with underscores replace by spaces;
+                    colored, optionally with underscores replace by spaces;
                 (d) A wildcard string matching the path(s) of the structure 
-                    file(s) to be given the chosen colour.
+                    file(s) to be given the chosen color.
             Matching structures will be searched for in that order. If more 
             than one structure matches, all matching structures will have that
-            colour. (Note: structure names are case insensitive).
+            color. (Note: structure names are case insensitive).
 
         structs_as_mask : bool, default=True
             If True, any loaded structures will be used to mask the image and
@@ -396,6 +413,8 @@ class QuickViewer:
         self.scale_in_mm = scale_in_mm
         self.viewer = []
         viewer_type = ImageViewer if not orthog_view else OrthogViewer
+        kwargs = {key.replace("colour", "color"): val for key, val in 
+                  kwargs.items()}
         for i in range(self.n):
             viewer = viewer_type(
                 self.nii[i], title=self.title[i], dose=self.dose[i],
@@ -1012,7 +1031,7 @@ class ImageViewer():
         dose_opacity=0.5,
         dose_kwargs=None,
         invert_mask=False,
-        mask_colour="black",
+        mask_color="black",
         jacobian_opacity=0.5,
         jacobian_kwargs=None,
         df_plot_type="grid",
@@ -1081,7 +1100,7 @@ class ImageViewer():
 
         # Mask settings
         self.invert_mask = invert_mask
-        self.mask_colour = mask_colour
+        self.mask_color = mask_color
 
         # Dose settings
         self.init_dose_opacity = dose_opacity
@@ -1742,7 +1761,7 @@ class ImageViewer():
                         colorbar=self.colorbar,
                         masked=self.ui_mask.value,
                         invert_mask=self.invert_mask,
-                        mask_colour=self.mask_colour,
+                        mask_color=self.mask_color,
                         dose_kwargs=dose_kwargs,
                         jacobian_kwargs=jacobian_kwargs,
                         df_plot_type=self.ui_df.value,

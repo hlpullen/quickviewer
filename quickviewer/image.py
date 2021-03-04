@@ -262,7 +262,7 @@ class NiftiImage:
         self.mpl_kwargs = {"cmap": "gray",
                            "vmin": -300,
                            "vmax": 200}
-        self.mask_colour = "black"
+        self.mask_color = "black"
 
     def get_relative_width(self, view, n_colorbars=0):
         """Get width:height ratio for this plot.
@@ -584,7 +584,7 @@ class NiftiImage:
              colorbar_label="HU", 
              masked=False,
              invert_mask=False, 
-             mask_colour="black", 
+             mask_color="black", 
              no_ylabel=False,
              no_title=False,
              annotate_slice=None
@@ -636,15 +636,15 @@ class NiftiImage:
         invert_mask : bool, default=True
             If True and a mask is applied, the mask will be inverted.
 
-        mask_colour : matplotlib colour, default="black"
-            Colour in which to plot masked areas.
+        mask_color : matplotlib color, default="black"
+            color in which to plot masked areas.
 
         no_ylabel : bool, default=False
             If True, the y axis will not be labelled.
 
         annotate_slice : str, default=None
             Color for annotation of slice number. If None, no annotation will 
-            be added. If True, the default colour (white) will be used.
+            be added. If True, the default color (white) will be used.
         """
 
         if not self.valid:
@@ -655,10 +655,10 @@ class NiftiImage:
         self.ax.set_facecolor("black")
         self.set_slice(view, sl, pos, masked, invert_mask)
 
-        # Get colourmap
+        # Get colormap
         kwargs = self.get_kwargs(mpl_kwargs)
         cmap = copy.copy(matplotlib.cm.get_cmap(kwargs.pop("cmap")))
-        cmap.set_bad(color=mask_colour)
+        cmap.set_bad(color=mask_color)
 
         # Plot image
         mesh = self.ax.imshow(self.current_slice,
@@ -821,7 +821,8 @@ class DeformationImage(NiftiImage):
         plots and quiver plots."""
 
         self.quiver_kwargs = {"cmap": "jet"}
-        self.grid_kwargs = {"color": "green"}
+        self.grid_kwargs = {"color": "green",
+                            "linewidth": 2}
 
     def set_slice(self, view, sl=None, pos=None):
         """Set 2D array corresponding to a slice of the deformation field in 
@@ -993,8 +994,8 @@ class StructImage(NiftiImage):
             the filename.
 
         color : matplotlib color, default=None
-            Colour in which to plot this structure. If None, a random 
-            colour will be assigned. Can also be set later using 
+            color in which to plot this structure. If None, a random 
+            color will be assigned. Can also be set later using 
             self.assign_color(color).
         """
 
@@ -1026,7 +1027,7 @@ class StructImage(NiftiImage):
         if self.empty:
             self.name_nice += " (empty)"
 
-        # Assign a random colour
+        # Assign a random color
         self.assign_color(np.random.rand(3, 1).flatten())
 
     def set_geom_properties(self, volume=True, length=True):
@@ -1108,12 +1109,12 @@ class StructImage(NiftiImage):
             return points
 
     def assign_color(self, color):
-        """Assign a colour, ensuring that it is compatible with matplotlib."""
+        """Assign a color, ensuring that it is compatible with matplotlib."""
 
         if matplotlib.colors.is_color_like(color):
             self.color = matplotlib.colors.to_rgba(color)
         else:
-            print(f"Colour {color} is not a valid colour.")
+            print(f"color {color} is not a valid color.")
 
     def plot(
         self, 
@@ -1161,7 +1162,7 @@ class StructImage(NiftiImage):
             self.plot_mask(view, sl, pos, ax, mpl_kwargs)
 
     def plot_mask(self, view, sl, pos, ax, mpl_kwargs=None):
-        """Plot structure as a coloured mask."""
+        """Plot structure as a colored mask."""
 
         # Get slice
         self.set_ax(view, ax)
@@ -1254,7 +1255,7 @@ class MultiImage(NiftiImage):
         jacobian=None,
         df=None,
         structs=None,
-        struct_colours=None,
+        struct_colors=None,
         structs_as_mask=False,
         mask_threshold=0.5,
         **kwargs
@@ -1287,10 +1288,10 @@ class MultiImage(NiftiImage):
             nifti file(s) containing structure(s). Can also be a list of
             paths/directories/wildcards.
 
-        struct_colours : dict, default=None
-            Custom colours to use for structures. Dictionary keys can be a
+        struct_colors : dict, default=None
+            Custom colors to use for structures. Dictionary keys can be a
             structure name or a wildcard matching structure name(s). Values
-            should be any valid matplotlib colour.
+            should be any valid matplotlib color.
 
         structs_as_mask : bool, default=False
             If True, structures will be used as masks.
@@ -1310,7 +1311,7 @@ class MultiImage(NiftiImage):
         self.load_to(mask, "mask", kwargs)
         self.load_to(jacobian, "jacobian", kwargs)
         self.load_df(df)
-        self.load_structs(structs, struct_colours)
+        self.load_structs(structs, struct_colors)
         self.structs_as_mask = structs_as_mask
         if self.has_structs and structs_as_mask:
             self.has_mask = True
@@ -1341,9 +1342,9 @@ class MultiImage(NiftiImage):
         self.df = DeformationImage(df, scale_in_mm=self.scale_in_mm)
         self.has_df = self.df.valid
 
-    def load_structs(self, structs, struct_colours):
+    def load_structs(self, structs, struct_colors):
         """Load structures from a path/wildcard or list of paths/wildcards in
-        <structs>, and assign the colours in <struct_colours>."""
+        <structs>, and assign the colors in <struct_colors>."""
 
         self.has_structs = False
         self.structs = []
@@ -1377,18 +1378,18 @@ class MultiImage(NiftiImage):
         files = list(set([os.path.abspath(f) for f in files]))
         self.structs = [StructImage(f) for f in files]
 
-        # Assign colours
+        # Assign colors
         standard_colors = (
             list(matplotlib.cm.Set1.colors)[:-1]
             + list(matplotlib.cm.Set2.colors)[:-1]
             + list(matplotlib.cm.Set3.colors)
             + list(matplotlib.cm.tab20.colors)
         )
-        custom = struct_colours if struct_colours is not None else {}
+        custom = struct_colors if struct_colors is not None else {}
         custom_lower = {standard_str(n): col for n, col in custom.items()}
         for i, struct in enumerate(self.structs):
 
-            # Assign standard colour
+            # Assign standard color
             struct.assign_color(standard_colors[i])
 
             # Check for exact match
@@ -1493,7 +1494,7 @@ class MultiImage(NiftiImage):
         dose_kwargs=None,
         masked=False,
         invert_mask=False,
-        mask_colour="black",
+        mask_color="black",
         jacobian_kwargs=None,
         df_kwargs=None,
         df_plot_type="grid",
@@ -1553,8 +1554,8 @@ class MultiImage(NiftiImage):
         invert_mask : bool, default=True
             If True and a mask is applied, the mask will be inverted.
 
-        mask_colour : matplotlib colour, default="black"
-            Colour in which to plot masked areas.
+        mask_color : matplotlib color, default="black"
+            color in which to plot masked areas.
 
         mask_threshold : float, default=0.5
             Threshold on mask array; voxels with values below this threshold
@@ -1594,7 +1595,7 @@ class MultiImage(NiftiImage):
 
         annotate_slice : str, default=None
             Color for annotation of slice number. If None, no annotation will 
-            be added. If True, the default colour (white) will be used.
+            be added. If True, the default color (white) will be used.
         """
 
         # Plot image
@@ -1602,14 +1603,14 @@ class MultiImage(NiftiImage):
         NiftiImage.plot(
             self, view, sl, pos, ax=self.ax, mpl_kwargs=mpl_kwargs,
             show=False, colorbar=colorbar, masked=masked,
-            invert_mask=invert_mask, mask_colour=mask_colour, figsize=figsize)
+            invert_mask=invert_mask, mask_color=mask_color, figsize=figsize)
 
         # Plot dose field
         self.dose.plot(
             view, self.sl, ax=self.ax,
             mpl_kwargs=self.get_kwargs(dose_kwargs, default=self.dose_kwargs),
             show=False, masked=masked, invert_mask=invert_mask,
-            mask_colour=mask_colour, colorbar=colorbar, 
+            mask_color=mask_color, colorbar=colorbar, 
             colorbar_label="Dose (Gy)")
 
         # Plot jacobian
