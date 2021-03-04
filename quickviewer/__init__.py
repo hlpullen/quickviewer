@@ -202,11 +202,18 @@ class QuickViewer:
             to the nearest slice. If <init_pos> and <init_idx> are both given,
             <init_pos> will override <init_idx> only if <scale_in_mm> is True.
 
-        v : tuple, default=(-300, 200)
-            HU thresholds at which to display the first image. Can later be 
-            changed interactively.
+        hu : float/tuple, default=(-300, 200)
+            HU central value or range thresholds at which to display the image. 
+            Can later be changed interactively. If a single value is given, the
+            HU range will be centred at this value with width given by 
+            <hu_width>. If a tuple is given, the HU range will be set to the
+            two values in the tuple.
 
-        v_range : tuple, default=(-2000, 2000)
+        hu_width : float, default=500
+            Initial width of the HU window. Only used if <hu> is a single 
+            value.
+
+        hu_range : tuple, default=(-2000, 2000)
             Full range to use for the HU slider.
 
         figsize : float, default=5
@@ -516,7 +523,10 @@ class QuickViewer:
         self.per_image_ui = []
         if many_sliders:
             for v in self.viewer:
-                sliders = [v.ui_hu, v.ui_slice]
+                if v.hu_from_width:
+                    sliders = [v.ui_hu_centre, v.ui_hu_width, v.ui_slice]
+                else:
+                    sliders = [v.ui_hu, v.ui_slice]
                 if v.im.has_structs:
                     sliders.insert(0, v.ui_struct_jump)
                 else:
@@ -993,8 +1003,9 @@ class ImageViewer():
         init_view="x-y",
         init_sl=None,
         init_pos=None,
-        v=(-300, 200),
-        v_range=(-2000, 2000),
+        hu=(-300, 200),
+        hu_width=500,
+        hu_range=(-2000, 2000),
         figsize=_default_figsize,
         colorbar=False,
         mpl_kwargs=None,
@@ -1051,8 +1062,6 @@ class ImageViewer():
         # General settings
         self.in_notebook = in_notebook()
         self.mpl_kwargs = mpl_kwargs
-        self.v = v
-        self.v_range = v_range
         self.figsize = figsize
         self.continuous_update = continuous_update
         self.colorbar = colorbar
@@ -1063,6 +1072,12 @@ class ImageViewer():
         self.plotting = False
         self.callbacks_set = False
         self.standalone = standalone
+
+        # HU range settings
+        self.hu = hu
+        self.hu_width = hu_width
+        self.hu_range = hu_range
+        self.hu_from_width = isinstance(hu, float) or isinstance(hu, int)
 
         # Mask settings
         self.invert_mask = invert_mask
@@ -1199,22 +1214,38 @@ class ImageViewer():
         if not share_slider or not shared_ui:
 
             # Make HU slider
-            vmin = max([self.v[0], self.v_range[0]])
-            vmax = min([self.v[1], self.v_range[1]])
-            ui_hu_kwargs = {
-                "min": self.v_range[0],
-                "max": self.v_range[1],
-                "value": (vmin, vmax),
-                "description": "HU range",
-                "continuous_update": False,
-                "style": _style
-            }
-            if abs(self.v_range[1] - self.v_range[0]) < 1.01:
-                ui_hu_kwargs.update({"step": 0.1, "readout_format": ".1f"})
-                self.ui_hu = ipyw.FloatRangeSlider(**ui_hu_kwargs)
+            # Single range slider
+            if not self.hu_from_width:
+                vmin = max([self.hu[0], self.hu_range[0]])
+                vmax = min([self.hu[1], self.hu_range[1]])
+                ui_hu_kwargs = {
+                    "min": self.hu_range[0],
+                    "max": self.hu_range[1],
+                    "value": (vmin, vmax),
+                    "description": "HU range",
+                    "continuous_update": False,
+                    "style": _style
+                }
+                if abs(self.hu_range[1] - self.hu_range[0]) < 1.01:
+                    ui_hu_kwargs.update({"step": 0.1, "readout_format": ".1f"})
+                    self.ui_hu = ipyw.FloatRangeSlider(**ui_hu_kwargs)
+                else:
+                    self.ui_hu = ipyw.IntRangeSlider(**ui_hu_kwargs)
+                self.main_ui.append(self.ui_hu)
+
+            # Centre and window sliders
             else:
-                self.ui_hu = ipyw.IntRangeSlider(**ui_hu_kwargs)
-            self.main_ui.append(self.ui_hu)
+                self.ui_hu_centre = ipyw.IntSlider(
+                    min=self.hu_range[0], max=self.hu_range[1],
+                    value=self.hu, description="HU centre",
+                    continuous_update=False, style=_style)
+                self.ui_hu_width = ipyw.IntSlider(
+                    min=0, max=abs(self.hu_range[1] - self.hu_range[0]),
+                    value=self.hu_width, description="HU width",
+                    continuous_update=False, style=_style)
+                self.ui_hu_list = [self.ui_hu_centre, self.ui_hu_width]
+                self.main_ui.extend(self.ui_hu_list)
+                self.ui_hu = ipyw.VBox(self.ui_hu_list)
 
             # Make slice slider
             readout = ".1f" if self.im.scale_in_mm else ".0f"
@@ -1645,8 +1676,17 @@ class ImageViewer():
             self.update_slice_slider_desc()
 
         # Get HU range
-        self.v_min_max = {"vmin": self.ui_hu.value[0],
-                          "vmax": self.ui_hu.value[1]}
+        self.v_min_max = self.get_hu_range()
+
+    def get_hu_range(self):
+        """Get vmin and vmax from HU sliders."""
+
+        if self.hu_from_width:
+            w = self.ui_hu_width.value / 2
+            centre = self.ui_hu_centre.value
+            return {"vmin": centre - w, "vmax": centre + w}
+        else:
+            return {"vmin": self.ui_hu.value[0], "vmax": self.ui_hu.value[1]}
 
     def plot(self, **kwargs):
         """Plot a slice with current settings."""
