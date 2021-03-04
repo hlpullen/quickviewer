@@ -121,14 +121,13 @@ class QuickViewer:
             Method for adjusting axis limits. Can either be:
             - An integer n, where 0 < n < number of plots, or n is -1. The axes
               of all plots will be adjusted to be the same as those of plot n.
-            - "all": axes for all plots will be adjusted to cover the maximum
-              range of all plots.
+            - "all"/"both": axes for all plots will be adjusted to cover the 
+              maximum range of all plots.
             - "overlap": axes for all plots will be adjusted to just show the
               overlapping region.
-            - "x": axes will be adjusted to cover the same range across
+            - "x": same as "all", but only applied to the current x axis.
               whatever the x axis is in the current view.
-            - "y": axes will be adjusted to cover the same range across
-              whatever the y axis is in the current view.
+            - "y": same as "all", but only applied to the current y axis.
 
         scale_in_mm : bool, default=True
             If True, the axis scales will be shown in mm instead of array
@@ -213,7 +212,7 @@ class QuickViewer:
             Initial width of the HU window. Only used if <hu> is a single 
             value.
 
-        hu_range : tuple, default=(-2000, 2000)
+        hu_limits : tuple, default=(-2000, 2000)
             Full range to use for the HU slider.
 
         figsize : float, default=5
@@ -747,63 +746,48 @@ class QuickViewer:
 
     def make_fig(self):
 
+        # Adjust axes if needed
+        if self.match_axes is not None:
+
+            # Calculate limits using all plots
+            ax_lims = []
+            if self.match_axes in ["all", "both", "x", "y", "overlap"]:
+                for i in range(2):
+                    min_lims = [v.im.ax_lims[self.view][i][0] 
+                                for v in self.viewer]
+                    max_lims = [v.im.ax_lims[self.view][i][1] 
+                                for v in self.viewer]
+                    f1, f2 = min, max
+                    if self.match_axes == "overlap":
+                        f1, f2 = f2, f1
+                    if min_lims[0] > max_lims[0]:
+                        f1, f2 = f2, f1
+                    ax_lims.append([f1(min_lims), f2(max_lims)])
+
+            # Match axes to one plot
+            else:
+                try:
+                    im = self.viewer[self.match_axes].im
+                    ax_lims = im.ax_lims[self.view]
+
+                except TypeError:
+                    raise TypeError("Unrecognised option for <match_axes>",
+                                    self.match_axes)
+
+            # Set these limits for all plots
+            all_ims = [v.im for v in self.viewer] \
+                    + [c for c in self.comparison]
+            for im in all_ims:
+                if self.match_axes != "y":
+                    im.ax_lims[self.view][0] = ax_lims[0]
+                if self.match_axes != "x":
+                    im.ax_lims[self.view][1] = ax_lims[1]
+
         # Get relative width of each subplot
-        if self.match_axes is None:
-            width_ratios = [v.im.get_relative_width(self.view, self.colorbar)
-                            for v in self.viewer]
-            width_ratios.extend([c.get_relative_width(self.view) for
-                                 c in self.comparison])
-            self.xlim = None
-            self.ylim = None
-
-        # Set common x and y limits for all subplots if matching axes
-        else:
-
-            # Match all axes to one plot
-            x, y = _plot_axes[self.view]
-            if isinstance(self.match_axes, int):
-                if self.match_axes >= self.n or self.match_axes == -1:
-                    self.match_axes = self.n - 1
-                extent = self.xlim = self.viewer[self.match_axes].im.extent[
-                    self.view]
-                self.xlim = extent[:2]
-                self.ylim = extent[2:]
-
-            # Match axes to either largest or smallest range
-            else:
-
-                # Get x and y limits of all plots
-                x_lower = [min(v.im.lims[x]) for v in self.viewer]
-                x_upper = [max(v.im.lims[x]) for v in self.viewer]
-                y_lower = [max(v.im.lims[y]) for v in self.viewer]
-                y_upper = [min(v.im.lims[y]) for v in self.viewer]
-
-                # Set x and y limits
-                min_func, max_func = min, max
-                if self.match_axes == "overlap":
-                    min_func, max_func = max_func, min_func
-                self.xlim = min_func(x_lower), max_func(x_upper)
-                self.ylim = max_func(y_lower), min_func(y_upper)
-
-            # Recalculate width ratios
-            if self.match_axes == "x":
-                self.ylim = None
-                x_range = abs(self.xlim[1] - self.xlim[0])
-                width_ratios = [x_range / v.im.get_length(y) for v in
-                                self.viewer]
-            elif self.match_axes == "y":
-                self.xlim = None
-                y_range = abs(self.ylim[1] - self.ylim[0])
-                width_ratios = [v.im.get_length(x) / y_range for v in
-                                self.viewer]
-            else:
-                ratio = abs(self.xlim[1] - self.xlim[0]) \
-                        / abs(self.ylim[1] - self.ylim[0])
-                width_ratios = [ratio for i in range(self.n)]
-
-            # Add ratios for comparison images
-            for i in range(len(self.comparison)):
-                width_ratios.append(width_ratios[0])
+        width_ratios = [v.im.get_relative_width(self.view, self.colorbar)
+                        for v in self.viewer]
+        width_ratios.extend([c.get_relative_width(self.view) for
+                             c in self.comparison])
 
         # Get rows and columns
         n_plots = (not self.comparison_only) * self.n \
@@ -916,17 +900,6 @@ class QuickViewer:
         self.plotting = False
         self.plot(tight_layout=False)
 
-    def adjust_axes(self, im):
-        """Match the axis range of a view to the viewers whose indices are
-        stored in self.match_viewers."""
-
-        if self.xlim is not None:
-            im.ax.set_xlim(self.xlim)
-            im.apply_zoom(self.view, zoom_y=False)
-        if self.ylim is not None:
-            im.ax.set_ylim(self.ylim)
-            im.apply_zoom(self.view, zoom_x=False)
-
     def plot(self, tight_layout=True, **kwargs):
         """Plot all images."""
 
@@ -966,7 +939,7 @@ class QuickViewer:
                 v.im.set_slice(self.view, v.slice[self.view])
             else:
                 v.plot()
-                self.adjust_axes(v.im)
+                #  self.adjust_axes(v.im)
 
         # Plot all comparison images
         if len(self.comparison):
@@ -992,8 +965,8 @@ class QuickViewer:
                 ImageViewer.plot_image(self, self.diff, invert=invert,
                                        mpl_kwargs=self.viewer[0].v_min_max)
 
-            for c in self.comparison:
-                self.adjust_axes(c)
+            #  for c in self.comparison:
+                #  self.adjust_axes(c)
 
         if self.suptitle is not None:
             self.fig.suptitle(self.suptitle)
@@ -1024,7 +997,7 @@ class ImageViewer():
         init_pos=None,
         hu=(-300, 200),
         hu_width=500,
-        hu_range=(-2000, 2000),
+        hu_limits=(-2000, 2000),
         figsize=_default_figsize,
         colorbar=False,
         mpl_kwargs=None,
@@ -1095,7 +1068,7 @@ class ImageViewer():
         # HU range settings
         self.hu = hu
         self.hu_width = hu_width
-        self.hu_range = hu_range
+        self.hu_limits = hu_limits
         self.hu_from_width = isinstance(hu, float) or isinstance(hu, int)
 
         # Mask settings
@@ -1235,17 +1208,17 @@ class ImageViewer():
             # Make HU slider
             # Single range slider
             if not self.hu_from_width:
-                vmin = max([self.hu[0], self.hu_range[0]])
-                vmax = min([self.hu[1], self.hu_range[1]])
+                vmin = max([self.hu[0], self.hu_limits[0]])
+                vmax = min([self.hu[1], self.hu_limits[1]])
                 ui_hu_kwargs = {
-                    "min": self.hu_range[0],
-                    "max": self.hu_range[1],
+                    "min": self.hu_limits[0],
+                    "max": self.hu_limits[1],
                     "value": (vmin, vmax),
                     "description": "HU range",
                     "continuous_update": False,
                     "style": _style
                 }
-                if abs(self.hu_range[1] - self.hu_range[0]) < 1.01:
+                if abs(self.hu_limits[1] - self.hu_limits[0]) < 1.01:
                     ui_hu_kwargs.update({"step": 0.1, "readout_format": ".1f"})
                     self.ui_hu = ipyw.FloatRangeSlider(**ui_hu_kwargs)
                 else:
@@ -1255,11 +1228,11 @@ class ImageViewer():
             # Centre and window sliders
             else:
                 self.ui_hu_centre = ipyw.IntSlider(
-                    min=self.hu_range[0], max=self.hu_range[1],
+                    min=self.hu_limits[0], max=self.hu_limits[1],
                     value=self.hu, description="HU centre",
                     continuous_update=False, style=_style)
                 self.ui_hu_width = ipyw.IntSlider(
-                    min=0, max=abs(self.hu_range[1] - self.hu_range[0]),
+                    min=0, max=abs(self.hu_limits[1] - self.hu_limits[0]),
                     value=self.hu_width, description="HU width",
                     continuous_update=False, style=_style)
                 self.ui_hu_list = [self.ui_hu_centre, self.ui_hu_width]

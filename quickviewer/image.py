@@ -205,39 +205,62 @@ class NiftiImage:
         }
 
         # Extent and aspect for use in matplotlib.pyplot.imshow
+        self.ax_lims = {}
         self.extent = {}
         self.aspect = {}
         for view, (x, y) in _plot_axes.items():
+
+            z = _slider_axes[view]
             if self.scale_in_mm:
                 vx = self.voxel_sizes[x]
                 vy = self.voxel_sizes[y]
-                self.extent[view] = (
-                    min(self.lims[x]) - abs(vx / 2), 
-                    max(self.lims[x]) + abs(vx / 2),
-                    max(self.lims[y]) + abs(vy / 2),
-                    min(self.lims[y]) - abs(vy / 2)
-                )
+                self.ax_lims[view] = [
+                    [min(self.lims[x]) - abs(vx / 2), 
+                     max(self.lims[x]) + abs(vx / 2)],
+                    [max(self.lims[y]) + abs(vy / 2),
+                     min(self.lims[y]) - abs(vy / 2)]
+                ]
+                self.extent[view] = self.ax_lims[view][0] \
+                        + self.ax_lims[view][1]
                 self.aspect[view] = 1
             else:
-                self.extent[view] = (
-                    self.idx_to_slice(0, x) - 0.5, 
-                    self.idx_to_slice(self.n_voxels[x], x) + 0.5,
-                    self.n_voxels[y] + 0.5, 0.5
-                )
+                x_lim = [self.idx_to_slice(0, x), 
+                         self.idx_to_slice(self.n_voxels[x] - 1, x)]
+                x_lim[x_lim.index(max(x_lim))] += 0.5
+                x_lim[x_lim.index(min(x_lim))] -= 0.5
+                self.ax_lims[view] = [
+                    x_lim, [self.n_voxels[y] + 0.5, 0.5]
+                ]
+                self.extent[view] = self.ax_lims[view][0] \
+                        + self.ax_lims[view][1]
                 self.aspect[view] = abs(self.voxel_sizes[y] /
                                         self.voxel_sizes[x])
 
-    def get_length(self, ax):
-        """Get the length of the image along a given axis. If self.zoom is not
-        None, the length will be divided by the factor given in self.zoom
-        for the chosen axis."""
+            # Adjust axis limits for zoom
+            if self.zoom is not None:
+                mid_x = np.mean(self.ax_lims[view][0])
+                self.ax_lims[view][0] = [
+                    mid_x - (mid_x - self.ax_lims[view][0][0]) / self.zoom[x],
+                    mid_x + (self.ax_lims[view][0][1] - mid_x) / self.zoom[x]
+                ]
+                mid_y = np.mean(self.ax_lims[view][1])
+                self.ax_lims[view][1] = [
+                    mid_y - (mid_y - self.ax_lims[view][1][0]) / self.zoom[y],
+                    mid_y + (self.ax_lims[view][1][1] - mid_y) / self.zoom[y]
+                ]
 
-        length = abs(self.lims[ax][0] - self.lims[ax][1]) \
-                + abs(self.voxel_sizes[ax])
-        if self.zoom is not None:
-            length /= self.zoom[ax]
-        return length
+    def get_lengths(self, view):
+        """Get the x and y lengths of the image in a given orientation."""
 
+        x_length = abs(self.ax_lims[view][0][1] - self.ax_lims[view][0][0])
+        y_length = abs(self.ax_lims[view][1][1] - self.ax_lims[view][1][0])
+        if self.scale_in_mm:
+            return x_length, y_length
+        else:
+            x, y = _plot_axes[view]
+            return (x_length * abs(self.voxel_sizes[x]),
+                    y_length * abs(self.voxel_sizes[y]))
+            
     def set_shift(self, dx, dy, dz):
         """Set the current translation to apply, where dx/dy/dz are in voxels.
         """
@@ -277,19 +300,12 @@ class NiftiImage:
         """
 
         # Get relative x/y length
-        x, y = _plot_axes[view]
-        x_length = self.get_length(x)
-        y_length = self.get_length(y)
+        x_length, y_length = self.get_lengths(view)
         width = x_length / y_length
-
-        # Account for zoom
-        if self.zoom is not None:
-            width *= self.zoom[x] / self.zoom[y]
 
         # Add extra width for colorbars
         colorbar_frac = 0.3
         width *= 1 + n_colorbars * colorbar_frac / width
-
         return width
 
     def set_ax(self, view, ax=None, gs=None, figsize=None, n_colorbars=0):
@@ -472,7 +488,7 @@ class NiftiImage:
         else:
             idx = self.pos_to_idx(pos, z)
 
-        return idx
+        return int(idx)
 
     def get_min_hu(self):
         """Get the minimum HU in the image."""
@@ -667,7 +683,7 @@ class NiftiImage:
                               cmap=cmap, **kwargs)
 
         self.label_ax(view, no_ylabel, no_title, annotate_slice)
-        self.apply_zoom(view)
+        self.adjust_ax(view)
 
         # Draw colorbar
         if colorbar and kwargs.get("alpha", 1) > 0:
@@ -711,6 +727,12 @@ class NiftiImage:
             self.ax.annotate(z_str, xy=(0.05, 0.93), xycoords='axes fraction',
                              color=col)
 
+    def adjust_ax(self, view):
+        """Adjust axis limits."""
+
+        self.ax.set_xlim(self.ax_lims[view][0])
+        self.ax.set_ylim(self.ax_lims[view][1])
+
     def get_ax_dict(self, val, default=1):
         """Convert a single value or tuple of values in order (x, y, z) to a 
         dictionary containing x/y/z as keys."""
@@ -726,30 +748,6 @@ class NiftiImage:
                 if ax_dict[ax] is None:
                     ax_dict[ax] = default
             return ax_dict
-
-    def apply_zoom(self, view, zoom_x=True, zoom_y=True):
-        """Zoom in on axes by the factors in self.zoom after axes have 
-        been created. If <zoom_x> or <zoom_y> are False, the x or y axes, 
-        respectively, will not be zoomed in on."""
-
-        if not hasattr(self, "ax"):
-            raise RuntimeError("Trying to zoom before axes have been set!")
-        if self.zoom is None:
-            return
-
-        # Adjust the axes
-        orig = {"x": self.ax.get_xlim(), "y": self.ax.get_ylim()}
-        axes = {"x": _plot_axes[view][0], "y": _plot_axes[view][1]}
-        new = {}
-        for ax in ["x", "y"]:
-            mid = np.mean(orig[ax])
-            new_min = mid - (mid - orig[ax][0]) / self.zoom[axes[ax]]
-            new_max = mid + (orig[ax][1] - mid) / self.zoom[axes[ax]]
-            new[ax] = new_min, new_max
-        if zoom_x:
-            self.ax.set_xlim(new["x"])
-        if zoom_y:
-            self.ax.set_ylim(new["y"])
 
     def downsample(self, d):
         """Downsample image by amount d = (dx, dy, dz) in the (x, y, z)
@@ -944,7 +942,7 @@ class DeformationImage(NiftiImage):
         else:
             # If arrow lengths are zero, plot dots
             ax.scatter(plot_x, plot_y, c="navy", marker=".")
-        self.apply_zoom(view)
+        self.adjust_ax(view)
 
     def plot_grid(
         self, 
@@ -970,7 +968,7 @@ class DeformationImage(NiftiImage):
             self.ax.plot(grid_x[i, :], grid_y[i, :], **kwargs)
         for j in np.arange(0, x.shape[1], self.spacing[x_ax]):
             self.ax.plot(grid_x[:, j], grid_y[:, j], **kwargs)
-        self.apply_zoom(view)
+        self.adjust_ax(view)
 
 
 class StructImage(NiftiImage):
@@ -1182,7 +1180,7 @@ class StructImage(NiftiImage):
             aspect=self.aspect[view],
             **self.get_kwargs(mpl_kwargs, default=self.mask_kwargs)
         )
-        self.apply_zoom(view)
+        self.adjust_ax(view)
 
     def plot_contour(self, view, sl, pos, ax, mpl_kwargs=None):
         """Plot structure as a contour."""
@@ -1199,7 +1197,7 @@ class StructImage(NiftiImage):
             points_x = [p[0] for p in points]
             points_y = [p[1] for p in points]
             self.ax.plot(points_x, points_y, **kwargs)
-        self.apply_zoom(view)
+        self.adjust_ax(view)
 
     def on_slice(self, view, sl):
         """Return True if a contour exists for this structure on a given slice.
@@ -1784,6 +1782,7 @@ class ComparisonImage(NiftiImage):
 
         self.scale_in_mm = self.ims[0].scale_in_mm
         self.zoom = self.ims[0].zoom
+        self.ax_lims = self.ims[0].ax_lims
         self.valid = all([im.valid for im in self.ims])
         self.title = title
         self.gs = None
@@ -1791,9 +1790,8 @@ class ComparisonImage(NiftiImage):
     def get_relative_width(self, view, n_colorbars=0):
         """Get relative width of widest of the two images."""
         
-        x, y = _plot_axes[view]
-        height = max([im.get_length(y) for im in self.ims])
-        width = max([im.get_length(x) for im in self.ims])
+        height = max([im.get_lengths(view)[1] for im in self.ims])
+        width = max([im.get_lengths(view)[0] for im in self.ims])
         return width / height
 
     def plot(self, view=None, sl=None, invert=False, ax=None,
@@ -1859,7 +1857,7 @@ class ComparisonImage(NiftiImage):
         # Produce the plot
         self.plot_comparison(invert=invert, **kwargs)
         self.label_ax(self.view)
-        self.apply_zoom(self.view)
+        self.adjust_ax(self.view)
 
 
 class ChequerboardImage(ComparisonImage):
