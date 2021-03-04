@@ -9,7 +9,7 @@ import matplotlib as mpl
 
 from quickviewer.image import MultiImage, OrthogonalImage, ChequerboardImage, \
         OverlayImage, DiffImage, standard_str
-from quickviewer.image import _slider_axes, _df_plot_types, \
+from quickviewer.image import _slider_axes, _df_plot_types, _orient, \
         _struct_plot_types, _orthog, _default_figsize, _plot_axes, _axes
 
 
@@ -218,6 +218,18 @@ class QuickViewer:
         figsize : float, default=5
             Height of the displayed figure in inches. If None, the value in
             _default_figsize is used.
+
+        xlim : tuple, default=None
+            Custom limits for the x axis. If one of the values in the tuple is 
+            None, the default x limits will be used.
+
+        ylim : tuple, default=None
+            Custom limits for the y axis. If one of the values in the tuple is 
+            None, the default y limits will be used.
+
+        zlim : tuple, default=None
+            Custom limits for the z axis. If one of the values in the tuple is 
+            None, the default z limits will be used.
 
         colorbar : bool, default=False
             If True, colorbars will be displayed for HU, dose and Jacobian 
@@ -999,6 +1011,9 @@ class ImageViewer():
         hu_width=500,
         hu_limits=(-2000, 2000),
         figsize=_default_figsize,
+        xlim=None,
+        ylim=None,
+        zlim=None,
         colorbar=False,
         mpl_kwargs=None,
         dose_opacity=0.5,
@@ -1064,6 +1079,7 @@ class ImageViewer():
         self.plotting = False
         self.callbacks_set = False
         self.standalone = standalone
+        self.set_ax_lims(xlim, ylim, zlim)
 
         # HU range settings
         self.hu = hu
@@ -1117,6 +1133,21 @@ class ImageViewer():
     def make_image(self, *args, **kwargs):
         """Set up image object."""
         return MultiImage(*args, **kwargs)
+
+    def set_ax_lims(self, xlim, ylim, zlim):
+        """Set custom axis limits after image has been loaded."""
+
+        axes = {"x": {"x-z": 1, "x-y": 0},
+                "y": {"x-y": 1, "y-z": 1},
+                "z": {"x-z": 0, "y-z": 0}}
+        for ax, lims in zip(axes.keys(), [xlim, ylim, zlim]):
+            if lims is None:
+                continue
+            for view, n in axes[ax].items():
+                if lims[0] is not None:
+                    self.im.ax_lims[view][n][0] = lims[0]
+                if lims[1] is not None:
+                    self.im.ax_lims[view][n][1] = lims[1]
 
     def set_slice(self, view, sl):
         """Set the current slice number in a specific view."""
