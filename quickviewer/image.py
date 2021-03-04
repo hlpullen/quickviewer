@@ -238,6 +238,13 @@ class NiftiImage:
             x, y = _plot_axes[view]
             return (x_length * abs(self.voxel_sizes[x]),
                     y_length * abs(self.voxel_sizes[y]))
+
+    def get_centre(self, view):
+        """Get midpoint of a given orientation."""
+
+        mid_x = np.mean(self.ax_lims[view][0])
+        mid_y = np.mean(self.ax_lims[view][1])
+        return [mid_x, mid_y]
             
     def set_shift(self, dx, dy, dz):
         """Set the current translation to apply, where dx/dy/dz are in voxels.
@@ -757,8 +764,7 @@ class NiftiImage:
 
         # Get mid point
         x, y = _plot_axes[view]
-        mid_x = np.mean(init_lims[0])
-        mid_y = np.mean(init_lims[1])
+        mid_x, mid_y = self.get_centre(view)
         if zoom_centre is not None:
             if zoom_centre[x] is not None:
                 mid_x = zoom_centre[x]

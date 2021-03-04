@@ -550,6 +550,8 @@ class QuickViewer:
         many_sliders = not share_slider and self.n > 1
         if not many_sliders:
             self.main_ui = v0.main_ui
+            if v0.zoom_ui:
+                v0.ui_zoom_reset.on_click(self.make_reset_zoom(v0))
         else:
             self.main_ui = [self.ui_view]
 
@@ -578,8 +580,8 @@ class QuickViewer:
 
                 # Zoom sliders
                 if v.zoom_ui:
-                    sliders.extend([v.ui_zoom, v.ui_zoom_centre_x,
-                                    v.ui_zoom_centre_y])
+                    sliders.extend(v.all_zoom_ui)
+                    v.ui_zoom_reset.on_click(self.make_reset_zoom(v))
 
                 # Slice slider
                 sliders.append(v.ui_slice)
@@ -610,6 +612,7 @@ class QuickViewer:
         self.upper_ui = [main_and_extra_box, ipyw.HBox(self.slider_boxes)]
         self.upper_ui_box = ipyw.VBox(self.upper_ui)
         self.lower_ui_box = ipyw.VBox(self.lower_ui)
+        self.trigger = ipyw.Checkbox(value=True)
         self.all_ui = (
             self.main_ui
             + self.extra_ui
@@ -617,6 +620,7 @@ class QuickViewer:
             + self.comp_ui
             + self.trans_ui
             + self.ui_struct_checkboxes
+            + [self.trigger]
         )
 
     def make_lower_ui(self):
@@ -777,6 +781,18 @@ class QuickViewer:
                 self.view, self.zoom, self.colorbar) \
                     * mpl.rcParams["figure.dpi"]
             slider.layout = ipyw.Layout(width=f"{width}px")
+
+    def make_reset_zoom(self, viewer):
+        """Make a reset zoom function for a given viewer that updates zoom 
+        without plotting, then plots afterwards."""
+
+        def reset_zoom(_):
+            self.plotting = True
+            viewer.reset_zoom(_)
+            self.plotting = False
+            self.trigger.value = not self.trigger.value
+
+        return reset_zoom
 
     def make_fig(self):
 
@@ -974,7 +990,6 @@ class QuickViewer:
                 v.im.set_slice(self.view, v.slice[self.view])
             else:
                 v.plot()
-                #  self.adjust_axes(v.im)
 
         # Plot all comparison images
         if len(self.comparison):
@@ -985,6 +1000,8 @@ class QuickViewer:
             if self.has_chequerboard:
                 ImageViewer.plot_image(self, self.chequerboard, invert=invert, 
                                        n_splits=self.ui_cb.value,
+                                       zoom=self.viewer[0].zoom,
+                                       zoom_centre=self.viewer[0].zoom_centre,
                                        mpl_kwargs=self.viewer[0].v_min_max)
 
             # Plot overlay
@@ -992,16 +1009,17 @@ class QuickViewer:
                 ImageViewer.plot_image(self, self.overlay, invert=invert,
                                        opacity=self.ui_overlay.value,
                                        mpl_kwargs=self.viewer[0].v_min_max,
+                                       zoom=self.viewer[0].zoom,
+                                       zoom_centre=self.viewer[0].zoom_centre,
                                        legend=self.overlay_legend,
                                        legend_loc=self.legend_loc)
 
             # Plot difference image
             if self.has_diff:
                 ImageViewer.plot_image(self, self.diff, invert=invert,
+                                       zoom=self.viewer[0].zoom,
+                                       zoom_centre=self.viewer[0].zoom_centre,
                                        mpl_kwargs=self.viewer[0].v_min_max)
-
-            #  for c in self.comparison:
-                #  self.adjust_axes(c)
 
         if self.suptitle is not None:
             self.fig.suptitle(self.suptitle)
@@ -1152,11 +1170,9 @@ class ImageViewer():
         self.length_units = get_units(length_units)
         self.vol_units = get_units(vol_units)
 
-        # Make UI
-        self.make_ui()
-
         # Display plot
         if standalone:
+            self.make_ui()
             self.show(show)
 
     def make_image(self, *args, **kwargs):
@@ -1321,13 +1337,15 @@ class ImageViewer():
                 # Get initial zoom centres
                 zoom_centre = self.im.get_ax_dict(self.zoom_centre, 
                                                   default=None)
+                self.default_centre = {view: self.im.get_centre(view) 
+                                       for view in _slider_axes}
                 self.current_centre = {}
                 for view in _plot_axes:
                     self.current_centre[view] = []
                     for i, ax in enumerate(_plot_axes[view]):
                         if zoom_centre is None or zoom_centre[ax] is None:
-                            self.current_centre[view].append(float(
-                                f"{np.mean(self.im.lims[ax]):.2f}"))
+                            self.current_centre[view].append(
+                                self.default_centre[view][i])
                         else:
                             self.current_centre[view].append(zoom_centre[ax])
 
@@ -1340,9 +1358,13 @@ class ImageViewer():
                     readout_format=".1f", step=1)
                 self.update_zoom_sliders()
 
-                # Combine boxes
-                self.main_ui.extend([self.ui_zoom, self.ui_zoom_centre_x,
-                                     self.ui_zoom_centre_y]) 
+                # Zoom reset button
+                self.ui_zoom_reset = ipyw.Button(description="Reset zoom")
+                if self.standalone:
+                    self.ui_zoom_reset.on_click(self.reset_zoom)
+                self.all_zoom_ui = [self.ui_zoom, self.ui_zoom_centre_x,
+                                    self.ui_zoom_centre_y, self.ui_zoom_reset]
+                self.main_ui.extend(self.all_zoom_ui)
 
             # Make slice slider
             readout = ".1f" if self.im.scale_in_mm else ".0f"
@@ -1368,6 +1390,9 @@ class ImageViewer():
                 self.ui_zoom = vimage.ui_zoom
                 self.ui_zoom_centre_x = vimage.ui_zoom_centre_x
                 self.ui_zoom_centre_y = vimage.ui_zoom_centre_y
+                self.ui_zoom_reset = vimage.ui_zoom_reset
+                self.current_zoom = vimage.current_zoom
+                self.current_centre = vimage.current_centre
             self.own_ui_slice = False
 
         # Extra sliders
@@ -1450,7 +1475,13 @@ class ImageViewer():
         self.upper_ui = [ipyw.VBox(self.main_ui), ipyw.VBox(self.extra_ui)]
         self.upper_ui_box = ipyw.HBox(self.upper_ui)
         self.lower_ui_box = ipyw.VBox(self.lower_ui)
-        self.all_ui = self.main_ui + self.extra_ui + self.ui_struct_checkboxes
+        self.trigger = ipyw.Checkbox(value=True)
+        self.all_ui = (
+            self.main_ui 
+            + self.extra_ui 
+            + self.ui_struct_checkboxes
+            + [self.trigger]
+        )
 
     def make_lower_ui(self):
 
@@ -1762,6 +1793,18 @@ class ImageViewer():
             # Update description
             ui.description = "{} centre {}".format(
                 _plot_axes[self.view][i], units)
+
+    def reset_zoom(self, _):
+        """Reset zoom values to 1 and zoom centres to defaults."""
+
+        self.current_zoom = {view: 1 for view in self.current_zoom}
+        self.current_centre = {view: self.im.get_centre(view) 
+                               for view in _slider_axes}
+        self.plotting = True
+        self.update_zoom_sliders()
+        self.plotting = False
+        if self.standalone:
+            self.trigger.value = not self.trigger.value
 
     def jump_to_struct(self):
         """Jump to the mid slice of a structure."""
