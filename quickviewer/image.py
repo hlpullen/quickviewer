@@ -1311,7 +1311,7 @@ class StructImage(NiftiImage):
             y_len = abs(maxes[0] - mins[0])
             if units == "mm":
                 x_len *= abs(self.voxel_sizes[x])
-                y_len *= abs(self.voxel_sizes[x])
+                y_len *= abs(self.voxel_sizes[y])
             return x_len, y_len
         else:
             return 0, 0
