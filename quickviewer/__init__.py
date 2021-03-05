@@ -1182,9 +1182,6 @@ class ImageViewer():
 
         # Load structure geometric info if needed
         self.struct_info = struct_info
-        if self.struct_info:
-            for s in self.im.structs:
-                s.set_geom_properties(length=False)
         def get_units(units):
             if units is None:
                 return "mm" if self.im.scale_in_mm else "voxels"
@@ -1567,7 +1564,7 @@ class ImageViewer():
             else:
                 vol_fmt = "{:.0f}" if self.vol_units == "ml" else "{:.0f}"
                 self.ui_struct_vol.append(ipyw.Label(
-                    value=vol_fmt.format(s.volume[self.vol_units])))
+                    value=vol_fmt.format(s.get_volume(self.vol_units))))
                 s.ui_area = ipyw.Label()
                 s.ui_x = ipyw.Label()
                 s.ui_y = ipyw.Label()

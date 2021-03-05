@@ -1056,36 +1056,68 @@ class StructImage(NiftiImage):
 
         return self.name_nice < other.name_nice
 
-    def set_geom_properties(self, volume=True, length=True):
-        """Find structure volume and length in each direction."""
+    def get_volume(self, units):
+        """Get total structure volume in voxels, mm, or ml."""
 
-        # Empty structure: return zeros
         if self.empty:
-            self.volume = {"voxels": 0, "mm": 0, "ml": 0}
-            zeros = {ax: 0 for ax in _axes}
-            self.lengths = {"voxels": zeros, "mm": zeros}
-            return
+            return 0
 
-        # Volume
-        self.volume = {
-            "voxels": self.data.astype(bool).sum()
-        }
-        self.volume["mm"] = self.volume["voxels"] \
-            * abs(np.prod(list(self.voxel_sizes.values())))
-        self.volume["ml"] = self.volume["mm"] * (0.1 ** 3)
+        if not hasattr(self, "volume"):
+            self.volume = {
+                "voxels": self.data.astype(bool).sum()
+            }
+            self.volume["mm"] = self.volume["voxels"] \
+                * abs(np.prod(list(self.voxel_sizes.values())))
+            self.volume["ml"] = self.volume["mm"] * (0.1 ** 3)
 
-        # Lengths
-        self.length = {"voxels": {}, "mm": {}}
-        nonzero = np.argwhere(self.data)
-        for ax, n in _axes.items():
-            vals = nonzero[:, n]
-            if len(vals):
-                self.length["voxels"][ax] = max(vals) - min(vals)
-                self.length["mm"][ax] = self.length["voxels"][ax] \
-                    * abs(self.voxel_sizes[ax])
-            else:
-                self.length["voxels"][ax] = 0
-                self.length["mm"][ax] = 0
+        return self.volume[units]
+
+    def get_struct_extent(self, units):
+        """Get the total x, y, z extent in voxels or mm."""
+
+        if self.empty:
+            return (0, 0, 0)
+
+        if not hasattr(self, "length"):
+            self.length = {"voxels": [], "mm": []}
+            nonzero = np.argwhere(self.data)
+            for ax, n in _axes.items():
+                vals = nonzero[:, n]
+                if len(vals):
+                    self.length["voxels"].append(max(vals) - min(vals))
+                    self.length["mm"].append(self.length["voxels"][n]
+                                             * abs(self.voxel_sizes[ax]))
+                else:
+                    self.length["voxels"].append(0)
+                    self.length["mm"].append(0)
+
+        return self.length[units]
+
+    def get_struct_centre(self, units=None):
+        """Get the centre of this structure in voxels or mm. If no
+        units are given, units will be mm if <self_in_mm> is True."""
+
+        if self.empty:
+            return None, None, None
+
+        if not hasattr(self, "centre"):
+            self.centre = {"voxels": [], "mm": []}
+            nonzero = np.argwhere(self.data)
+            for ax, n in _axes.items():
+                vals = nonzero[:, n]
+                if len(vals):
+                    mid_idx = np.mean(vals)
+                    self.centre["voxels"].append(
+                        self.idx_to_slice(mid_idx, ax))
+                    self.centre["mm"].append(
+                        self.idx_to_pos(mid_idx, ax))
+                else:
+                    self.centre["voxels"].append(None)
+                    self.centre["mm"].append(None)
+
+        if units is None:
+            units = "mm" if self.scale_in_mm else "voxels"
+        return self.centre[units]
 
     def set_plotting_defaults(self):
         """Set default matplotlib plotting keywords for both mask and

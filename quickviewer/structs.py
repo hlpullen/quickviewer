@@ -1,0 +1,1 @@
+"""Class for comparing structures."""
