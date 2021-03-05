@@ -213,7 +213,8 @@ class QuickViewer:
             value.
 
         hu_limits : tuple, default=(-2000, 2000)
-            Full range to use for the HU slider.
+            Full range to use for the HU slider. Can also set to "auto" to
+            detect min and max HU in the image.
 
         figsize : float, default=5
             Height of the displayed figure in inches. If None, the value in
@@ -363,6 +364,16 @@ class QuickViewer:
         structs_as_mask : bool, default=True
             If True, any loaded structures will be used to mask the image and
             dose field.
+
+        many_structs_per_file : bool, default=False
+            If True, multiple structures will be loaded from files containing
+            multiple structure masks in a single array with different values.
+
+        struct_names : list/dict, default=None
+            If <many_structs_per_file>, this parameter will be used to name
+            the structures. Can either be a list (i.e. the first structure in 
+            the file will be given the first name in the list and so on), or a 
+            dict of numbers and names (e.g. {1: "first structure"} etc).
 
         continuous_update : bool, default=False
             If True, sliders in the UI will continuously update the figure as 
@@ -1284,19 +1295,24 @@ class ImageViewer():
         if not share_slider or not shared_ui:
 
             # Make HU slider
+            if self.hu_limits == "auto":
+                hu_limits = (self.im.data.min(), self.im.data.max())
+            else:
+                hu_limits = self.hu_limits
+            
             # Single range slider
             if not self.hu_from_width:
-                vmin = max([self.hu[0], self.hu_limits[0]])
-                vmax = min([self.hu[1], self.hu_limits[1]])
+                vmin = max([self.hu[0], hu_limits[0]])
+                vmax = min([self.hu[1], hu_limits[1]])
                 ui_hu_kwargs = {
-                    "min": self.hu_limits[0],
-                    "max": self.hu_limits[1],
+                    "min": hu_limits[0],
+                    "max": hu_limits[1],
                     "value": (vmin, vmax),
                     "description": "HU range",
                     "continuous_update": False,
                     "style": _style
                 }
-                if abs(self.hu_limits[1] - self.hu_limits[0]) < 1.01:
+                if abs(hu_limits[1] - hu_limits[0]) < 1.01:
                     ui_hu_kwargs.update({"step": 0.1, "readout_format": ".1f"})
                     self.ui_hu = ipyw.FloatRangeSlider(**ui_hu_kwargs)
                 else:
@@ -1306,11 +1322,11 @@ class ImageViewer():
             # Centre and window sliders
             else:
                 self.ui_hu_centre = ipyw.IntSlider(
-                    min=self.hu_limits[0], max=self.hu_limits[1],
+                    min=hu_limits[0], max=hu_limits[1],
                     value=self.hu, description="HU centre",
                     continuous_update=False, style=_style)
                 self.ui_hu_width = ipyw.IntSlider(
-                    min=0, max=abs(self.hu_limits[1] - self.hu_limits[0]),
+                    min=0, max=abs(hu_limits[1] - hu_limits[0]),
                     value=self.hu_width, description="HU width",
                     continuous_update=False, style=_style)
                 self.ui_hu_list = [self.ui_hu_centre, self.ui_hu_width]

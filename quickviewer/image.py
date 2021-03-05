@@ -2,7 +2,6 @@
 
 import copy
 import fnmatch
-import glob
 import matplotlib.gridspec as gridspec
 import matplotlib.pyplot as plt
 import matplotlib.cm
@@ -14,6 +13,8 @@ import re
 import skimage.measure
 import matplotlib.patches as mpatches
 from timeit import default_timer as timer
+
+from quickviewer import core
 
 
 # Shared parameters
@@ -89,56 +90,27 @@ class NiftiImage:
             self.valid = False
             return
 
-        # Load from numpy array
-        if isinstance(nii, np.ndarray):
-            self.data = nii
-
-        # Load from file or nifti object
-        else:
-            if isinstance(nii, str):
-                self.path = os.path.expanduser(nii)
-                try:
-                    self.nii = nibabel.load(self.path)
-                    self.data = self.nii.get_fdata()
-                    affine = self.nii.affine
-                except FileNotFoundError:
-                    print(f"Warning: file {self.path} not found!")
-                    self.valid = False
-                    return
-                except nibabel.filebasedimages.ImageFileError:
-                    try:
-                        self.data = np.load(self.path)
-                    except (IOError, ValueError):
-                        raise RuntimeError("Input file <nii> must be a valid "
-                                           ".nii or .npy file.")
-                if self.title is None:
-                    self.title = os.path.basename(self.path)
-            elif isinstance(nii, nibabel.nifti1.Nifti1Image):
-                self.nii = nii
-                self.data = self.nii.get_fdata()
-                affine = self.nii.affine
-            else:
-                raise TypeError("<nii> must be a string, nibabel object, or "
-                                "numpy array.")
-
-        # Assign geometric properties
+        # Load image
+        self.data, voxel_sizes, origin, self.path = core.load_image(
+            nii, affine, voxel_sizes, origin)
+        if self.data is None:
+            self.valid = False
+            return
+        self.valid = True
         self.data = np.nan_to_num(self.data)
         self.shape = self.data.shape
-        self.valid = True
+        if self.title is None and self.path is not None:
+            self.title = os.path.basename(self.path)
 
-        # Check number of dimensions
+        # Convert 2D image to 3D
         self.dim2 = self.data.ndim == 2
         if self.dim2:
-            affine, voxel_sizes, origin = self.convert_to_3d(
-                affine, voxel_sizes, origin, orientation)
+            voxel_sizes, origin = self.convert_to_3d(voxel_sizes, origin, 
+                                                     orientation)
 
         # Assign geometric properties
-        if affine is not None:
-            self.voxel_sizes = {ax: affine[n, n] for ax, n in _axes.items()}
-            self.origin = {ax: affine[n, 3] for ax, n in _axes.items()}
-        else:
-            self.voxel_sizes = {ax: voxel_sizes[n] for ax, n in _axes.items()}
-            self.origin = {ax: origin[n] for ax, n in _axes.items()}
+        self.voxel_sizes = {ax: voxel_sizes[n] for ax, n in _axes.items()}
+        self.origin = {ax: origin[n] for ax, n in _axes.items()}
         self.set_geom()
         self.set_shift(0, 0, 0)
         self.set_plotting_defaults()
@@ -147,7 +119,7 @@ class NiftiImage:
         if downsample is not None:
             self.downsample(downsample)
 
-    def convert_to_3d(self, affine, voxel_sizes, origin, orientation):
+    def convert_to_3d(self, voxel_sizes, origin, orientation):
         """Convert own image array to 3D and fill voxel sizes/origin."""
 
         if self.data.ndim != 2:
@@ -155,15 +127,8 @@ class NiftiImage:
 
         self.orientation = orientation
         self.data = self.data[..., np.newaxis]
-
-        # Put voxel sizes and origin into arrays
-        if affine is not None:
-            voxel_sizes = np.array([affine[0, 0], affine[1, 1]])
-            origin = affine[:2, 2]
-            affine = None
-        else:
-            voxel_sizes = np.array(voxel_sizes)
-            origin = np.array(voxel_sizes)
+        voxel_sizes = np.array(voxel_sizes)
+        origin = np.array(origin)
         np.append(voxel_sizes, 1)
         np.append(origin, 0)
 
@@ -179,7 +144,7 @@ class NiftiImage:
         self.data = np.transpose(self.data, transpose)
         voxel_sizes = list(voxel_sizes[transpose])
         origin = list(origin[transpose])
-        return affine, voxel_sizes, origin
+        return voxel_sizes, origin
 
     def set_geom(self):
         """Assign geometric properties based on image data, origin, and
@@ -1351,6 +1316,8 @@ class MultiImage(NiftiImage):
         structs=None,
         struct_colors=None,
         structs_as_mask=False,
+        many_structs_per_file=False,
+        struct_names=None,
         mask_threshold=0.5,
         **kwargs
     ):
@@ -1390,6 +1357,16 @@ class MultiImage(NiftiImage):
         structs_as_mask : bool, default=False
             If True, structures will be used as masks.
 
+        many_structs_per_file : bool, default=False
+            If True, multiple structures will be loaded from files containing
+            multiple structure masks in a single array with different values.
+
+        struct_names : list/dict, default=None
+            If <many_structs_per_file>, this parameter will be used to name
+            the structures. Can either be a list (i.e. the first structure in 
+            the file will be given the first name in the list and so on), or a 
+            dict of numbers and names (e.g. {1: "first structure"} etc).
+
         mask_threshold : float, default=0.5
             Threshold on mask array; voxels with values below this threshold
             will be masked (or values above, if <invert_mask> is True).
@@ -1405,7 +1382,8 @@ class MultiImage(NiftiImage):
         self.load_to(mask, "mask", kwargs)
         self.load_to(jacobian, "jacobian", kwargs)
         self.load_df(df)
-        self.load_structs(structs, struct_colors)
+        self.load_structs(structs, struct_colors, many_structs_per_file,
+                          struct_names)
         self.structs_as_mask = structs_as_mask
         if self.has_structs and structs_as_mask:
             self.has_mask = True
@@ -1436,9 +1414,10 @@ class MultiImage(NiftiImage):
         self.df = DeformationImage(df, scale_in_mm=self.scale_in_mm)
         self.has_df = self.df.valid
 
-    def load_structs(self, structs, struct_colors):
+    def load_structs(self, structs, colors, many_per_file=False,
+                     names=None):
         """Load structures from a path/wildcard or list of paths/wildcards in
-        <structs>, and assign the colors in <struct_colors>."""
+        <structs>, and assign the colors in <colors>."""
 
         self.has_structs = False
         self.structs = []
@@ -1446,14 +1425,16 @@ class MultiImage(NiftiImage):
             return
 
         # Load structures from files
-        files = find_files(structs, ext="nii*")
+        files = core.find_files(structs, ext="nii*")
         if not len(files):
             print("Warning: no structure files found matching ", structs)
             return
         self.has_structs = True
         files = list(set([os.path.abspath(f) for f in files]))
-        self.structs = sorted([StructImage(f, scale_in_mm=self.scale_in_mm) 
-                               for f in files])
+        for f in files:
+            self.structs.extend(load_struct_masks(
+                f, many_per_file, names, scale_in_mm=self.scale_in_mm))
+        self.structs = sorted(self.structs)
 
         # Assign colors
         standard_colors = (
@@ -1462,7 +1443,7 @@ class MultiImage(NiftiImage):
             + list(matplotlib.cm.Set3.colors)
             + list(matplotlib.cm.tab20.colors)
         )
-        custom = struct_colors if struct_colors is not None else {}
+        custom = colors if colors is not None else {}
         custom_lower = {standard_str(n): col for n, col in custom.items()}
         for i, struct in enumerate(self.structs):
 
@@ -2040,27 +2021,40 @@ def standard_str(string):
         return
 
 
-def find_files(paths, ext=""):
-    """Find files from a path, list of paths, directory, or list of 
-    directories. If <paths> contains directories, files with extension <ext>
-    will be searched for inside those directories."""
+def load_struct_masks(path, many_per_file=False, names=None, **kwargs):
+    """Load structure mask data from a file. If <many_per_file> is True,
+    each unique nonzero number in the image array will be taken to represent 
+    a different structure."""
 
-    paths = [paths] if isinstance(paths, str) else paths
-    files = []
-    for path in paths:
+    if not many_per_file:
+        return [StructImage(path, **kwargs)]
 
-        # Find files
-        path = os.path.expanduser(path)
-        if os.path.isfile(path):
-            files.append(path)
-        elif os.path.isdir(path):
-            files.extend(glob.glob(f"{path}/*{ext}"))
+    else:
+
+        # Load image array
+        data, voxel_sizes, origin, path = core.load_image(path)
+        kwargs.update({"voxel_sizes": voxel_sizes, "origin": origin})
+        mask_labels = np.unique(data).astype(int)
+        mask_labels = mask_labels[mask_labels != 0]
+
+        # Case with only one structure in that file
+        if len(mask_labels) == 1:
+            return [StructImage(path, **kwargs)]
+
+        # Process custom names
+        if names is None:
+            names = {}
+        elif not isinstance(names, dict):
+            names = {i + 1: names[i] for i in range(len(names))}
         else:
-            matches = glob.glob(path)
-            for m in matches:
-                if os.path.isdir(m):
-                    files.extend(glob.glob("{m}/*{ext}"))
-                elif os.path.isfile(m):
-                    files.append(m)
+            names = {int(i): name for i, name in names.items()}
 
-    return files
+        # Load structs
+        structs = []
+        for ml in mask_labels:
+            if ml in names:
+                name = names[ml]
+            else:
+                name = f"Structure {ml}"
+            structs.append(StructImage(data == ml, name=name, **kwargs))
+        return structs
