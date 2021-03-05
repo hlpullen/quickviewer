@@ -337,7 +337,7 @@ class QuickViewer:
                 (b) "voxels" for voxels
                 (c) "ml" for ml
 
-        struct_legend : bool, default=True
+        struct_legend : bool, default=False
             If True, a legend will be displayed for any plot with structures.
 
         init_struct : str, default=None
@@ -1078,7 +1078,7 @@ class ImageViewer():
         length_units=None,
         area_units=None,
         vol_units=None,
-        struct_legend=True,
+        struct_legend=False,
         legend_loc="lower left",
         init_struct=None,
         standalone=True,
@@ -1339,7 +1339,7 @@ class ImageViewer():
                 # Get initial zoom centres
                 zoom_centre = self.im.get_ax_dict(self.zoom_centre, 
                                                   default=None)
-                self.default_centre = {view: self.im.get_centre(view) 
+                self.default_centre = {view: self.im.get_image_centre(view) 
                                        for view in _slider_axes}
                 self.current_centre = {}
                 for view in _plot_axes:
@@ -1817,9 +1817,8 @@ class ImageViewer():
     def reset_zoom(self, _):
         """Reset zoom values to 1 and zoom centres to defaults."""
 
-        self.current_zoom = {view: 1 for view in self.current_zoom}
-        self.current_centre = {view: self.im.get_centre(view) 
-                               for view in _slider_axes}
+        self.current_zoom[self.view] = 1 
+        self.current_centre[self.view] = self.im.get_image_centre(self.view)
         self.plotting = True
         self.update_zoom_sliders()
         self.plotting = False
@@ -1838,7 +1837,19 @@ class ImageViewer():
             mid_slice = int(np.mean(list(struct.contours[self.view].keys())))
             self.ui_slice.value = self.slice_to_slider(
                 mid_slice, _slider_axes[self.view])
+            self.slice[self.view] = mid_slice
+            #  self.centre_at_struct(struct)
         self.ui_struct_jump.value = ""
+
+    def centre_at_struct(self, struct):
+        """Set the current zoom centre to be the centre of a structure."""
+
+        if not self.zoom_ui or self.ui_zoom.value == 1:
+            return
+
+        centre = struct.get_centre(self.view, self.slice[self.view])
+        self.current_centre[self.view] = centre
+        self.update_zoom_sliders()
 
     def show(self, show=True):
         """Display plot and UI."""

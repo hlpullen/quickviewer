@@ -239,7 +239,7 @@ class NiftiImage:
             return (x_length * abs(self.voxel_sizes[x]),
                     y_length * abs(self.voxel_sizes[y]))
 
-    def get_centre(self, view):
+    def get_image_centre(self, view):
         """Get midpoint of a given orientation."""
 
         mid_x = np.mean(self.ax_lims[view][0])
@@ -764,7 +764,7 @@ class NiftiImage:
 
         # Get mid point
         x, y = _plot_axes[view]
-        mid_x, mid_y = self.get_centre(view)
+        mid_x, mid_y = self.get_image_centre(view)
         if zoom_centre is not None:
             if zoom_centre[x] is not None:
                 mid_x = zoom_centre[x]
@@ -1085,6 +1085,11 @@ class StructImage(NiftiImage):
         # Assign a random color
         self.assign_color(np.random.rand(3, 1).flatten())
 
+    def __lt__(self, other):
+        """Compare structures by name."""
+
+        return self.name_nice < other.name_nice
+
     def set_geom_properties(self, volume=True, length=True):
         """Find structure volume and length in each direction."""
 
@@ -1317,8 +1322,8 @@ class StructImage(NiftiImage):
         if len(non_zero):
             centre = non_zero.mean(0)
             if self.scale_in_mm:
-                return [self.slice_to_pos(centre[1], x), 
-                        self.slice_to_pos(centre[0], y)]
+                return [self.idx_to_pos(centre[1], x), 
+                        self.idx_to_pos(self.n_voxels[y] - centre[0], y)]
             else:
                 return list(centre)
         else:
@@ -1458,7 +1463,7 @@ class MultiImage(NiftiImage):
             return
         self.has_structs = True
         files = list(set([os.path.abspath(f) for f in files]))
-        self.structs = [StructImage(f) for f in files]
+        self.structs = sorted([StructImage(f) for f in files])
 
         # Assign colors
         standard_colors = (
