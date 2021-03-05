@@ -1445,26 +1445,8 @@ class MultiImage(NiftiImage):
         if structs is None:
             return
 
-        # Find valid filepaths
-        struct_paths = [structs] if isinstance(structs, str) else structs
-        files = []
-        for path in struct_paths:
-
-            # Find files
-            path = os.path.expanduser(path)
-            if os.path.isfile(path):
-                files.append(path)
-            elif os.path.isdir(path):
-                files.extend(glob.glob(path + "/*.nii*"))
-            else:
-                matches = glob.glob(path)
-                for m in matches:
-                    if os.path.isdir(m):
-                        files.extend(glob.glob(m + "/*.nii*"))
-                    elif os.path.isfile(m):
-                        files.append(m)
-
         # Load structures from files
+        files = find_files(structs, ext="nii*")
         if not len(files):
             print("Warning: no structure files found matching ", structs)
             return
@@ -2056,3 +2038,29 @@ def standard_str(string):
         return string.lower().replace(" ", "_")
     except AttributeError:
         return
+
+
+def find_files(paths, ext=""):
+    """Find files from a path, list of paths, directory, or list of 
+    directories. If <paths> contains directories, files with extension <ext>
+    will be searched for inside those directories."""
+
+    paths = [paths] if isinstance(paths, str) else paths
+    files = []
+    for path in paths:
+
+        # Find files
+        path = os.path.expanduser(path)
+        if os.path.isfile(path):
+            files.append(path)
+        elif os.path.isdir(path):
+            files.extend(glob.glob(f"{path}/*{ext}"))
+        else:
+            matches = glob.glob(path)
+            for m in matches:
+                if os.path.isdir(m):
+                    files.extend(glob.glob("{m}/*{ext}"))
+                elif os.path.isfile(m):
+                    files.append(m)
+
+    return files
