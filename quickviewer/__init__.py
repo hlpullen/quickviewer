@@ -1503,9 +1503,12 @@ class ImageViewer():
         self.ui_struct_area = []
         self.ui_struct_x = []
         self.ui_struct_y = []
+        self.ui_struct_centre = []
         if self.struct_info:
+
             self.ui_struct_checkboxes.append(
                 ipyw.HTML(value="<b>Structures:</b>"))
+
             vol_units = self.vol_units if self.vol_units != "mm" \
                 else "mm<sup>3</sup>"
             self.ui_struct_vol.append(ipyw.HTML(
@@ -1514,8 +1517,13 @@ class ImageViewer():
                 else "mm<sup>2</sup>"
             self.ui_struct_area.append(ipyw.HTML(
                 value=f"<b>Area ({area_units})</b>"))
+
             self.ui_struct_x.append(ipyw.HTML())
             self.ui_struct_y.append(ipyw.HTML())
+
+            centre_units = " (mm)" if self.im.scale_in_mm else ""
+            self.ui_struct_centre.append(ipyw.HTML(
+                value=f"<b>Centre{centre_units}</b>"))
 
         # Make checkbox for each structure
         for s in self.im.structs:
@@ -1533,6 +1541,8 @@ class ImageViewer():
                 self.ui_struct_area.append(s.ui_area)
                 self.ui_struct_x.append(s.ui_x)
                 self.ui_struct_y.append(s.ui_y)
+                s.ui_centre = ipyw.Label()
+                self.ui_struct_centre.append(s.ui_centre)
 
         if self.struct_info:
             self.update_struct_info()
@@ -1544,7 +1554,8 @@ class ImageViewer():
                           layout=ipyw.Layout(align_items="center")),
                 ipyw.VBox(self.ui_struct_area, layout=layout),
                 ipyw.VBox(self.ui_struct_x, layout=layout),
-                ipyw.VBox(self.ui_struct_y, layout=layout)
+                ipyw.VBox(self.ui_struct_y, layout=layout),
+                ipyw.VBox(self.ui_struct_centre, layout=layout)
             ]))
 
     def update_struct_info(self):
@@ -1561,6 +1572,7 @@ class ImageViewer():
         # Update column values
         fmt = "{:.1f}" if self.length_units == "mm" else "{:.0f}"
         area_fmt = "{:.1f}" if self.area_units == "mm" else "{:.0f}"
+        centre_fmt = "{:.1f}" if self.im.scale_in_mm else "{:.0f}"
         for s in self.im.structs:
 
             # Get area
@@ -1579,6 +1591,12 @@ class ImageViewer():
                     extent_strs.append(fmt.format(ex))
             s.ui_x.value = extent_strs[0]
             s.ui_y.value = extent_strs[1]
+
+            # Get centre
+            centre = s.get_centre(self.view, self.slice[self.view])
+            centre_str = f"({centre_fmt}, {centre_fmt})"
+            s.ui_centre.value = centre_str.format(*centre) if centre[0] is \
+                    not None else "—"
 
     def update_struct_slider(self):
         """Update range and description of structure slider."""

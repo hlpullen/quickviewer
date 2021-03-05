@@ -1304,6 +1304,26 @@ class StructImage(NiftiImage):
         else:
             return 0, 0
 
+    def get_centre(self, view, sl):
+        """Get the coordinates of the centre of this structure in a given view
+        on a given slice."""
+
+        if not self.on_slice(view, sl):
+            return [None, None]
+
+        self.set_slice(view, sl)
+        non_zero = np.argwhere(self.current_slice)
+        x, y = _plot_axes[view]
+        if len(non_zero):
+            centre = non_zero.mean(0)
+            if self.scale_in_mm:
+                return [self.slice_to_pos(centre[1], x), 
+                        self.slice_to_pos(centre[0], y)]
+            else:
+                return list(centre)
+        else:
+            return [0, 0]
+
 
 class MultiImage(NiftiImage):
     """Class for loading and plotting an image along with an optional mask,
