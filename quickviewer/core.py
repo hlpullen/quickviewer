@@ -5,6 +5,7 @@ import nibabel
 import numpy as np
 import glob
 import fnmatch
+import matplotlib as mpl
 
 
 def load_image(im, affine=None, voxel_sizes=None, origin=None):
@@ -85,3 +86,29 @@ def find_files(paths, ext=""):
                     files.append(m)
 
     return files
+
+
+def to_inches(size):
+    """Convert a size string to a size in inches. If a float is given, it will 
+    be returned. If a string is given, the last two characters will be used to 
+    determine the units:
+        - "in": inches
+        - "cm": cm
+        - "mm": mm
+        - "px": pixels
+    """
+
+    if not isinstance(size, str):
+        return size
+
+    val = float(size[:-2])
+    units = size[-2:]
+    inches_per_cm = 0.394
+    if units == "in":
+        return val
+    elif units == "cm":
+        return inches_per_cm * val
+    elif units == "mm":
+        return inches_per_cm * val / 10
+    elif units == "px":
+        return val / mpl.rcParams["figure.dpi"]

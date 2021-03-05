@@ -316,6 +316,7 @@ class NiftiImage:
 
         # Create new figure and axes
         figsize = _default_figsize if figsize is None else figsize
+        figsize = core.convert_size(figsize)
         self.fig = plt.figure(figsize=(figsize * rel_width, figsize))
         self.ax = self.fig.add_subplot()
 
@@ -1755,6 +1756,7 @@ class OrthogonalImage(MultiImage):
         ]
         if gs is None:
             figsize = _default_figsize if figsize is None else figsize
+            figsize = core.convert_size(figsize)
             fig = plt.figure(figsize=(figsize * sum(width_ratios), figsize))
             self.gs = fig.add_gridspec(1, 2, width_ratios=width_ratios)
         else:

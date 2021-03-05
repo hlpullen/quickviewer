@@ -7,6 +7,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib as mpl
 
+from quickviewer.core import to_inches
 from quickviewer.image import MultiImage, OrthogonalImage, ChequerboardImage, \
         OverlayImage, DiffImage, standard_str
 from quickviewer.image import _slider_axes, _df_plot_types, _orient, \
@@ -468,7 +469,7 @@ class QuickViewer:
         self.tfile = translation_file_to_overwrite
 
         # Settings needed for plotting
-        self.figsize = kwargs.get("figsize", _default_figsize)
+        self.figsize = to_inches(kwargs.get("figsize", _default_figsize))
         self.colorbar = kwargs.get("colorbar", False)
         self.zoom = kwargs.get("zoom", None)
         self.plots_per_row = plots_per_row
@@ -1126,7 +1127,7 @@ class ImageViewer():
         # General settings
         self.in_notebook = in_notebook()
         self.mpl_kwargs = mpl_kwargs
-        self.figsize = figsize
+        self.figsize = to_inches(figsize)
         self.continuous_update = continuous_update
         self.colorbar = colorbar
         self.annotate_slice = annotate_slice
