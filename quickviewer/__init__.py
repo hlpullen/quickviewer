@@ -302,12 +302,13 @@ class QuickViewer:
             For quiver plotting options, see https://matplotlib.org/stable/api/_as_gen/matplotlib.pyplot.quiver.html.
 
         struct_plot_type : str, default='contour'
-            Option for initial plot of structures. Can be 'contour', 'mask', or
-            'none'. Can later be changed interactively.
+            Option for initial plot of structures. Can be 'contour', 'mask', 
+            'filled', or 'none'. Can later be changed interactively.
 
-        struct_opacity : float, default=1
-            Initial opacity of structures when plotted as masks. Can later 
-            be changed interactively.
+        struct_opacity : float, default=None
+            Initial opacity of structures when plotted as masks or filled 
+            contours. Can later be changed interactively. Default=1 for masks,
+            0.3 for filled contours.
 
         struct_linewidth : float, default=2
             Initial linewidth of structures when plotted as contours. Can later 
@@ -646,7 +647,9 @@ class QuickViewer:
         if self.any_attr("jacobian"):
             self.extra_ui.extend([v0.ui_jac_opacity, v0.ui_jac_range])
         if self.any_attr("structs"):
-            self.extra_ui.extend([v0.ui_struct_plot_type, v0.ui_struct_slider])
+            self.extra_ui.extend([v0.ui_struct_plot_type, 
+                                  v0.ui_struct_linewidth,
+                                  v0.ui_struct_opacity])
 
         # Make extra UI elements
         self.make_lower_ui()
@@ -983,7 +986,7 @@ class QuickViewer:
         # Deal with structure plot type change
         if self.struct_plot_type != self.ui_struct_plot_type.value:
             self.struct_plot_type = self.ui_struct_plot_type.value
-            self.viewer[0].update_struct_slider()
+            self.viewer[0].update_struct_sliders()
 
         # Deal with structure jumps
         for v in self.viewer:
@@ -1084,7 +1087,7 @@ class ImageViewer():
         df_spacing=30,
         df_kwargs=None,
         struct_plot_type="contour",
-        struct_opacity=1,
+        struct_opacity=None,
         struct_linewidth=2,
         struct_info=False,
         length_units=None,
@@ -1165,7 +1168,13 @@ class ImageViewer():
 
         # Structure settings
         self.struct_plot_type = struct_plot_type
-        self.struct_opacity = struct_opacity
+        self.struct_mask_opacity = 1
+        self.struct_filled_opacity = 0.3
+        if struct_opacity is not None:
+            if struct_plot_type == "mask":
+                self.struct_mask_opacity = struct_opacity
+            elif struct_plot_type == "filled":
+                self.struct_filled_opacity = struct_opacity
         self.struct_linewidth = struct_linewidth
         self.struct_legend = struct_legend
         self.legend_loc = legend_loc
@@ -1469,21 +1478,28 @@ class ImageViewer():
                 style=_style,
             )
 
-            # Opacity/linewidth slider
-            self.ui_struct_slider = ipyw.FloatSlider(continuous_update=False,
-                                                     style=_style)
-            self.update_struct_slider()
+            # Opacity/linewidth sliders
+            self.ui_struct_linewidth = ipyw.IntSlider(
+                min=1, max=8, step=1, value=self.struct_linewidth, 
+                description="Linewidth", continuous_update=False, 
+                style=_style)
+            self.ui_struct_opacity = ipyw.FloatSlider(
+                min=0, max=1, step=0.1, continuous_update=False, 
+                description="Opacity", style=_style)
+            self.update_struct_sliders()
 
             # Add all structure UIs
             if self.im.has_structs:
                 self.extra_ui.extend([
                     self.ui_struct_plot_type,
-                    self.ui_struct_slider
+                    self.ui_struct_linewidth,
+                    self.ui_struct_opacity
                 ])
 
         else:
             to_share = ["ui_mask", "ui_dose", "ui_jac_opacity", "ui_jac_range",
-                        "ui_df", "ui_struct_plot_type", "ui_struct_slider"]
+                        "ui_df", "ui_struct_plot_type", "ui_struct_linewidth",
+                        "ui_struct_linewidth", "ui_struct_opacity"]
             for ts in to_share:
                 setattr(self, ts, getattr(vimage, ts))
 
@@ -1615,28 +1631,22 @@ class ImageViewer():
             s.ui_centre.value = centre_str.format(*centre) if centre[0] is \
                     not None else "—"
 
-    def update_struct_slider(self):
-        """Update range and description of structure slider."""
+    def update_struct_sliders(self):
+        """Update struct sliders depending on current plot type."""
 
         self.struct_plot_type = self.ui_struct_plot_type.value
+
+        # Disable irrelevant sliders
+        self.ui_struct_opacity.disabled = self.struct_plot_type \
+                in ["contour", "none"]
+        self.ui_struct_linewidth.disabled = self.struct_plot_type \
+                in ["mask", "none"]
+
+        # Set opacity of masked or filled structs
         if self.struct_plot_type == "mask":
-            self.ui_struct_slider.disabled = False
-            self.ui_struct_slider.min = 0
-            self.ui_struct_slider.max = 1
-            self.ui_struct_slider.step = 0.1
-            self.ui_struct_slider.value = self.struct_opacity
-            self.ui_struct_slider.description = 'Structure opacity'
-            self.ui_struct_slider.readout_format = '.1f'
-        elif self.struct_plot_type == "contour":
-            self.ui_struct_slider.disabled = False
-            self.ui_struct_slider.min = 1
-            self.ui_struct_slider.max = 8
-            self.ui_struct_slider.value = self.struct_linewidth
-            self.ui_struct_slider.step = 1
-            self.ui_struct_slider.description = 'Structure linewidth'
-            self.ui_struct_slider.readout_format = '.0f'
-        else:
-            self.ui_struct_slider.disabled = True
+            self.ui_struct_opacity.value = self.struct_mask_opacity
+        elif self.struct_plot_type == "filled":
+            self.ui_struct_opacity.value = self.struct_filled_opacity
 
     def set_callbacks(self):
         """Set up matplotlib callback functions for interactive plotting."""
@@ -1678,8 +1688,8 @@ class ImageViewer():
         # Press c to change structure plot type
         elif event.key == "c":
             if self.im.has_structs:
-                next_type = {"mask": "contour", "contour": "none",
-                             "none": "mask"}
+                next_type = {"mask": "contour", "contour": "filled",
+                             "filled": "none", "none": "mask"}
                 self.ui_struct_plot_type.value = \
                     next_type[self.ui_struct_plot_type.value]
 
@@ -1960,16 +1970,18 @@ class ImageViewer():
 
         # Get structure settings
         self.update_struct_info()
+        struct_kwargs = {}
         if self.ui_struct_plot_type.value != self.struct_plot_type:
             self.update_struct_slider()
-        if self.struct_plot_type == "contour":
-            self.struct_linewidth = self.ui_struct_slider.value
-            struct_kwargs = {"linewidth": self.struct_linewidth}
-        elif self.struct_plot_type == "mask":
-            self.struct_opacity = self.ui_struct_slider.value
-            struct_kwargs = {"alpha": self.struct_opacity}
-        else:
-            struct_kwargs = {}
+        if self.struct_plot_type in ["contour", "filled"]:
+            self.struct_linewidth = self.ui_struct_linewidth.value
+            struct_kwargs["linewidth"] = self.struct_linewidth
+        if self.struct_plot_type == "mask":
+            self.struct_mask_opacity = self.ui_struct_opacity.value
+            struct_kwargs["alpha"] = self.struct_mask_opacity
+        elif self.struct_plot_type == "filled":
+            self.struct_filled_opacity = self.ui_struct_opacity.value
+            struct_kwargs["alpha"] = self.struct_filled_opacity
         for s in self.im.structs:
             s.visible = s.checkbox.value
 

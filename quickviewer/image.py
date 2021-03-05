@@ -25,7 +25,7 @@ _orient = {"y-z": [1, 2, 0], "x-z": [0, 2, 1], "x-y": [1, 0, 2]}
 _n_rot = {"y-z": 2, "x-z": 2, "x-y": 1}
 _orthog = {'x-y': 'y-z', 'y-z': 'x-z', 'x-z': 'y-z'}
 _df_plot_types = ["grid", "quiver", "none"]
-_struct_plot_types = ["contour", "mask", "none"]
+_struct_plot_types = ["contour", "mask", "filled", "none"]
 _default_figsize = 6
 _default_spacing = 30
 
@@ -316,7 +316,7 @@ class NiftiImage:
 
         # Create new figure and axes
         figsize = _default_figsize if figsize is None else figsize
-        figsize = core.convert_size(figsize)
+        figsize = core.to_inches(figsize)
         self.fig = plt.figure(figsize=(figsize * rel_width, figsize))
         self.ax = self.fig.add_subplot()
 
@@ -1198,6 +1198,12 @@ class StructImage(NiftiImage):
             self.plot_contour(view, sl, pos, ax, mpl_kwargs, zoom, zoom_centre)
         elif plot_type == "mask":
             self.plot_mask(view, sl, pos, ax, mpl_kwargs, zoom, zoom_centre)
+        elif plot_type == "filled":
+            mask_kwargs = {"alpha": mpl_kwargs.get("alpha", 0.3)}
+            self.plot_mask(view, sl, pos, ax, mask_kwargs, zoom, zoom_centre)
+            contour_kwargs = {"linewidth": mpl_kwargs.get("linewidth", 2)}
+            self.plot_contour(view, sl, pos, self.ax, contour_kwargs,
+                              zoom, zoom_centre)
 
     def plot_mask(self, view, sl, pos, ax, mpl_kwargs=None, zoom=None,
                   zoom_centre=None):
@@ -1652,7 +1658,7 @@ class MultiImage(NiftiImage):
             plotting.
 
         struct_plot_type : str, default="contour"
-            Plot type for structures ("contour"/"mask")
+            Plot type for structures ("contour"/"mask"/"filled")
 
         struct_legend : bool, default=True
             If True, a legend will be drawn labelling any structrues visible on
@@ -1756,7 +1762,7 @@ class OrthogonalImage(MultiImage):
         ]
         if gs is None:
             figsize = _default_figsize if figsize is None else figsize
-            figsize = core.convert_size(figsize)
+            figsize = core.to_inches(figsize)
             fig = plt.figure(figsize=(figsize * sum(width_ratios), figsize))
             self.gs = fig.add_gridspec(1, 2, width_ratios=width_ratios)
         else:
