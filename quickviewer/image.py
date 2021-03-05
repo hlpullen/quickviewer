@@ -1055,7 +1055,7 @@ class StructImage(NiftiImage):
         """
 
         # Load the mask
-        NiftiImage.__init__(self, nii)
+        NiftiImage.__init__(self, nii, **kwargs)
         if not self.valid:
             return
 
@@ -1164,6 +1164,13 @@ class StructImage(NiftiImage):
                             x * abs(self.voxel_sizes[x_ax])
                         y = min(self.lims[y_ax]) + \
                             y * abs(self.voxel_sizes[y_ax])
+                    else:
+                        x = self.idx_to_slice(x, x_ax)
+                        if y_ax == "x":
+                            y = self.idx_to_slice(y, y_ax)
+                        else:
+                            y = self.idx_to_slice(self.n_voxels[y_ax] - y, 
+                                                  y_ax)
                     contour_points.append((x, y))
                 points.append(contour_points)
             return points
@@ -1325,7 +1332,8 @@ class StructImage(NiftiImage):
                 return [self.idx_to_pos(centre[1], x), 
                         self.idx_to_pos(self.n_voxels[y] - centre[0], y)]
             else:
-                return list(centre)
+                return [self.idx_to_slice(centre[1], x),
+                        self.idx_to_slice(self.n_voxels[y] - centre[0], y)]
         else:
             return [0, 0]
 
@@ -1463,7 +1471,8 @@ class MultiImage(NiftiImage):
             return
         self.has_structs = True
         files = list(set([os.path.abspath(f) for f in files]))
-        self.structs = sorted([StructImage(f) for f in files])
+        self.structs = sorted([StructImage(f, scale_in_mm=self.scale_in_mm) 
+                               for f in files])
 
         # Assign colors
         standard_colors = (
