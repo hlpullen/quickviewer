@@ -1838,7 +1838,7 @@ class ImageViewer():
             self.ui_slice.value = self.slice_to_slider(
                 mid_slice, _slider_axes[self.view])
             self.slice[self.view] = mid_slice
-            #  self.centre_at_struct(struct)
+            self.centre_at_struct(struct)
         self.ui_struct_jump.value = ""
 
     def centre_at_struct(self, struct):

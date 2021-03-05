@@ -1170,7 +1170,7 @@ class StructImage(NiftiImage):
                             y = self.idx_to_slice(y, y_ax)
                         else:
                             y = self.idx_to_slice(self.n_voxels[y_ax] - y, 
-                                                  y_ax)
+                                                  y_ax) + 1
                     contour_points.append((x, y))
                 points.append(contour_points)
             return points
@@ -1325,15 +1325,14 @@ class StructImage(NiftiImage):
 
         self.set_slice(view, sl)
         non_zero = np.argwhere(self.current_slice)
-        x, y = _plot_axes[view]
+        x_ax, y_ax = _plot_axes[view]
         if len(non_zero):
-            centre = non_zero.mean(0)
-            if self.scale_in_mm:
-                return [self.idx_to_pos(centre[1], x), 
-                        self.idx_to_pos(self.n_voxels[y] - centre[0], y)]
-            else:
-                return [self.idx_to_slice(centre[1], x),
-                        self.idx_to_slice(self.n_voxels[y] - centre[0], y)]
+            y, x = non_zero.mean(0)
+            convert = self.idx_to_pos if self.scale_in_mm \
+                else self.idx_to_slice
+            if y_ax != "x":
+                y = self.n_voxels[y_ax] - y
+            return [convert(x, x_ax), convert(y, y_ax)]
         else:
             return [0, 0]
 
