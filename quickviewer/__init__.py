@@ -462,9 +462,7 @@ class QuickViewer:
         self.zoom = kwargs.get("zoom", None)
         self.plots_per_row = plots_per_row
         self.suptitle = suptitle
-        self.match_axes = match_axes
-        if self.match_axes is not None and not self.scale_in_mm:
-            self.match_axes = None
+        self.match_axes(match_axes)
         self.in_notebook = in_notebook()
         self.saved = False
         self.plotting = False
@@ -528,6 +526,47 @@ class QuickViewer:
             self.diff = DiffImage(
                 im1, im2, title="Difference", scale_in_mm=self.scale_in_mm)
             self.comparison.append(self.diff)
+
+    def match_axes(self, match_axes):
+        """Adjust axes of plots to match if the match_axes option is set."""
+
+        if match_axes is None:
+            return
+
+        # Match axes in all orientations
+        for view in _slider_axes:
+
+            # Calculate limits using all plots
+            ax_lims = []
+            if match_axes in ["all", "both", "x", "y", "overlap"]:
+                for i in range(2):
+                    min_lims = [v.im.ax_lims[view][i][0] for v in self.viewer]
+                    max_lims = [v.im.ax_lims[view][i][1] for v in self.viewer]
+                    f1, f2 = min, max
+                    if match_axes == "overlap":
+                        f1, f2 = f2, f1
+                    if min_lims[0] > max_lims[0]:
+                        f1, f2 = f2, f1
+                    ax_lims.append([f1(min_lims), f2(max_lims)])
+
+            # Match axes to one plot
+            else:
+                try:
+                    im = self.viewer[match_axes].im
+                    ax_lims = im.ax_lims[view]
+
+                except TypeError:
+                    raise TypeError("Unrecognised option for <match_axes>",
+                                    match_axes)
+
+            # Set these limits for all plots
+            all_ims = [v.im for v in self.viewer] \
+                    + [c for c in self.comparison]
+            for im in all_ims:
+                if match_axes != "y":
+                    im.ax_lims[view][0] = ax_lims[0]
+                if match_axes != "x":
+                    im.ax_lims[view][1] = ax_lims[1]
 
     def make_ui(self, share_slider):
 
@@ -795,43 +834,6 @@ class QuickViewer:
         return reset_zoom
 
     def make_fig(self):
-
-        # Adjust axes if needed
-        if self.match_axes is not None:
-
-            # Calculate limits using all plots
-            ax_lims = []
-            if self.match_axes in ["all", "both", "x", "y", "overlap"]:
-                for i in range(2):
-                    min_lims = [v.im.ax_lims[self.view][i][0] 
-                                for v in self.viewer]
-                    max_lims = [v.im.ax_lims[self.view][i][1] 
-                                for v in self.viewer]
-                    f1, f2 = min, max
-                    if self.match_axes == "overlap":
-                        f1, f2 = f2, f1
-                    if min_lims[0] > max_lims[0]:
-                        f1, f2 = f2, f1
-                    ax_lims.append([f1(min_lims), f2(max_lims)])
-
-            # Match axes to one plot
-            else:
-                try:
-                    im = self.viewer[self.match_axes].im
-                    ax_lims = im.ax_lims[self.view]
-
-                except TypeError:
-                    raise TypeError("Unrecognised option for <match_axes>",
-                                    self.match_axes)
-
-            # Set these limits for all plots
-            all_ims = [v.im for v in self.viewer] \
-                    + [c for c in self.comparison]
-            for im in all_ims:
-                if self.match_axes != "y":
-                    im.ax_lims[self.view][0] = ax_lims[0]
-                if self.match_axes != "x":
-                    im.ax_lims[self.view][1] = ax_lims[1]
 
         # Get relative width of each subplot
         width_ratios = [v.im.get_relative_width(self.view, self.zoom, 
