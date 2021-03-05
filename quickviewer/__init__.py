@@ -1282,8 +1282,9 @@ class ImageViewer():
 
         # Structure jumping menu
         # Get list of structures
-        self.structs_for_jump = {"": None, **{s.name_nice: s for s in
-                                              self.im.structs}}
+        self.structs_for_jump = {"": None, 
+                                 **{s.unique_name: s for s in
+                                    self.im.structs}}
         structs_standard = {standard_str(s): s for s in self.structs_for_jump}
         if standard_str(self.init_struct) in structs_standard:
             init_struct = structs_standard[standard_str(self.init_struct)]
@@ -1557,7 +1558,7 @@ class ImageViewer():
 
         # Make checkbox for each structure
         for s in self.im.structs:
-            s.checkbox = ipyw.Checkbox(value=True, description=s.name_nice)
+            s.checkbox = ipyw.Checkbox(value=True, description=s.unique_name)
             self.ui_struct_checkboxes.append(s.checkbox)
             if not self.struct_info:
                 self.lower_ui.append(s.checkbox)

@@ -1056,6 +1056,43 @@ class StructImage(NiftiImage):
 
         return self.name_nice < other.name_nice
 
+    def set_unique_name(self, structs):
+        """Compare own name to other structures in list. If multiple structures
+        have the same name, present this structure's path in the shortest way
+        to distinguish it from the other structures."""
+
+        if self.path is None:
+            self.unique_name = self.name_nice
+            return
+
+        # Find structures with the same name
+        same_name = [s for s in structs if standard_str(s.name) ==
+                     standard_str(self.name)]
+        if not len(same_name):
+            self.unique_name = self.name_nice
+            return
+        
+        # Get unique part of path wrt those structures
+        unique_paths = list(set([core.get_unique_path(self.path, s.path) 
+                                 for s in same_name]))
+
+        # If path isn't unique, just use own name
+        if None in unique_paths:
+            self.unique_name = self.name_nice
+
+        elif len(unique_paths) == 1:
+            self.unique_name = f"{self.name_nice} ({unique_paths[0]})"
+
+        else:
+
+            # Find unique path wrt all paths
+            remaining = unique_paths[1:]
+            current = core.get_unique_path(unique_paths[0], remaining)
+            while len(remaining) > 1:
+                remaining = remaining[1:]
+                current = core.get_unique_path(current, remaining[0])
+            self.unique_str = f"{self.name_nice} ({current})"
+
     def get_volume(self, units):
         """Get total structure volume in voxels, mm, or ml."""
 
@@ -1072,7 +1109,7 @@ class StructImage(NiftiImage):
 
         return self.volume[units]
 
-    def get_struct_extent(self, units):
+    def get_struct_length(self, units):
         """Get the total x, y, z extent in voxels or mm."""
 
         if self.empty:
@@ -1474,6 +1511,11 @@ class MultiImage(NiftiImage):
             self.structs.extend(load_struct_masks(
                 f, many_per_file, names, scale_in_mm=self.scale_in_mm))
         self.structs = sorted(self.structs)
+
+        # Set unique names for each
+        for i, struct in enumerate(self.structs):
+            struct.set_unique_name([self.structs[j] for j in 
+                                    range(len(self.structs)) if j != i])
 
         # Assign colors
         standard_colors = (
@@ -2096,5 +2138,7 @@ def load_struct_masks(path, many_per_file=False, names=None, **kwargs):
                 name = names[ml]
             else:
                 name = f"Structure {ml}"
-            structs.append(StructImage(data == ml, name=name, **kwargs))
+            struct = StructImage(data == ml, name=name, **kwargs)
+            struct.path = path
+            structs.append(struct)
         return structs
