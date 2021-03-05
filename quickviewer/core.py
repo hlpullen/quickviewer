@@ -76,9 +76,7 @@ def find_files(paths, ext=""):
         elif os.path.isdir(path):
             files.extend(glob.glob(f"{path}/*{ext}"))
         else:
-            print("path:", path)
             matches = glob.glob(path)
-            print("matches:", matches)
             for m in matches:
                 if os.path.isdir(m):
                     files.extend(glob.glob(f"{m}/*{ext}"))
