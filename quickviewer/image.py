@@ -1422,6 +1422,7 @@ class MultiImage(NiftiImage):
         many_structs_per_file=False,
         struct_names=None,
         compare_structs=False,
+        ignore_empty_structs=False,
         mask_threshold=0.5,
         **kwargs
     ):
@@ -1489,8 +1490,12 @@ class MultiImage(NiftiImage):
         self.load_to(mask, "mask", kwargs)
         self.load_to(jacobian, "jacobian", kwargs)
         self.load_df(df)
-        self.load_structs(structs, struct_colors, many_structs_per_file,
-                          struct_names, compare_structs)
+        self.load_structs(structs, 
+                          struct_colors, 
+                          many_structs_per_file,
+                          struct_names, 
+                          compare_structs, 
+                          ignore_empty_structs)
         self.structs_as_mask = structs_as_mask
         if self.has_structs and structs_as_mask:
             self.has_mask = True
@@ -1521,8 +1526,14 @@ class MultiImage(NiftiImage):
         self.df = DeformationImage(df, scale_in_mm=self.scale_in_mm)
         self.has_df = self.df.valid
 
-    def load_structs(self, structs, colors, many_per_file=False,
-                     names=None, compare_structs=False):
+    def load_structs(self, 
+                     structs, 
+                     colors, 
+                     many_per_file=False,
+                     names=None, 
+                     compare_structs=False, 
+                     ignore_empty=False
+                    ):
         """Load structures from a path/wildcard or list of paths/wildcards in
         <structs>, and assign the colors in <colors>."""
 
@@ -1539,6 +1550,17 @@ class MultiImage(NiftiImage):
         else:
             self.load_structs_from_files(structs, many_per_file, names,
                                          compare_structs)
+
+        # Load struct data and contours
+
+        # Ignore empty structs
+        if ignore_empty:
+            self.structs = [s for s in self.structs if not s.empty]
+            self.struct_comparisons = [sc for sc in self.struct_comparisons
+                                       if not (sc.s1.empty or sc.s2.empty)]
+            self.standalone_structs = [s for s in self.standalone_structs if 
+                                       not s.empty]
+
 
         # Set unique names for each
         for i, struct in enumerate(self.structs):
@@ -2260,10 +2282,7 @@ def load_struct_masks(path, many_per_file=False, names=None, **kwargs):
         structs = []
         for ml in mask_labels:
 
-            if names is not None and ml not in names:
-                continue
-
-            if names is None:
+            if names is None or ml not in names:
                 name = f"Structure {ml}"
             else:
                 name = names[ml]
