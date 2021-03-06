@@ -1049,6 +1049,7 @@ class StructImage(NiftiImage):
         self.label = label
         nice = self.name.replace("_", " ")
         self.name_nice = nice[0].upper() + nice[1:]
+        self.name_nice_nolabel = self.name_nice
         if self.label is not None:
             self.name_nice += f" ({self.label})"
 
@@ -1095,6 +1096,44 @@ class StructImage(NiftiImage):
                     return self.path < other.path
 
             return n1 < n2
+
+    def set_unique_name(self, structs):
+        """Compare own name to other structures in list. If multiple structures
+        have the same name, present this structure's path in the shortest way
+        to distinguish it from the other structures."""
+
+        if self.path is None or self.label is not None:
+            self.unique_name = self.name_nice
+            return
+
+        # Find structures with the same name
+        same_name = [s for s in structs if standard_str(s.name) ==
+                     standard_str(self.name)]
+        if not len(same_name):
+            self.unique_name = self.name_nice
+            return
+
+        # Get unique part of path wrt those structures
+        unique_paths = list(set([core.get_unique_path(self.path, s.path) 
+                                 for s in same_name]))
+
+        # If path isn't unique, just use own name
+        if None in unique_paths:
+            self.unique_name = self.name_nice
+
+        elif len(unique_paths) == 1:
+            self.unique_name = f"{self.name_nice} ({unique_paths[0]})"
+
+        else:
+
+            # Find unique path wrt all paths
+            remaining = unique_paths[1:]
+            current = core.get_unique_path(unique_paths[0], remaining)
+            while len(remaining) > 1:
+                remaining = remaining[1:]
+                current = core.get_unique_path(current, remaining[0])
+            self.unique_str = f"{self.name_nice} ({current})"
+
 
     def get_volume(self, units):
         """Get total structure volume in voxels, mm, or ml."""
@@ -1550,6 +1589,10 @@ class MultiImage(NiftiImage):
             self.standalone_structs = [s for s in self.standalone_structs if 
                                        not s.empty]
 
+        # Set unique names for each structure
+        for i, struct in enumerate(self.structs):
+            struct.set_unique_name([self.structs[j] for j in 
+                                    range(len(self.structs)) if j != i])
 
         # Assign colors
         standard_colors = (
@@ -1614,7 +1657,7 @@ class MultiImage(NiftiImage):
             self.structs.extend([s1, s2])
             name = ""
             if s1.name == s2.name:
-                name = s1.name_nice
+                name = s1.name_nice_nolabel
             elif len(structs) > 1:
                 name = f"{s1.name_nice} vs. {s2.name_nice}"
             self.struct_comparisons.append(StructComparison(s1, s2, name=name))
@@ -1914,7 +1957,6 @@ class MultiImage(NiftiImage):
             colorbar_label="Jacobian determinant")
 
         # Plot standalone structures
-        struct_handles = []
         for s in (self.standalone_structs + self.struct_comparisons):
             s.plot(view, self.sl, ax=self.ax, mpl_kwargs=struct_kwargs, 
                    plot_type=struct_plot_type)
@@ -1930,10 +1972,8 @@ class MultiImage(NiftiImage):
             handles = []
             for s in self.structs:
                 if s.visible and s.on_slice(view, self.sl):
-                    label = s.name_nice
-                    if s.label is not None:
-                        label += f" ({s.label})"
-                    handles.append(mpatches.Patch(color=s.color, label=label))
+                    handles.append(mpatches.Patch(color=s.color, 
+                                                  label=s.name_nice))
             if len(handles):
                 self.ax.legend(handles=handles, loc=legend_loc,
                                facecolor="white", framealpha=1)
