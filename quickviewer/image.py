@@ -997,7 +997,8 @@ class DeformationImage(NiftiImage):
 class StructImage(NiftiImage):
     """Class to load and plot a structure mask."""
 
-    def __init__(self, nii, name=None, color=None, source=None, **kwargs):
+    def __init__(self, nii, name=None, color=None, label=None, load=True, 
+                 **kwargs):
         """Load structure mask.
 
         Parameters
@@ -1020,13 +1021,10 @@ class StructImage(NiftiImage):
             self.assign_color(color).
         """
 
-        # Load the mask
-        NiftiImage.__init__(self, nii, **kwargs)
-        if not self.valid:
-            return
-
-        # Convert to boolean mask
-        self.data = self.data > 0.5
+        # Assign variables
+        self.nii = nii
+        self.nii_kwargs = kwargs
+        self.visible = True
 
         # Set name
         if name is not None:
@@ -1035,22 +1033,47 @@ class StructImage(NiftiImage):
             basename = os.path.basename(nii).strip(".gz").strip(".nii")
             self.name = re.sub(r"RTSTRUCT_[MVCT]+_\d+_\d+_\d+_", "",
                                basename).replace(" ", "_")
+        self.set_label(label)
+
+        # Assign a random color
+        self.assign_color(np.random.rand(3, 1).flatten())
+
+        # Load data
+        self.loaded = False
+        if load:
+            self.load()
+
+    def set_label(self, label):
+        """Set the label for this structure and use to generate nice name."""
+
+        self.label = label
         nice = self.name.replace("_", " ")
         self.name_nice = nice[0].upper() + nice[1:]
-        self.source = source
+        if self.label is not None:
+            self.name_nice += f" ({self.label})"
 
-        # Get contours
-        self.visible = True
+    def load(self):
+        """Load struct data and create contours."""
+
+        if self.loaded:
+            return
+
+        # Load the mask
+        NiftiImage.__init__(self, self.nii, **self.nii_kwargs)
+        if not self.valid:
+            return
+
+        # Convert to boolean mask
+        self.data = self.data > 0.5
+
+        # Load contours
         self.set_contours()
-
-        # Check whether contours were found
         self.empty = not sum([len(contours) for contours in 
                               self.contours.values()])
         if self.empty:
             self.name_nice += " (empty)"
 
-        # Assign a random color
-        self.assign_color(np.random.rand(3, 1).flatten())
+        self.loaded = True
 
     def __lt__(self, other):
         """Compare structures by name."""
@@ -1066,59 +1089,17 @@ class StructImage(NiftiImage):
                 return n1 < n2
         else:
             if n1 == n2:
-                if self.source is not None and other.source is not None:
-                    return self.source < other.source
+                if self.label is not None and other.label is not None:
+                    return self.label < other.label
                 if self.path is not None and other.path is not None:
                     return self.path < other.path
 
             return n1 < n2
 
-    def set_unique_name(self, structs):
-        """Compare own name to other structures in list. If multiple structures
-        have the same name, present this structure's path in the shortest way
-        to distinguish it from the other structures."""
-
-        if self.path is None and self.source is None:
-            self.unique_name = self.name_nice
-            return
-
-        # Find structures with the same name
-        same_name = [s for s in structs if standard_str(s.name) ==
-                     standard_str(self.name)]
-        if not len(same_name):
-            self.unique_name = self.name_nice
-            return
-
-        # Try using source name
-        same_name = [s for s in same_name if s.source == self.source]
-        if not len(same_name):
-            self.unique_name = f"{self.name_nice} ({self.source})"
-            return
-        
-        # Get unique part of path wrt those structures
-        unique_paths = list(set([core.get_unique_path(self.path, s.path) 
-                                 for s in same_name]))
-
-        # If path isn't unique, just use own name
-        if None in unique_paths:
-            self.unique_name = self.name_nice
-
-        elif len(unique_paths) == 1:
-            self.unique_name = f"{self.name_nice} ({unique_paths[0]})"
-
-        else:
-
-            # Find unique path wrt all paths
-            remaining = unique_paths[1:]
-            current = core.get_unique_path(unique_paths[0], remaining)
-            while len(remaining) > 1:
-                remaining = remaining[1:]
-                current = core.get_unique_path(current, remaining[0])
-            self.unique_str = f"{self.name_nice} ({current})"
-
     def get_volume(self, units):
         """Get total structure volume in voxels, mm, or ml."""
 
+        self.load()
         if self.empty:
             return 0
 
@@ -1135,6 +1116,7 @@ class StructImage(NiftiImage):
     def get_struct_length(self, units):
         """Get the total x, y, z length in voxels or mm."""
 
+        self.load()
         if self.empty:
             return (0, 0, 0)
 
@@ -1157,6 +1139,7 @@ class StructImage(NiftiImage):
         """Get the centre of this structure in voxels or mm. If no
         units are given, units will be mm if <self_in_mm> is True."""
 
+        self.load()
         if self.empty:
             return None, None, None
 
@@ -1283,6 +1266,7 @@ class StructImage(NiftiImage):
             Factor by which to zoom in.
         """
 
+        self.load()
         if not self.valid or not self.visible:
             return
 
@@ -1306,6 +1290,7 @@ class StructImage(NiftiImage):
         """Plot structure as a colored mask."""
 
         # Get slice
+        self.load()
         self.set_ax(view, ax, zoom=zoom)
         self.set_slice(view, sl, pos)
 
@@ -1329,6 +1314,7 @@ class StructImage(NiftiImage):
                      zoom_centre=None):
         """Plot structure as a contour."""
 
+        self.load()
         self.set_ax(view, ax, zoom)
         if not self.on_slice(view, sl):
             return
@@ -1347,6 +1333,7 @@ class StructImage(NiftiImage):
         """Return True if a contour exists for this structure on a given slice.
         """
 
+        self.load()
         return sl in self.contours[view]
 
     def get_area(self, view, sl, units="voxels"):
@@ -1423,6 +1410,7 @@ class MultiImage(NiftiImage):
         struct_names=None,
         compare_structs=False,
         ignore_empty_structs=False,
+        ignore_unpaired_structs=False,
         mask_threshold=0.5,
         **kwargs
     ):
@@ -1495,7 +1483,8 @@ class MultiImage(NiftiImage):
                           many_structs_per_file,
                           struct_names, 
                           compare_structs, 
-                          ignore_empty_structs)
+                          ignore_empty_structs,
+                          ignore_unpaired_structs)
         self.structs_as_mask = structs_as_mask
         if self.has_structs and structs_as_mask:
             self.has_mask = True
@@ -1532,7 +1521,8 @@ class MultiImage(NiftiImage):
                      many_per_file=False,
                      names=None, 
                      compare_structs=False, 
-                     ignore_empty=False
+                     ignore_empty=False,
+                     ignore_unpaired=False
                     ):
         """Load structures from a path/wildcard or list of paths/wildcards in
         <structs>, and assign the colors in <colors>."""
@@ -1549,9 +1539,7 @@ class MultiImage(NiftiImage):
             self.load_structs_from_pairs(structs)
         else:
             self.load_structs_from_files(structs, many_per_file, names,
-                                         compare_structs)
-
-        # Load struct data and contours
+                                         compare_structs, ignore_unpaired)
 
         # Ignore empty structs
         if ignore_empty:
@@ -1561,11 +1549,6 @@ class MultiImage(NiftiImage):
             self.standalone_structs = [s for s in self.standalone_structs if 
                                        not s.empty]
 
-
-        # Set unique names for each
-        for i, struct in enumerate(self.structs):
-            struct.set_unique_name([self.structs[j] for j in 
-                                    range(len(self.structs)) if j != i])
 
         # Assign colors
         standard_colors = (
@@ -1633,7 +1616,7 @@ class MultiImage(NiftiImage):
             self.struct_comparisons.append(StructComparison(s1, s2, name=name))
 
     def load_structs_from_files(self, structs, many_per_file, names,
-                                compare_structs):
+                                compare_structs=False, ignore_unpaired=False):
         """Load structures from file input. If <compare_structs> is set, an
         attempt will be made to pair structures for comparison:
             - If only two structures are found, these will be compared;
@@ -1641,10 +1624,9 @@ class MultiImage(NiftiImage):
             compared.
         """
 
-
         # Load all structures found in files
         struct_dict = structs if isinstance(structs, dict) else {None: structs}
-        for source, structs in struct_dict.items():
+        for label, structs in struct_dict.items():
 
             files = core.find_files(structs, ext="nii*")
             if not len(files):
@@ -1653,10 +1635,13 @@ class MultiImage(NiftiImage):
             self.has_structs = True
             files = list(set([os.path.abspath(f) for f in files]))
             for f in files:
-                loaded = load_struct_masks(f, many_per_file, names, 
+                loaded = load_struct_masks(f, 
+                                           many_per_file=many_per_file, 
+                                           names=names, 
+                                           load=False,
                                            scale_in_mm=self.scale_in_mm)
                 for s in loaded:
-                    s.source = source
+                    s.set_label(label)
                 self.structs.extend(loaded)
             self.structs = sorted(self.structs)
 
@@ -1691,11 +1676,18 @@ class MultiImage(NiftiImage):
                     StructComparison(*structs, name=structs[0].name_nice))
 
             # Make list of standalone structs
-            self.standalone_structs = [s for s in self.structs if s.name not in
-                                       names_to_compare]
-
+            if not ignore_unpaired:
+                self.standalone_structs = [s for s in self.structs if s.name 
+                                           not in names_to_compare]
+            else:
+                self.structs = [s for s in self.structs if s.name in 
+                                names_to_compare]
         else:
             self.standalone_structs = self.structs
+
+        # Load data and contours for all selected structures
+        for s in self.structs:
+            s.load()
 
     def set_plotting_defaults(self):
         """Set default matplotlib plotting options for main image, dose field,
@@ -1932,8 +1924,8 @@ class MultiImage(NiftiImage):
             for s in self.structs:
                 if s.visible and s.on_slice(view, self.sl):
                     label = s.name_nice
-                    if s.source is not None:
-                        label += f" ({s.source})"
+                    if s.label is not None:
+                        label += f" ({s.label})"
                     handles.append(mpatches.Patch(color=s.color, label=label))
             if len(handles):
                 self.ax.legend(handles=handles, loc=legend_loc,
@@ -2252,13 +2244,14 @@ def standard_str(string):
         return
 
 
-def load_struct_masks(path, many_per_file=False, names=None, **kwargs):
+def load_struct_masks(path, many_per_file=False, names=None, load=True,
+                      **kwargs):
     """Load structure mask data from a file. If <many_per_file> is True,
     each unique nonzero number in the image array will be taken to represent 
     a different structure."""
 
     if not many_per_file:
-        return [StructImage(path, **kwargs)]
+        return [StructImage(path, load=load, **kwargs)]
 
     else:
 
@@ -2270,7 +2263,7 @@ def load_struct_masks(path, many_per_file=False, names=None, **kwargs):
 
         # Case with only one structure in that file
         if len(mask_labels) < 2:
-            return [StructImage(path, **kwargs)]
+            return [StructImage(path, load=load, **kwargs)]
 
         # Process custom names
         if not isinstance(names, dict):
@@ -2308,20 +2301,17 @@ class StructComparison:
                 else StructImage(s, **kwargs)
             setattr(self, f"s{i + 1}", s)
 
-        # Check both structres are valid and in same reference frame
-        self.valid = self.s1.valid and self.s2.valid
-        if not self.valid:
-            return
+    def is_valid(self):
+        """Check both structures are valid and in same reference frame."""
+
+        self.s1.load()
+        self.s2.load()
         if not self.s1.same_frame(self.s2):
             raise TypeError(f"Comparison structures {self.s1.name} and "
                             f"{self.s2.name} are not in the same reference "
                             "frame!")
-
-        # Ensure unique names are set
-        if not hasattr(self.s1, "unique_name"):
-            self.s1.set_unique_name([self.s2])
-        if not hasattr(self.s2, "unique_name"):
-            self.s2.set_unique_name([self.s1])
+        self.valid = self.s1.valid and self.s2.valid
+        return self.valid
 
     def plot(
         self, 
@@ -2337,7 +2327,7 @@ class StructComparison:
     ):
         """Plot comparison structures."""
 
-        if not self.valid:
+        if not self.is_valid():
             return
         if mpl_kwargs is None:
             mpl_kwargs = {}
@@ -2412,6 +2402,8 @@ class StructComparison:
     def dice_score(self, view, sl):
         """Get dice score on a given slice."""
 
+        if not self.is_valid():
+            return
         if not self.s1.on_slice(view, sl) or not self.s2.on_slice(view, sl):
             return
 

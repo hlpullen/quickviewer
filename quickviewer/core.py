@@ -112,36 +112,6 @@ def to_inches(size):
         return val / mpl.rcParams["figure.dpi"]
 
 
-def get_unique_path(p1, p2):
-    """Get the part of path p1 that is unique from path p2."""
-
-    # Get absolute path
-    p1 = os.path.abspath(os.path.expanduser(p1))
-    p2 = os.path.abspath(os.path.expanduser(p2))
-
-    # Identical paths: can't find unique path
-    if p1 == p2:
-        return
-
-    # Different basenames
-    if os.path.basename(p1) != os.path.basename(p2):
-        return os.path.basename(p1)
-
-    # Find unique section
-    left, right = os.path.split(p1)
-    left2, right2 = os.path.split(p2)
-    unique = ""
-    while right != "":
-        if right != right2:
-            if unique == "":
-                unique = right
-            else:
-                unique = os.path.join(right, unique)
-        left, right = os.path.split(left)
-        left2, right2 = os.path.split(left2)
-    return unique
-
-
 def is_list(var):
     """Check whether a variable is a list/tuple."""
 
