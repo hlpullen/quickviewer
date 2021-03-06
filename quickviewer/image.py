@@ -997,7 +997,7 @@ class DeformationImage(NiftiImage):
 class StructImage(NiftiImage):
     """Class to load and plot a structure mask."""
 
-    def __init__(self, nii, name=None, color=None, **kwargs):
+    def __init__(self, nii, name=None, color=None, source=None, **kwargs):
         """Load structure mask.
 
         Parameters
@@ -1037,6 +1037,7 @@ class StructImage(NiftiImage):
                                basename).replace(" ", "_")
         nice = self.name.replace("_", " ")
         self.name_nice = nice[0].upper() + nice[1:]
+        self.source = source
 
         # Get contours
         self.visible = True
@@ -1064,6 +1065,12 @@ class StructImage(NiftiImage):
             except ValueError:
                 return n1 < n2
         else:
+            if n1 == n2:
+                if self.source is not None and other.source is not None:
+                    return self.source < other.source
+                if self.path is not None and other.path is not None:
+                    return self.path < other.path
+
             return n1 < n2
 
     def set_unique_name(self, structs):
@@ -1071,7 +1078,7 @@ class StructImage(NiftiImage):
         have the same name, present this structure's path in the shortest way
         to distinguish it from the other structures."""
 
-        if self.path is None:
+        if self.path is None and self.source is None:
             self.unique_name = self.name_nice
             return
 
@@ -1080,6 +1087,12 @@ class StructImage(NiftiImage):
                      standard_str(self.name)]
         if not len(same_name):
             self.unique_name = self.name_nice
+            return
+
+        # Try using source name
+        same_name = [s for s in same_name if s.source == self.source]
+        if not len(same_name):
+            self.unique_name = f"{self.name_nice} ({self.source})"
             return
         
         # Get unique part of path wrt those structures
@@ -1606,17 +1619,24 @@ class MultiImage(NiftiImage):
             compared.
         """
 
+
         # Load all structures found in files
-        files = core.find_files(structs, ext="nii*")
-        if not len(files):
-            print("Warning: no structure files found matching ", structs)
-            return
-        self.has_structs = True
-        files = list(set([os.path.abspath(f) for f in files]))
-        for f in files:
-            self.structs.extend(load_struct_masks(
-                f, many_per_file, names, scale_in_mm=self.scale_in_mm))
-        self.structs = sorted(self.structs)
+        struct_dict = structs if isinstance(structs, dict) else {None: structs}
+        for source, structs in struct_dict.items():
+
+            files = core.find_files(structs, ext="nii*")
+            if not len(files):
+                print("Warning: no structure files found matching ", structs)
+                return
+            self.has_structs = True
+            files = list(set([os.path.abspath(f) for f in files]))
+            for f in files:
+                loaded = load_struct_masks(f, many_per_file, names, 
+                                           scale_in_mm=self.scale_in_mm)
+                for s in loaded:
+                    s.source = source
+                self.structs.extend(loaded)
+            self.structs = sorted(self.structs)
 
         # Attempt to pair structures
         if compare_structs:
@@ -1889,8 +1909,10 @@ class MultiImage(NiftiImage):
             handles = []
             for s in self.structs:
                 if s.visible and s.on_slice(view, self.sl):
-                    handles.append(mpatches.Patch(color=s.color, 
-                                                  label=s.name_nice))
+                    label = s.name_nice
+                    if s.source is not None:
+                        label += f" ({s.source})"
+                    handles.append(mpatches.Patch(color=s.color, label=label))
             if len(handles):
                 self.ax.legend(handles=handles, loc=legend_loc,
                                facecolor="white", framealpha=1)
@@ -2303,9 +2325,10 @@ class StructComparison:
 
         # If one structure isn't currently visible, only plot the other
         if not self.s1.visible or not self.s2.visible:
-            s = [s for s in [self.s1, self.s2] if s.visible][0]
-            s.plot(view, sl, pos, ax, mpl_kwargs, plot_type, zoom,
-                         zoom_centre, show)
+            s_vis = [s for s in [self.s1, self.s2] if s.visible]
+            if len(s_vis):
+                s_vis[0].plot(view, sl, pos, ax, mpl_kwargs, plot_type, zoom,
+                              zoom_centre, show)
             return
 
         # Make plot
