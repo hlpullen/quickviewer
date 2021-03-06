@@ -1602,6 +1602,7 @@ class ImageViewer():
                 self.ui_struct_y.append(s.ui_y)
                 s.ui_centre = ipyw.Label()
                 self.ui_struct_centre.append(s.ui_centre)
+        self.visible_structs = self.get_struct_visibility()
 
         if self.struct_info:
             self.update_struct_info()
@@ -1614,6 +1615,12 @@ class ImageViewer():
                 ipyw.VBox(self.ui_struct_y, layout=layout),
                 ipyw.VBox(self.ui_struct_centre, layout=layout)
             ]))
+
+    def get_struct_visibility(self):
+        """Get list of currently visible structures from checkboxes."""
+
+        return [s.description for s in self.ui_struct_checkboxes[1:] 
+                if s.value]
 
     def update_struct_comparisons(self):
         """Update structure comparison metrics to reflect the current 
@@ -2019,8 +2026,15 @@ class ImageViewer():
         elif self.struct_plot_type == "filled":
             self.struct_filled_opacity = self.ui_struct_opacity.value
             struct_kwargs["alpha"] = self.struct_filled_opacity
+
+        # Structure visibility
         for s in self.im.structs:
             s.visible = s.checkbox.value
+        vis = self.get_struct_visibility()
+        if vis != self.visible_structs:
+            self.visible_structs = vis
+            if self.im.structs_as_mask:
+                self.im.set_masks()
 
         # Make plot
         self.plot_image(self.im,

@@ -1488,7 +1488,8 @@ class MultiImage(NiftiImage):
         self.structs_as_mask = structs_as_mask
         if self.has_structs and structs_as_mask:
             self.has_mask = True
-        self.set_masks(mask_threshold)
+        self.mask_threshold = mask_threshold
+        self.set_masks()
 
     def load_to(self, nii, attr, kwargs):
         """Load image data into a class attribute."""
@@ -1707,7 +1708,7 @@ class MultiImage(NiftiImage):
             "vmax": 1.2
         }
 
-    def set_masks(self, threshold):
+    def set_masks(self):
         """Assign mask(s) to self and dose image."""
 
         if not self.has_mask:
@@ -1717,10 +1718,11 @@ class MultiImage(NiftiImage):
             # Combine user-input mask with structs
             mask_array = np.zeros(self.shape, dtype=bool)
             if not self.mask_dict and self.mask.valid:
-                mask_array += self.mask.data > threshold
+                mask_array += self.mask.data > self.mask_threshold
             if self.structs_as_mask:
                 for struct in self.structs:
-                    mask_array += struct.data
+                    if struct.visible:
+                        mask_array += struct.data
 
             # Get separate masks for each orientation
             if self.mask_dict:
@@ -1730,10 +1732,12 @@ class MultiImage(NiftiImage):
                     if mask is not None:
                         if isinstance(mask, NiftiImage):
                             view_masks[view] = mask_array \
-                                    + (self.mask[view].data > threshold)
+                                    + (self.mask[view].data > 
+                                       self.mask_threshold)
                         else:
                             view_masks[view] = mask_array \
-                                    + (self.mask[view] > threshold)
+                                    + (self.mask[view] > 
+                                       self.mask_threshold)
                     else:
                         if self.structs_as_mask:
                             view_masks[view] = self.mask_array
@@ -1743,7 +1747,7 @@ class MultiImage(NiftiImage):
                 mask_array = view_masks
 
         # Assign mask to main image and dose field
-        self.set_mask(mask_array, threshold)
+        self.set_mask(mask_array, self.mask_threshold)
         self.dose.data_mask = self.data_mask
 
     def get_n_colorbars(self, colorbar=False):
