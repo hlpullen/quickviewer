@@ -377,6 +377,9 @@ class QuickViewer:
             the file will be given the first name in the list and so on), or a 
             dict of numbers and names (e.g. {1: "first structure"} etc).
 
+        compare_structs : bool, default=False
+            If True, structure comparisons will be performed.
+
         continuous_update : bool, default=False
             If True, sliders in the UI will continuously update the figure as 
             they are adjusted. Can cause lag.
@@ -694,7 +697,9 @@ class QuickViewer:
             # Add plot title to structure UI
             if many_with_structs and v.im.has_structs:
                 title = f"<b>{v.im.title + ':'}</b>"
-                if v.struct_info:
+                if v.compare_structs:
+                    v.ui_struct_comp[0].value = title
+                elif v.struct_info:
                     v.ui_struct_checkboxes[0].value = title
                 else:
                     self.lower_ui.append(ipyw.HTML(value=title))
@@ -1180,7 +1185,9 @@ class ImageViewer():
         self.legend_loc = legend_loc
         self.init_struct = init_struct
 
-        # Load structure geometric info if needed
+        # Structure info settings
+        self.compare_structs = kwargs.get("compare_structs", False) \
+                and len(self.im.struct_comparisons)
         self.struct_info = struct_info
         def get_units(units):
             if units is None:
@@ -1528,6 +1535,27 @@ class ImageViewer():
             if self.standalone:
                 self.lower_ui.extend([self.save_name, self.save_button])
 
+        # Structure comparison display
+        self.ui_struct_comp = []
+        self.ui_struct_dice = []
+        layout = ipyw.Layout(align_items="center", padding="0px 0px 0px 50px")
+        if self.compare_structs:
+
+            self.ui_struct_comp.append(ipyw.HTML(
+                value="<b>Structure comparison:</b>"))
+            self.ui_struct_dice.append(ipyw.HTML(
+                value="<b>Dice score</b>"))
+
+            for sc in self.im.struct_comparisons:
+                self.ui_struct_comp.append(ipyw.Label(value=sc.name))
+                self.ui_struct_dice.append(ipyw.Label())
+
+            self.lower_ui.append(ipyw.HBox([
+                ipyw.VBox(self.ui_struct_comp),
+                ipyw.VBox(self.ui_struct_dice, layout=layout)
+            ]))
+            self.update_struct_comparisons()
+
         # Columns for structure info
         self.ui_struct_checkboxes = []
         self.ui_struct_vol = []
@@ -1577,8 +1605,6 @@ class ImageViewer():
 
         if self.struct_info:
             self.update_struct_info()
-            layout = ipyw.Layout(align_items="center",
-                                 padding="0px 0px 0px 50px")
             self.lower_ui.append(ipyw.HBox([
                 ipyw.VBox(self.ui_struct_checkboxes),
                 ipyw.VBox(self.ui_struct_vol,
@@ -1589,6 +1615,18 @@ class ImageViewer():
                 ipyw.VBox(self.ui_struct_centre, layout=layout)
             ]))
 
+    def update_struct_comparisons(self):
+        """Update structure comparison metrics to reflect the current 
+        view/slice."""
+
+        if not self.compare_structs:
+            return
+
+        for i, sc in enumerate(self.im.struct_comparisons):
+            dice = sc.dice_score(self.view, self.slice[self.view])
+            dice_str = "{:.3f}".format(dice) if dice is not None else "—"
+            self.ui_struct_dice[i + 1].value = dice_str
+                
     def update_struct_info(self):
         """Update structure info UI to reflect current view/slice."""
 
@@ -1968,6 +2006,7 @@ class ImageViewer():
 
         # Get structure settings
         self.update_struct_info()
+        self.update_struct_comparisons()
         struct_kwargs = {}
         if self.ui_struct_plot_type.value != self.struct_plot_type:
             self.update_struct_slider()
