@@ -1030,7 +1030,7 @@ class StructImage(NiftiImage):
 
         # Set name
         if name is not None:
-            self.name = name
+            self.name = name.replace(" ", "_")
         else:
             basename = os.path.basename(nii).strip(".gz").strip(".nii")
             self.name = re.sub(r"RTSTRUCT_[MVCT]+_\d+_\d+_\d+_", "",
@@ -1054,7 +1054,17 @@ class StructImage(NiftiImage):
     def __lt__(self, other):
         """Compare structures by name."""
 
-        return self.name_nice < other.name_nice
+        n1 = self.name_nice
+        n2 = other.name_nice
+        if n1.split()[:-1] == n2.split()[:-1]:
+            try:
+                num1 = int(n1.split()[-1])
+                num2 = int(n2.split()[-1])
+                return num1 < num2
+            except ValueError:
+                return n1 < n2
+        else:
+            return n1 < n2
 
     def set_unique_name(self, structs):
         """Compare own name to other structures in list. If multiple structures
@@ -1639,7 +1649,7 @@ class MultiImage(NiftiImage):
                     StructComparison(*structs, name=structs[0].name_nice))
 
             # Make list of standalone structs
-            self.standalone_structs = [s for s in structs if s.name not in
+            self.standalone_structs = [s for s in self.structs if s.name not in
                                        names_to_compare]
 
         else:
@@ -2215,13 +2225,11 @@ def load_struct_masks(path, many_per_file=False, names=None, **kwargs):
         mask_labels = mask_labels[mask_labels != 0]
 
         # Case with only one structure in that file
-        if len(mask_labels) == 1:
+        if len(mask_labels) < 2:
             return [StructImage(path, **kwargs)]
 
         # Process custom names
-        if names is None:
-            names = {}
-        elif not isinstance(names, dict):
+        if not isinstance(names, dict):
             names = {i + 1: names[i] for i in range(len(names))}
         else:
             names = {int(i): name for i, name in names.items()}
@@ -2229,13 +2237,19 @@ def load_struct_masks(path, many_per_file=False, names=None, **kwargs):
         # Load structs
         structs = []
         for ml in mask_labels:
-            if ml in names:
-                name = names[ml]
-            else:
+
+            if names is not None and ml not in names:
+                continue
+
+            if names is None:
                 name = f"Structure {ml}"
+            else:
+                name = names[ml]
+
             struct = StructImage(data == ml, name=name, **kwargs)
             struct.path = path
             structs.append(struct)
+
         return structs
 
 

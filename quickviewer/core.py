@@ -123,13 +123,20 @@ def get_unique_path(p1, p2):
     if p1 == p2:
         return
 
+    # Different basenames
+    if os.path.basename(p1) != os.path.basename(p2):
+        return os.path.basename(p1)
+
     # Find unique section
     left, right = os.path.split(p1)
     left2, right2 = os.path.split(p2)
     unique = ""
     while right != "":
         if right != right2:
-            unique = f"{right}{unique}"
+            if unique == "":
+                unique = right
+            else:
+                unique = os.path.join(right, unique)
         left, right = os.path.split(left)
         left2, right2 = os.path.split(left2)
     return unique
