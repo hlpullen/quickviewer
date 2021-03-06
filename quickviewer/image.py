@@ -1609,20 +1609,25 @@ class MultiImage(NiftiImage):
             struct.assign_color(standard_colors[i])
 
             # Check for label match
-            if standard_str(struct.label) in custom_lower:
-                struct.assign_color(custom_lower[standard_str(struct.label)])
-                continue
+            col_dict = custom_lower
+            label = standard_str(struct.label)
+            if label in col_dict:
+                if isinstance(col_dict[label], dict):
+                    col_dict = col_dict[label]
+                else:
+                    struct.assign_color(col_dict[label])
+                    continue
 
             # Check for exact name match
-            if standard_str(struct.name) in custom_lower:
-                struct.assign_color(custom_lower[standard_str(struct.name)])
+            name = standard_str(struct.name)
+            if name in col_dict:
+                struct.assign_color(col_dict[name])
                 continue
 
             # If no exact match, check for first matching wildcard
-            for name in custom_lower:
-                if fnmatch.fnmatch(standard_str(struct.name), name):
-                    struct.assign_color(custom_lower[name])
-                    matched = True
+            for wildcard in col_dict:
+                if fnmatch.fnmatch(name, wildcard):
+                    struct.assign_color(col_dict[wildcard])
                     break
 
             # Otherwise, check for matching filepath
