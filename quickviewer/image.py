@@ -356,8 +356,8 @@ class NiftiImage:
                 idx = 0
             if idx >= self.n_voxels[ax]:
                 idx = self.n_voxels[ax] -1
-            print(f"Warning: position {pos} outside valid range. Will "
-                  f"plot slice at {self.idx_to_pos(idx, ax):.1f}")
+            #  print(f"Warning: position {pos} outside valid range. Will "
+                  #  f"plot slice at {self.idx_to_pos(idx, ax):.1f}")
 
         return idx
 
@@ -382,8 +382,8 @@ class NiftiImage:
                 idx = 0
             if idx >= self.n_voxels[ax]:
                 idx = self.n_voxels[ax] -1
-            print(f"Warning: slice {sl} outside valid range. Will "
-                  f"plot slice {self.idx_to_slice(idx, ax)}.")
+            #  print(f"Warning: slice {sl} outside valid range. Will "
+                  #  f"plot slice {self.idx_to_slice(idx, ax)}.")
 
         return idx
 
@@ -1110,7 +1110,7 @@ class StructImage(NiftiImage):
         return self.volume[units]
 
     def get_struct_length(self, units):
-        """Get the total x, y, z extent in voxels or mm."""
+        """Get the total x, y, z length in voxels or mm."""
 
         if self.empty:
             return (0, 0, 0)
@@ -1227,7 +1227,8 @@ class StructImage(NiftiImage):
         mpl_kwargs=None, 
         plot_type="contour",
         zoom=None,
-        zoom_centre=None
+        zoom_centre=None,
+        show=False
     ):
         """Plot structure.
 
@@ -1274,6 +1275,9 @@ class StructImage(NiftiImage):
             self.plot_contour(view, sl, pos, self.ax, contour_kwargs,
                               zoom, zoom_centre)
 
+        if show:
+            plt.show()
+
     def plot_mask(self, view, sl, pos, ax, mpl_kwargs=None, zoom=None,
                   zoom_centre=None):
         """Plot structure as a colored mask."""
@@ -1302,10 +1306,10 @@ class StructImage(NiftiImage):
                      zoom_centre=None):
         """Plot structure as a contour."""
 
+        self.set_ax(view, ax, zoom)
         if not self.on_slice(view, sl):
             return
 
-        self.set_ax(view, ax, zoom)
         kwargs = self.get_kwargs(mpl_kwargs, default=self.contour_kwargs)
         kwargs.setdefault("color", self.color)
         idx = self.get_idx(view, sl, pos, default_centre=False)
