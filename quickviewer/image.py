@@ -1565,25 +1565,28 @@ class MultiImage(NiftiImage):
             # Assign standard color
             struct.assign_color(standard_colors[i])
 
-            # Check for exact match
-            matched = False
-            if struct.name.lower() in custom_lower:
-                struct.assign_color(custom_lower[struct.name.lower()])
-                matched = True
+            # Check for label match
+            if standard_str(struct.label) in custom_lower:
+                struct.assign_color(custom_lower[standard_str(struct.label)])
+                continue
+
+            # Check for exact name match
+            if standard_str(struct.name) in custom_lower:
+                struct.assign_color(custom_lower[standard_str(struct.name)])
+                continue
 
             # If no exact match, check for first matching wildcard
-            if not matched:
-                for name in custom_lower:
-                    if fnmatch.fnmatch(struct.name.lower(), name):
-                        struct.assign_color(custom_lower[name])
-                        matched = True
+            for name in custom_lower:
+                if fnmatch.fnmatch(standard_str(struct.name), name):
+                    struct.assign_color(custom_lower[name])
+                    matched = True
+                    break
 
             # Otherwise, check for matching filepath
-            if not matched:
-                for path in custom:
-                    if fnmatch.fnmatch(struct.path, os.path.abspath(path)):
-                        struct.assign_color(custom[path])
-                        break
+            for path in custom:
+                if fnmatch.fnmatch(struct.path, os.path.abspath(path)):
+                    struct.assign_color(custom[path])
+                    break
 
     def load_structs_from_pairs(self, structs):
         """Load structs from pairs of files and create StructComparisons for
