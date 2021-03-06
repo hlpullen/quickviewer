@@ -133,3 +133,9 @@ def get_unique_path(p1, p2):
         left, right = os.path.split(left)
         left2, right2 = os.path.split(left2)
     return unique
+
+
+def is_list(var):
+    """Check whether a variable is a list/tuple."""
+
+    return isinstance(var, list) or isinstance(var, tuple)

@@ -1260,7 +1260,7 @@ class StructImage(NiftiImage):
             Factor by which to zoom in.
         """
 
-        if not self.valid:
+        if not self.valid or not self.visible:
             return
 
         # Make plot
@@ -1398,6 +1398,7 @@ class MultiImage(NiftiImage):
         structs_as_mask=False,
         many_structs_per_file=False,
         struct_names=None,
+        compare_structs=False,
         mask_threshold=0.5,
         **kwargs
     ):
@@ -1447,6 +1448,9 @@ class MultiImage(NiftiImage):
             the file will be given the first name in the list and so on), or a 
             dict of numbers and names (e.g. {1: "first structure"} etc).
 
+        compare_structs : bool, default=False
+            If True, structures will be paired together into comparisons.
+
         mask_threshold : float, default=0.5
             Threshold on mask array; voxels with values below this threshold
             will be masked (or values above, if <invert_mask> is True).
@@ -1463,7 +1467,7 @@ class MultiImage(NiftiImage):
         self.load_to(jacobian, "jacobian", kwargs)
         self.load_df(df)
         self.load_structs(structs, struct_colors, many_structs_per_file,
-                          struct_names)
+                          struct_names, compare_structs)
         self.structs_as_mask = structs_as_mask
         if self.has_structs and structs_as_mask:
             self.has_mask = True
@@ -1495,26 +1499,23 @@ class MultiImage(NiftiImage):
         self.has_df = self.df.valid
 
     def load_structs(self, structs, colors, many_per_file=False,
-                     names=None):
+                     names=None, compare_structs=False):
         """Load structures from a path/wildcard or list of paths/wildcards in
         <structs>, and assign the colors in <colors>."""
 
         self.has_structs = False
         self.structs = []
+        self.struct_comparisons = []
+        self.standalone_structs = []
         if structs is None:
             return
 
-        # Load structures from files
-        files = core.find_files(structs, ext="nii*")
-        if not len(files):
-            print("Warning: no structure files found matching ", structs)
-            return
-        self.has_structs = True
-        files = list(set([os.path.abspath(f) for f in files]))
-        for f in files:
-            self.structs.extend(load_struct_masks(
-                f, many_per_file, names, scale_in_mm=self.scale_in_mm))
-        self.structs = sorted(self.structs)
+        # Load structs from list of pairs
+        if core.is_list(structs) and core.is_list(structs[0]):
+            self.load_structs_from_pairs(structs)
+        else:
+            self.load_structs_from_files(structs, many_per_file, names,
+                                         compare_structs)
 
         # Set unique names for each
         for i, struct in enumerate(self.structs):
@@ -1554,6 +1555,95 @@ class MultiImage(NiftiImage):
                     if fnmatch.fnmatch(struct.path, os.path.abspath(path)):
                         struct.assign_color(custom[path])
                         break
+
+    def load_structs_from_pairs(self, structs):
+        """Load structs from pairs of files and create StructComparisons for
+        each pair."""
+
+        # Check each item in list only contains 2 files
+        not_two = [len(pair) != 2 for pair in structs]
+        if any(not_two):
+            raise TypeError("If comparing structures from list of tuples, each"
+                            " tuple must contain exactly two filenames!")
+
+        # Load structures
+        for i, pair in enumerate(structs):
+
+            # Check these are exact filenames
+            for path in pair:
+                if not os.path.isfile(path):
+                    raise TypeError(f"File {path} not found! Comparison "
+                                    "structures must be given as exact "
+                                    "filepaths.")
+
+            # Load structs
+            s1 = StructImage(pair[0], scale_in_mm=self.scale_in_mm)
+            s2 = StructImage(pair[1], scale_in_mm=self.scale_in_mm)
+            self.structs.extend([s1, s2])
+            name = ""
+            if s1.name == s2.name:
+                name = s1.name_nice
+            elif len(structs) > 1:
+                name = f"{s1.name_nice} vs. {s2.name_nice}"
+            self.struct_comparisons.append(StructComparison(s1, s2, name=name))
+
+    def load_structs_from_files(self, structs, many_per_file, names,
+                                compare_structs):
+        """Load structures from file input. If <compare_structs> is set, an
+        attempt will be made to pair structures for comparison:
+            - If only two structures are found, these will be compared;
+            - Otherwise, any pairs of structures with the same name will be
+            compared.
+        """
+
+        # Load all structures found in files
+        files = core.find_files(structs, ext="nii*")
+        if not len(files):
+            print("Warning: no structure files found matching ", structs)
+            return
+        self.has_structs = True
+        files = list(set([os.path.abspath(f) for f in files]))
+        for f in files:
+            self.structs.extend(load_struct_masks(
+                f, many_per_file, names, scale_in_mm=self.scale_in_mm))
+        self.structs = sorted(self.structs)
+
+        # Attempt to pair structures
+        if compare_structs:
+            
+            # Only two structures loaded
+            if len(self.structs) == 2:
+                self.struct_comparisons.append(StructComparison(*self.structs))
+                return
+
+            # Look for matching structure names
+            unique_names = set([s.name for s in self.structs])
+            n_per_name = {n: len([s for s in self.structs if s.name == n])
+                          for n in unique_names}
+            if max(n_per_name.values()) > 2:
+                err_names = {n: num for n, num in n_per_name.items() if 
+                             num > 2}
+                raise RuntimeError("Structure names should not be shared by "
+                                   "more than 2 structures! Names causing "
+                                   f"error:\n{err_names}")
+            if max(n_per_name.values()) < 2:
+                print("Warning: no structures with matching names were found."
+                      " Structure comparison will not be run.")
+
+            # Make structure comparisons
+            names_to_compare = [name for name in n_per_name 
+                                if n_per_name[name] == 2]
+            for name in names_to_compare:
+                structs = [s for s in self.structs if s.name == name]
+                self.struct_comparisons.append(
+                    StructComparison(*structs, name=structs[0].name_nice))
+
+            # Make list of standalone structs
+            self.standalone_structs = [s for s in structs if s.name not in
+                                       names_to_compare]
+
+        else:
+            self.standalone_structs = self.structs
 
     def set_plotting_defaults(self):
         """Set default matplotlib plotting options for main image, dose field,
@@ -1772,16 +1862,11 @@ class MultiImage(NiftiImage):
             show=False, colorbar=colorbar,
             colorbar_label="Jacobian determinant")
 
-        # Plot structures
+        # Plot standalone structures
         struct_handles = []
-        for struct in self.structs:
-            if not struct.visible:
-                continue
-            struct.plot(view, self.sl, ax=self.ax, mpl_kwargs=struct_kwargs, 
-                        plot_type=struct_plot_type)
-            if struct.on_slice(view, self.sl) and struct_plot_type != "none":
-                struct_handles.append(mpatches.Patch(color=struct.color,
-                                                     label=struct.name_nice))
+        for s in (self.standalone_structs + self.struct_comparisons):
+            s.plot(view, self.sl, ax=self.ax, mpl_kwargs=struct_kwargs, 
+                   plot_type=struct_plot_type)
 
         # Plot deformation field
         self.df.plot(view, self.sl, ax=self.ax,
@@ -1789,10 +1874,16 @@ class MultiImage(NiftiImage):
                      plot_type=df_plot_type,
                      spacing=df_spacing)
 
-        # Draw legend
-        if struct_legend and len(struct_handles):
-            self.ax.legend(handles=struct_handles, loc=legend_loc,
-                           facecolor="white", framealpha=1)
+        # Draw structure legend
+        if struct_legend and struct_plot_type != "none":
+            handles = []
+            for s in self.structs:
+                if s.visible and s.on_slice(view, self.sl):
+                    handles.append(mpatches.Patch(color=s.color, 
+                                                  label=s.name_nice))
+            if len(handles):
+                self.ax.legend(handles=handles, loc=legend_loc,
+                               facecolor="white", framealpha=1)
 
         self.adjust_ax(view, zoom, zoom_centre)
         self.label_ax(view, annotate_slice=annotate_slice)
@@ -2146,3 +2237,130 @@ def load_struct_masks(path, many_per_file=False, names=None, **kwargs):
             struct.path = path
             structs.append(struct)
         return structs
+
+
+class StructComparison:
+    """Class for computing comparison metrics for two structures and plotting
+    the structures together."""
+
+    def __init__(self, struct1, struct2, name="", **kwargs):
+        """Initialise from a pair of StructImages, or load new StructImages.
+        """
+
+        self.name = name
+        for i, s in enumerate([struct1, struct2]):
+            struct = s if isinstance(s, StructImage) \
+                else StructImage(s, **kwargs)
+            setattr(self, f"s{i + 1}", s)
+
+        # Check both structres are valid and in same reference frame
+        self.valid = self.s1.valid and self.s2.valid
+        if not self.valid:
+            return
+        if not self.s1.same_frame(self.s2):
+            raise TypeError(f"Comparison structures {self.s1.name} and "
+                            f"{self.s2.name} are not in the same reference "
+                            "frame!")
+
+        # Ensure unique names are set
+        if not hasattr(self.s1, "unique_name"):
+            self.s1.set_unique_name([self.s2])
+        if not hasattr(self.s2, "unique_name"):
+            self.s2.set_unique_name([self.s1])
+
+    def plot(
+        self, 
+        view, 
+        sl=None, 
+        pos=None, 
+        ax=None, 
+        mpl_kwargs=None, 
+        plot_type="contour",
+        zoom=None,
+        zoom_centre=None,
+        show=False
+    ):
+        """Plot comparison structures."""
+
+        if not self.valid:
+            return
+        if mpl_kwargs is None:
+            mpl_kwargs = {}
+
+        # If one structure isn't currently visible, only plot the other
+        if not self.s1.visible or not self.s2.visible:
+            s = [s for s in [self.s1, self.s2] if s.visible][0]
+            s.plot(view, sl, pos, ax, mpl_kwargs, plot_type, zoom,
+                         zoom_centre, show)
+            return
+
+        # Make plot
+        if plot_type == "contour":
+            self.s1.plot_contour(view, sl, pos, ax, mpl_kwargs, zoom, 
+                                 zoom_centre)
+            self.s2.plot_contour(view, sl, pos, self.s1.ax, mpl_kwargs, zoom, 
+                                 zoom_centre)
+        elif plot_type == "mask":
+            self.plot_mask(view, sl, pos, ax, mpl_kwargs, zoom, zoom_centre)
+        elif plot_type == "filled":
+            mask_kwargs = {"alpha": mpl_kwargs.get("alpha", 0.3)}
+            self.plot_mask(view, sl, pos, ax, mask_kwargs, zoom, zoom_centre)
+            contour_kwargs = {"linewidth": mpl_kwargs.get("linewidth", 2)}
+            self.s1.plot_contour(view, sl, pos, self.s1.ax, contour_kwargs, 
+                                 zoom, zoom_centre)
+            self.s2.plot_contour(view, sl, pos, self.s1.ax, contour_kwargs, 
+                                 zoom, zoom_centre)
+
+        if show:
+            plt.show()
+
+    def plot_mask(self, view, sl, pos, ax, mpl_kwargs, zoom, zoom_centre):
+        """Plot two masks, with intersection in different colour."""
+
+        # Set slice for both images
+        self.s1.set_ax(view, ax, zoom=zoom)
+        self.s1.set_slice(view, sl, pos)
+        self.s2.set_slice(view, sl, pos)
+
+        # Get differences and overlap
+        diff1 = self.s1.current_slice & ~self.s2.current_slice
+        diff2 = self.s2.current_slice & ~self.s1.current_slice
+        overlap = self.s1.current_slice & self.s2.current_slice
+        mean_col = np.array([np.array(self.s1.color), 
+                             np.array(self.s2.color)]).mean(0)
+        to_plot = [
+            (diff1, self.s1.color),
+            (diff2, self.s2.color),
+            (overlap, mean_col)
+        ]
+
+        for im, color in to_plot:
+
+            # Make colormap
+            norm = matplotlib.colors.Normalize()
+            cmap = matplotlib.cm.hsv
+            s_colors = cmap(norm(im))
+            s_colors[im > 0, :] = color
+            s_colors[im == 0, :] = (0, 0, 0, 0)
+
+            # Display mask
+            self.s1.ax.imshow(
+                s_colors,
+                extent=self.s1.extent[view],
+                aspect=self.s1.aspect[view],
+                **self.s1.get_kwargs(mpl_kwargs, default=self.s1.mask_kwargs)
+            )
+
+        self.s1.adjust_ax(view, zoom, zoom_centre)
+
+    def dice_score(self, view, sl):
+        """Get dice score on a given slice."""
+
+        if not self.s1.on_slice(view, sl) or not self.s2.on_slice(view, sl):
+            return
+
+        self.s1.set_slice(view, sl)
+        self.s2.set_slice(view, sl)
+        slice1 = self.s1.current_slice
+        slice2 = self.s2.current_slice
+        return (slice1 & slice2).sum() / np.mean([slice1.sum(), slice2.sum()])
