@@ -6,6 +6,11 @@ import numpy as np
 import glob
 import fnmatch
 import matplotlib as mpl
+import shutil
+
+
+user_settings_dir = os.path.expanduser("~/.quickviewer")
+user_settings = os.path.join(user_settings_dir, "settings.ini")
 
 
 def load_image(im, affine=None, voxel_sizes=None, origin=None):
@@ -146,3 +151,22 @@ def is_list(var):
     """Check whether a variable is a list/tuple."""
 
     return isinstance(var, list) or isinstance(var, tuple)
+
+
+def check_settings_file():
+
+    default_settings_dir = os.path.join(os.path.dirname(__file__), 
+                                        "../settings")
+
+    if not os.path.exists(user_settings_dir):
+        os.mkdir(user_settings_dir)
+        to_copy = [os.path.join(default_settings_dir, f) 
+                   for f in os.listdir(default_settings_dir) 
+                   if not f.startswith(".")]
+        for f in to_copy:
+            shutil.copy(f, user_settings_dir)
+
+    elif not os.path.exists(user_settings):
+        shutil.copy(os.path.join(default_settings_dir, "settings.ini"),
+                    user_settings_dir)
+

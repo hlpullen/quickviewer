@@ -2464,3 +2464,104 @@ class StructComparison:
         slice1 = self.s1.current_slice
         slice2 = self.s2.current_slice
         return (slice1 & slice2).sum() / np.mean([slice1.sum(), slice2.sum()])
+
+
+class StructLoader:
+    """Class for loading and storing multiple StructImages."""
+
+    def __init__(self, structs, names=None, colors=None, many_per_file=True):
+        """Load structures. 
+
+        Parameters
+        ----------
+        
+        structs : str/list/dict
+            Sources of structures files to load structures from. Can be:
+                (a) A string containing a filepath, directory path, or wildcard
+                to a file or directory path. If a directory is given, all 
+                .nii and .nii.gz files within that directory will be loaded.
+                (b) A list of strings as described in (a). All 
+                files/directories in the list will be loaded.
+                (c) A dictionary, where keys are labels and values are strings
+                or lists as described in (a) and (b). The files loaded for 
+                each entry will be given the label in the key.
+                (d) A list of pairs filepaths or wildcard filepaths, which
+                should point to one file only. These pairs of files will then
+                be used for comparisons.
+
+        names : list/dict, default=None
+            A dictionary where keys are filenames or wildcards matching 
+            filenames, and values are names to give the structure(s) in those
+            files. Keys can also be lists of several potential filenames. If 
+            None, defaults will be taken from the file given in the 
+            default_struct_names parameter ~/.quickviewer/settings.ini, if it 
+            exists.
+
+            If using multiple structures per file, this can also be either:
+                (a) A list of names, where the order reflects the order of 
+                structure masks in the file (i.e. the nth item in the list
+                will refer to the structure with label mask n + 1).
+                (b) A dictionary where the keys are integers referring to the
+                label masks and values are structure names.
+
+            This can also be nested in a dictionary to give multiple naming
+            options for different labels.
+
+        colors : dict, default=None
+            A dictionary of colours to assign to structures with a given name.
+            Can also be a nested dictionary inside a dictionary where keys
+            are labels, so that different sets of structure colours can be used
+            for different labels. If None, defaults will be taken from the file
+            given in ~/.quickviewer/settings.ini, if it exists.
+
+        many_per_file : bool, default=False
+            If True, each file will be checked for multiple label masks with
+            different values and multiple structures will be loaded from that 
+            file. If False, all nonzero values in a file will be taken to be 
+            part of the same structure mask.
+            """
+        pass
+
+    def add_struct(self, struct, label, names, colors):
+        """Add structure to structure list."""
+
+        pass
+
+    def add_struct_pair(self, struct1, struct2, names, colors):
+        """Add pair of structures to structure list and comparison list."""
+
+        pass
+
+    def add_comparison(self, struct1, struct2):
+        """Add a pair of structure to comparison list."""
+
+        pass
+
+    def find_comparisons(self):
+        """Find structures suitable for comparison and make a list of 
+        StructComparison objects."""
+
+        pass
+
+    def set_unique_names(self):
+        """Ensure that all structures have unique names."""
+
+        pass
+
+    def get_structs(self, ignore_unpaired=False):
+        """Get list of all structures. If <ignore_unpaired> is True, only 
+        structures that are part of a comparison pair will be returned."""
+
+        pass
+
+    def get_comparisons(self):
+        """Get list of StructComparison objects."""
+
+        pass
+
+    def get_standalone_structs(self):
+        """Get list of the structures that are not part of a comparison 
+        pair."""
+
+        pass
+

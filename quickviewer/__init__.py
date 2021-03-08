@@ -7,7 +7,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib as mpl
 
-from quickviewer.core import to_inches
+from quickviewer.core import to_inches, check_settings_file
 from quickviewer.image import MultiImage, OrthogonalImage, ChequerboardImage, \
         OverlayImage, DiffImage, standard_str
 from quickviewer.image import _slider_axes, _df_plot_types, _orient, \
@@ -22,6 +22,9 @@ mpl.rcParams["figure.figsize"] = (7.4, 4.8)
 mpl.rcParams["font.serif"] = "Times New Roman"
 mpl.rcParams["font.family"] = "serif"
 mpl.rcParams["font.size"] = 14.0
+
+
+check_settings_file()
 
 
 class QuickViewer:
