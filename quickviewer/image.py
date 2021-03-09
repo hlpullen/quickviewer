@@ -31,6 +31,15 @@ _default_figsize = 6
 _default_spacing = 30
 
 
+# Standard list of colours for structures
+standard_colors = (
+    list(matplotlib.cm.Set1.colors)[:-1]
+    + list(matplotlib.cm.Set2.colors)[:-1]
+    + list(matplotlib.cm.Set3.colors)
+    + list(matplotlib.cm.tab20.colors)
+)
+
+
 class NiftiImage:
     """Load and plot image arrays from NIfTI files or NumPy objects."""
 
@@ -1038,8 +1047,9 @@ class StructImage(NiftiImage):
         self.set_label(label)
 
         # Assign a random color
+        self.custom_color_set = False
         if color is None:
-            self.assign_color(np.random.rand(3, 1).flatten())
+            self.assign_color(np.random.rand(3, 1).flatten(), custom=False)
         else:
             self.assign_color(color)
 
@@ -1222,11 +1232,12 @@ class StructImage(NiftiImage):
                 points.append(contour_points)
             return points
 
-    def assign_color(self, color):
+    def assign_color(self, color, custom=True):
         """Assign a color, ensuring that it is compatible with matplotlib."""
 
         if matplotlib.colors.is_color_like(color):
             self.color = matplotlib.colors.to_rgba(color)
+            self.custom_color_set = custom
         else:
             print(f"color {color} is not a valid color.")
 
@@ -1535,178 +1546,24 @@ class MultiImage(NiftiImage):
         <structs>, and assign the colors in <colors>."""
 
         self.has_structs = False
-        self.structs = []
-        self.struct_comparisons = []
-        self.standalone_structs = []
         if structs is None:
+            self.structs = []
+            self.struct_comparisons = []
+            self.standalone_structs = []
             return
 
-        # Load structs from list of pairs
-        if core.is_list(structs) and core.is_list(structs[0]):
-            self.load_structs_from_pairs(structs)
-        else:
-            self.load_structs_from_files(structs, many_per_file, names,
-                                         compare_structs, ignore_unpaired)
+        loader = StructLoader(structs, names, colors, many_per_file)
+        self.structs = loader.get_structs(ignore_unpaired, ignore_empty)
 
-        # Ignore empty structs
-        if ignore_empty:
-            self.structs = [s for s in self.structs if not s.empty]
-            self.struct_comparisons = [sc for sc in self.struct_comparisons
-                                       if not (sc.s1.empty or sc.s2.empty)]
-            self.standalone_structs = [s for s in self.standalone_structs if 
-                                       not s.empty]
-
-        # Set unique names for each structure
-        for i, struct in enumerate(self.structs):
-            struct.set_unique_name([self.structs[j] for j in 
-                                    range(len(self.structs)) if j != i])
-
-        # Assign colors
-        standard_colors = (
-            list(matplotlib.cm.Set1.colors)[:-1]
-            + list(matplotlib.cm.Set2.colors)[:-1]
-            + list(matplotlib.cm.Set3.colors)
-            + list(matplotlib.cm.tab20.colors)
-        )
-        custom = colors if colors is not None else {}
-        custom_lower = {standard_str(n): col for n, col in custom.items()}
-        for i, struct in enumerate(self.structs):
-
-            # Assign standard color
-            struct.assign_color(standard_colors[i])
-
-            # Check for label match
-            col_dict = custom_lower
-            label = standard_str(struct.label)
-            if label in col_dict:
-                if isinstance(col_dict[label], dict):
-                    col_dict = col_dict[label]
-                else:
-                    struct.assign_color(col_dict[label])
-                    continue
-
-            # Check for exact name match
-            name = standard_str(struct.name)
-            if name in col_dict:
-                struct.assign_color(col_dict[name])
-                continue
-
-            # If no exact match, check for first matching wildcard
-            for wildcard in col_dict:
-                if fnmatch.fnmatch(name, wildcard):
-                    struct.assign_color(col_dict[wildcard])
-                    break
-
-            # Otherwise, check for matching filepath
-            for path in custom:
-                if fnmatch.fnmatch(struct.path, os.path.abspath(path)):
-                    struct.assign_color(custom[path])
-                    break
-
-    def load_structs_from_pairs(self, structs):
-        """Load structs from pairs of files and create StructComparisons for
-        each pair."""
-
-        # Check each item in list only contains 2 files
-        not_two = [len(pair) != 2 for pair in structs]
-        if any(not_two):
-            raise TypeError("If comparing structures from list of tuples, each"
-                            " tuple must contain exactly two filenames!")
-
-        # Load structures
-        for i, pair in enumerate(structs):
-
-            # Check these are exact filenames
-            for path in pair:
-                if not os.path.isfile(path):
-                    raise TypeError(f"File {path} not found! Comparison "
-                                    "structures must be given as exact "
-                                    "filepaths.")
-
-            # Load structs
-            s1 = StructImage(pair[0], scale_in_mm=self.scale_in_mm)
-            s2 = StructImage(pair[1], scale_in_mm=self.scale_in_mm)
-            self.structs.extend([s1, s2])
-            name = ""
-            if s1.name == s2.name:
-                name = s1.name_nice_nolabel
-            elif len(structs) > 1:
-                name = f"{s1.name_nice} vs. {s2.name_nice}"
-            self.struct_comparisons.append(StructComparison(s1, s2, name=name))
-
-    def load_structs_from_files(self, structs, many_per_file, names,
-                                compare_structs=False, ignore_unpaired=False):
-        """Load structures from file input. If <compare_structs> is set, an
-        attempt will be made to pair structures for comparison:
-            - If only two structures are found, these will be compared;
-            - Otherwise, any pairs of structures with the same name will be
-            compared.
-        """
-
-        # Load all structures found in files
-        struct_dict = structs if isinstance(structs, dict) else {None: structs}
-        for label, structs in struct_dict.items():
-
-            files = core.find_files(structs, ext="nii*")
-            if not len(files):
-                print("Warning: no structure files found matching ", structs)
-                return
-            self.has_structs = True
-            files = list(set([os.path.abspath(f) for f in files]))
-            for f in files:
-                loaded = load_struct_masks(f, 
-                                           many_per_file=many_per_file, 
-                                           names=names, 
-                                           load=False,
-                                           scale_in_mm=self.scale_in_mm)
-                for s in loaded:
-                    s.set_label(label)
-                self.structs.extend(loaded)
-            self.structs = sorted(self.structs)
-
-        # Attempt to pair structures
         if compare_structs:
-            
-            # Only two structures loaded
-            if len(self.structs) == 2:
-                self.struct_comparisons.append(StructComparison(*self.structs))
-                return
-
-            # Look for matching structure names
-            unique_names = set([s.name for s in self.structs])
-            n_per_name = {n: len([s for s in self.structs if s.name == n])
-                          for n in unique_names}
-            if max(n_per_name.values()) > 2:
-                err_names = {n: num for n, num in n_per_name.items() if 
-                             num > 2}
-                raise RuntimeError("Structure names should not be shared by "
-                                   "more than 2 structures! Names causing "
-                                   f"error:\n{err_names}")
-            if max(n_per_name.values()) < 2:
-                print("Warning: no structures with matching names were found."
-                      " Structure comparison will not be run.")
-
-            # Make structure comparisons
-            names_to_compare = [name for name in n_per_name 
-                                if n_per_name[name] == 2]
-            for name in names_to_compare:
-                structs = [s for s in self.structs if s.name == name]
-                self.struct_comparisons.append(
-                    StructComparison(*structs, name=structs[0].name_nice))
-
-            # Make list of standalone structs
-            if not ignore_unpaired:
-                self.standalone_structs = [s for s in self.structs if s.name 
-                                           not in names_to_compare]
-            else:
-                self.structs = [s for s in self.structs if s.name in 
-                                names_to_compare]
+            self.struct_comparisons = loader.get_comparisons(ignore_empty)
+            self.standalone_structs = loader.get_standalone_structs(
+                ignore_unpaired, ignore_empty)
         else:
             self.standalone_structs = self.structs
+            self.struct_comparisons = []
 
-        # Load data and contours for all selected structures
-        for s in self.structs:
-            s.load()
+        self.has_structs = bool(len(self.structs))
 
     def set_plotting_defaults(self):
         """Set default matplotlib plotting options for main image, dose field,
@@ -2263,49 +2120,6 @@ def standard_str(string):
         return
 
 
-def load_struct_masks(path, many_per_file=False, names=None, load=True,
-                      **kwargs):
-    """Load structure mask data from a file. If <many_per_file> is True,
-    each unique nonzero number in the image array will be taken to represent 
-    a different structure."""
-
-    if not many_per_file:
-        return [StructImage(path, load=load, **kwargs)]
-
-    else:
-
-        # Load image array
-        data, voxel_sizes, origin, path = core.load_image(path)
-        kwargs.update({"voxel_sizes": voxel_sizes, "origin": origin})
-        mask_labels = np.unique(data).astype(int)
-        mask_labels = mask_labels[mask_labels != 0]
-
-        # Case with only one structure in that file
-        if len(mask_labels) < 2:
-            return [StructImage(path, load=load, **kwargs)]
-
-        # Process custom names
-        if not isinstance(names, dict):
-            names = {i + 1: names[i] for i in range(len(names))}
-        else:
-            names = {int(i): name for i, name in names.items()}
-
-        # Load structs
-        structs = []
-        for ml in mask_labels:
-
-            if names is None or ml not in names:
-                name = f"Structure {ml}"
-            else:
-                name = names[ml]
-
-            struct = StructImage(data == ml, name=name, **kwargs)
-            struct.path = path
-            structs.append(struct)
-
-        return structs
-
-
 class StructComparison:
     """Class for computing comparison metrics for two structures and plotting
     the structures together."""
@@ -2493,6 +2307,7 @@ class StructLoader:
         """
 
         # Lists for storing structures
+        self.loaded = False
         self.structs = []
         self.comparisons = []
         self.comparison_structs = []
@@ -2501,7 +2316,7 @@ class StructLoader:
             else {}
 
         # Format colors and names
-        self.config = core.get_config()["STRUCTURES"]
+        #  self.config = core.get_config()["STRUCTURES"]
         names, self.default_names = self.load_settings(
             names, "default_struct_names", "path", "name")
         colors, self.default_colors = self.load_settings(
@@ -2544,14 +2359,15 @@ class StructLoader:
         settings."""
 
         # Load defaults
-        path = os.path.expanduser(self.config[default_file])
-        with open(path) as f:
-            default_list = json.load(f)
-        defaults = [[entry[json_key], entry[json_value]] 
-                    for entry in default_list]
-        for i, (key, value) in enumerate(defaults):
-            if not core.is_list(key):
-                defaults[i] = [[key], value]
+        #  path = os.path.expanduser(self.config[default_file])
+        #  with open(path) as f:
+            #  default_list = json.load(f)
+        #  defaults = [[entry[json_key], entry[json_value]]
+                    #  for entry in default_list]
+        #  for i, (key, value) in enumerate(defaults):
+            #  if not core.is_list(key):
+                #  defaults[i] = [[key], value]
+        defaults = []
         if settings is None:
             return defaults, defaults
 
@@ -2608,6 +2424,7 @@ class StructLoader:
     def add_struct(self, path, label, names, colors):
         """Create StructImage object and add to list."""
                 
+        self.loaded = False
         name = self.find_settings_match(names, path)
 
         # Only one structure per file
@@ -2654,6 +2471,7 @@ class StructLoader:
     def load_struct_pairs(self, structs, names, colors):
         """Load structs from pairs and create a StructComparison for each."""
 
+        self.loaded = False
         for pair in structs:
             s_pair = []
             for path in pair:
@@ -2670,7 +2488,7 @@ class StructLoader:
         """Find structures suitable for comparison and make a list of 
         StructComparison objects."""
         
-        if len(self.comparisons):
+        if len(self.comparisons) and self.loaded:
             return
 
         # Case with only two structures
@@ -2707,18 +2525,15 @@ class StructLoader:
         """Create a unique name for a structure with respect to all other
         loaded structures."""
 
-        if hasattr(struct, "unique_name"):
-            return
-
         if struct.path is None or struct.label:
-            struct.unique_name = struct.name_nice
+            struct.name_unique = struct.name_nice
             return
 
         # Find structures with the same name
         same_name = [s for s in self.structs if standard_str(s.name) ==
-                     standard_str(struct.name)]
+                     standard_str(struct.name) and s != struct]
         if not len(same_name):
-            struct.unique_name = struct.name_nice
+            struct.name_unique = struct.name_nice
             return
 
         # Get unique part of path wrt those structures
@@ -2742,35 +2557,62 @@ class StructLoader:
                 current = core.get_unique_path(current, remaining[0])
             struct.name_unique = f"{struct.name_nice} ({current})"
 
-    def get_structs(self, ignore_unpaired=False):
+    def load_all(self):
+        """Load all structures and assign custom colours and unique names."""
+
+        if self.loaded:
+            return
+
+        # Assign colors
+        for i, s in enumerate(self.structs):
+            if not s.custom_color_set:
+                s.assign_color(standard_colors[i])
+
+        for s in self.structs:
+            s.load()
+            self.set_unique_name(s)
+
+        self.structs = sorted(self.structs)
+        self.comparison_structs = sorted(self.comparison_structs)
+        self.loaded = True
+
+    def get_structs(self, ignore_unpaired=False, ignore_empty=False):
         """Get list of all structures. If <ignore_unpaired> is True, only 
         structures that are part of a comparison pair will be returned."""
 
-        for s in self.structs:
-            s.load()
-            self.set_unique_name(s)
-
-        if not ignore_unpaired:
-            return sorted(self.structs)
-        else:
+        self.load_all()
+        s_list = self.structs
+        if ignore_unpaired:
             self.find_comparisons()
-            return sorted(self.comparison_structs)
+            s_list = self.comparison_structs
+        if ignore_empty:
+            return [s for s in s_list if not s.empty]
+        else:
+            return s_list
 
-    def get_comparisons(self):
+    def get_comparisons(self, ignore_empty=False):
         """Get list of StructComparison objects."""
 
+        self.load_all()
         self.find_comparisons()
-        return self.comparisons
+        if ignore_empty:
+            return [c for c in self.comparisons if not c.s1.empty 
+                    or c.s2.empty]
+        else:
+            return self.comparisons
 
-    def get_standalone_structs(self):
+    def get_standalone_structs(self, ignore_unpaired=False, ignore_empty=False):
         """Get list of the structures that are not part of a comparison 
         pair."""
 
-        for s in self.structs:
-            s.load()
-            self.set_unique_name(s)
+        if ignore_unpaired:
+            return []
 
+        self.load_all()
         self.find_comparisons()
-
-        return [s for s in sorted(self.structs) 
-                if s not in self.comparison_structs]
+        standalones = [s for s in self.structs if s not in 
+                       self.comparison_structs]
+        if ignore_empty:
+            return [s for s in standalones if not s.empty]
+        else:
+            return standalones

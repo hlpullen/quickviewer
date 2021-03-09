@@ -25,7 +25,7 @@ mpl.rcParams["font.size"] = 14.0
 
 
 # Check settings file exists
-check_settings_file()
+#  check_settings_file()
 
 
 class QuickViewer:
@@ -87,18 +87,59 @@ class QuickViewer:
             Source(s) of dose field array(s) to overlay on each plot (see valid
             image sources for <nii>).
 
-        structs : string/list of strings/list of list of strings, default=None
-            A string or list of strings corresponding to each image to be 
-            shown. These strings can be:
-                (a) A path to a NIfTI structure file;
-                (b) A path to a directory containing NIfTI structure files;
-                (c) A wildcard matching path(s) to NIfTI structure file(s);
-                (d) A wildcard matching path(s) to directories containing 
-                    NIfTI structure file(s).
-            For each image, the structures in all NIfTI files matching the 
-            contents of the corresponding string or list of strings will be
-            overlaid on the image. If the item corresponding to the image is 
-            None, no structures will be overlaid on that image.
+        structs : str/list/dict, default=None
+            Locations of files from which to load structures masks. This
+            argument can be any of:
+
+            1) String:
+                a) The path to a NIfTI file containing a structure mask;
+                b) A wildcard matching one or more NIfTI files containing
+                   structure masks;
+                c) The path to a directory from which all files ending in *.nii
+                   or *.nii.gz are to be loaded;
+                d) A wildcard matching one or more directories from which all
+                   files ending in *.nii or *.nii.gz are to be loaded.
+
+                Structure names will be inferred from the filenames unless
+                the user indicates otherwise in the <struct_names> parameter;
+                e.g. a structure taken from a file called 
+                "right_parotid.nii.gz" would automatically be called 
+                "right parotid" in QuickViewer.
+
+                If multiple structures loaded have the same name, QuickViewer
+                will attempt to label each with a unique name in the UI:
+                    - If two structures named "heart" are loaded from different
+                      directories dir1 and dir2, these will be labelled
+                      "Heart (dir1)" and "Heart (dir2) in the UI.
+                    -  If two structures named "heart" are loaded from 
+                       different files, file1.nii and file2.nii, these will be 
+                       labelled "Heart (file1.nii)" and "Heart (file2.nii)" in 
+                       the UI.
+                However, if the <struct_legend> option is used, the structures 
+                will be labelled with the same name in the figure legend. See 
+                the labelling option below in part (3) or the <struct_names> 
+                option for more customisation.
+
+            2) List:
+                a) A list of any of the strings described above; all NIfTI
+                   files found will be loaded.
+                b) A list of pairs of paths to files containing structures to
+                   be compared to one another (see the <struct_comparison>
+                   option).
+
+            3) Dict:
+                Structure filepaths can be nested inside a dictionary, where
+                the keys are labels which the user wishes to use to refer to 
+                structures in those files, and the values are any of the 
+                options listed above (except 2b).
+
+                The label will be displayed in parentheses next to the 
+                structure names in the QuickViewer UI and structure legend.
+
+                The <struct_names> and <struct_options> arguments can also
+                be nested inside a dictionary if the user wants to apply 
+                different name and color options to the structures associated
+                with different labels.
 
         jacobian : string/nifti/array/list, default=None
             Source(s) of jacobian determinant array(s) to overlay on each plot 
@@ -352,37 +393,93 @@ class QuickViewer:
             be the central slice of that structure. This supercedes <init_pos>
             and <init_sl>.
 
-        struct_colors : dict, default=None
-            Map between structures and colors to use for that structure. The
-            key can either be: 
-                (a) The path corresponding to the structure NIfTI file;
-                (b) The name of the structure (i.e. the name of the NIfTI file
-                    without the extension, optionally with underscores replaced
-                    by spaces);
-                (c) A wildcard matching the name(s) of structure(s) to be 
-                    colored, optionally with underscores replace by spaces;
-                (d) A wildcard string matching the path(s) of the structure 
-                    file(s) to be given the chosen color.
-            Matching structures will be searched for in that order. If more 
-            than one structure matches, all matching structures will have that
-            color. (Note: structure names are case insensitive).
-
-        structs_as_mask : bool, default=True
-            If True, any loaded structures will be used to mask the image and
-            dose field.
-
         many_structs_per_file : bool, default=False
             If True, multiple structures will be loaded from files containing
             multiple structure masks in a single array with different values.
 
         struct_names : list/dict, default=None
-            If <many_structs_per_file>, this parameter will be used to name
-            the structures. Can either be a list (i.e. the first structure in 
-            the file will be given the first name in the list and so on), or a 
-            dict of numbers and names (e.g. {1: "first structure"} etc).
+            Custom names for structures. 
+
+            If only one structure is to be loaded per file, this should be a 
+            dictionary where the keys are filepaths or wildcards matching
+            a filepath, and the values are the custom names to give the 
+            structure loaded from that file.
+
+            If multiple structures are to be loaded from files (i.e. 
+            <many_structs_per_file> is True), the <struct_names> parameter 
+            can either be:
+                a) A list of names, where the Nth name in the list will be 
+                   applied to the structure with mask label N in the structure
+                   array; or
+                b) A dictionary where the keys are integers such that the
+                   name associated with key N will be applied to the structure
+                   with mask label N in the structure array.
+
+            Any of the options described above can also be nested into a 
+            dictionary where the keys are labels, if a label dictionary was
+            used to load structures in the <structs> parameter. The nested
+            options for each key will only be applied to structures whose
+            label is that key.
+
+        struct_colors : dict, default=None
+            A dictionary mapping structure names to colors in which the 
+            structure will be displayed. 
+
+            The dictionary keys should be either structure names or wildcards
+            matching structure name(s). Note that structure names are inferred
+            from the structure's filename unless otherwise specified in the
+            <struct_names> parameter.
+
+            The values of the dictionary can be any matplotlib colorlike 
+            object.
+
+            The color dictionary can also be nested into a dictionary where the 
+            keys are labels, if a label dictionary was used to load structures 
+            in the <structs> parameter. The nested options for each key will 
+            only be applied to structures whose label is that key.
+
+        structs_as_mask : bool, default=True
+            If True, any loaded structures will be used to mask the image and
+            dose field.
 
         compare_structs : bool, default=False
-            If True, structure comparisons will be performed.
+            If True, slice-by-slice comparison metrics for pairs of structures
+            will be displayed below the plot, and compared structures masks
+            will be plotted with their overlapping region in a different 
+            colour.
+
+            The structures to compare can be set in three different ways:
+
+                a) The user can explicitly indicate which structures should be
+                   compared by giving a list of lists for the <structs> 
+                   argument, where each sublist contains exactly 2 filepaths 
+                   corresponding to a pair of structures to be compared (see 
+                   option 2b for <structs>).
+
+                b) If only two structures are found for the filepaths/wildcards
+                   given in the <structs> option, these two structures will
+                   be compared.
+
+                c) Otherwise, QuickViewer will search for pairs of loaded 
+                   structures with the same name (either inferred from the
+                   filenames or specified manually by the user in the 
+                   <struct_names> option). If no structures with matching names
+                   are found, no comparisons will be performed.
+
+        ignore_empty_structs : bool, default=False
+            If True, any loaded structures array that only contains zeros will
+            be ignored. If False, the names of empty structures will be 
+            displayed in the UI with "(empty)" next to them.
+
+        ignore_unpaired_structs : bool, default=False
+            If <structure_comparison> is True and structure pairs are 
+            automatically detected based on their names, this parameter
+            determines whether any structures for which a matching name is not
+            found should be displayed.
+
+            If True, only the pairs of structures with matching names will be
+            shown. If False, all loaded structures will be shown regardless of
+            whether they have a comparison match.
 
         continuous_update : bool, default=False
             If True, sliders in the UI will continuously update the figure as 
