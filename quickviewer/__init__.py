@@ -597,7 +597,7 @@ class QuickViewer:
         """Convert an input to a list with one item per image to be
         displayed."""
 
-        if inp is None or len(inp) == 0:
+        if inp is None:
             return [None for i in range(self.n)]
 
         # Convert arg to a list
@@ -1239,6 +1239,7 @@ class ImageViewer():
         self.figsize = to_inches(figsize)
         self.continuous_update = continuous_update
         self.colorbar = colorbar
+        self.colorbar_drawn = False
         self.annotate_slice = annotate_slice
         if self.annotate_slice is None and not self.in_notebook:
             self.annotate_slice = True
@@ -1608,6 +1609,7 @@ class ImageViewer():
                         "ui_struct_linewidth", "ui_struct_opacity"]
             for ts in to_share:
                 setattr(self, ts, getattr(vimage, ts))
+            self.ui_mask.value += self.im.has_mask
 
         # Make lower
         self.make_lower_ui()
@@ -2137,6 +2139,11 @@ class ImageViewer():
             if self.im.structs_as_mask:
                 self.im.set_masks()
 
+        # Check whether colorbar already drawn
+        colorbar = self.colorbar
+        if not self.in_notebook and self.colorbar_drawn:
+            colorbar = False
+
         # Make plot
         self.plot_image(self.im,
                         view=self.view,
@@ -2146,7 +2153,7 @@ class ImageViewer():
                         figsize=self.figsize,
                         zoom=self.zoom,
                         zoom_centre=self.zoom_centre,
-                        colorbar=self.colorbar,
+                        colorbar=colorbar,
                         masked=self.ui_mask.value,
                         invert_mask=self.invert_mask,
                         mask_color=self.mask_color,
@@ -2162,6 +2169,7 @@ class ImageViewer():
                         annotate_slice=self.annotate_slice,
                         show=False)
         self.plotting = False
+        self.colorbar_drawn = True
 
         # Ensure callbacks are set if outside jupyter
         if not self.in_notebook:

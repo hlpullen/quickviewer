@@ -699,7 +699,7 @@ class NiftiImage:
             self.ax.set_ylabel(_plot_axes[view][1] + units)
         else:
             self.ax.set_yticks([])
-        if self.title is not None and not no_title:
+        if self.title and not no_title:
             self.ax.set_title(self.title)
 
         # Slice annotation
