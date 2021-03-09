@@ -24,6 +24,7 @@ mpl.rcParams["font.family"] = "serif"
 mpl.rcParams["font.size"] = 14.0
 
 
+# Check settings file exists
 check_settings_file()
 
 
@@ -1293,7 +1294,7 @@ class ImageViewer():
         # Structure jumping menu
         # Get list of structures
         self.structs_for_jump = {"": None, 
-                                 **{s.unique_name: s for s in
+                                 **{s.name_unique: s for s in
                                     self.im.structs}}
         structs_standard = {standard_str(s): s for s in self.structs_for_jump}
         if standard_str(self.init_struct) in structs_standard:
@@ -1589,7 +1590,7 @@ class ImageViewer():
 
         # Make checkbox for each structure
         for s in self.im.structs:
-            s.checkbox = ipyw.Checkbox(value=True, description=s.unique_name)
+            s.checkbox = ipyw.Checkbox(value=True, description=s.name_unique)
             self.ui_struct_checkboxes.append(s.checkbox)
             if not self.struct_info:
                 self.lower_ui.append(s.checkbox)

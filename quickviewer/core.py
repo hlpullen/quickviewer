@@ -7,6 +7,7 @@ import glob
 import fnmatch
 import matplotlib as mpl
 import shutil
+import configparser
 
 
 user_settings_dir = os.path.expanduser("~/.quickviewer")
@@ -170,3 +171,10 @@ def check_settings_file():
         shutil.copy(os.path.join(default_settings_dir, "settings.ini"),
                     user_settings_dir)
 
+
+def get_config():
+    
+    check_settings_file()
+    config = configparser.ConfigParser()
+    config.read(user_settings)
+    return config
