@@ -397,6 +397,11 @@ class QuickViewer:
             If True, multiple structures will be loaded from files containing
             multiple structure masks in a single array with different values.
 
+            Can also be a dict where keys are structure set labels (see 
+            <structs> parameter) and values are bools indicating whether
+            multiple structure masks should be searched for in files associated
+            with that label.
+
         struct_names : list/dict, default=None
             Custom names for structures. 
 

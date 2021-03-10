@@ -2205,8 +2205,10 @@ class StructComparison:
         diff1 = self.s1.current_slice & ~self.s2.current_slice
         diff2 = self.s2.current_slice & ~self.s1.current_slice
         overlap = self.s1.current_slice & self.s2.current_slice
-        mean_col = np.array([np.array(self.s1.color), 
-                             np.array(self.s2.color)]).mean(0)
+        mean_sq_col = (
+            np.array(self.s1.color) ** 2 
+            + np.array(self.s2.color) ** 2) / 2
+        mean_col = np.sqrt(mean_sq_col)
         to_plot = [
             (diff1, self.s1.color),
             (diff2, self.s2.color),
@@ -2301,6 +2303,8 @@ class StructLoader:
             different values and multiple structures will be loaded from that 
             file. If False, all nonzero values in a file will be taken to be 
             part of the same structure mask.
+
+            Can also be a dict where keys are labels and values are booleans.
 
         struct_kwargs : dict, default=None
             Keyword arguments to pass to any created StructImage objects.
@@ -2427,8 +2431,15 @@ class StructLoader:
         self.loaded = False
         name = self.find_settings_match(names, path)
 
+        # Find many_per_file for this label
+        if isinstance(self.many_per_file, dict) and self.many_per_file.get(
+            label, False):
+            many_per_file = True
+        else:
+            many_per_file = self.many_per_file
+
         # Only one structure per file
-        if not self.many_per_file:
+        if not many_per_file:
             struct = StructImage(path, label=label, name=name, load=False, 
                                  **self.struct_kwargs)
             color = self.find_settings_match(colors, struct.name)
