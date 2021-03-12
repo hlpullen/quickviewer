@@ -25,7 +25,7 @@ mpl.rcParams["font.size"] = 14.0
 
 
 # Check settings file exists
-#  check_settings_file()
+check_settings_file()
 
 
 class QuickViewer:

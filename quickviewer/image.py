@@ -1900,7 +1900,7 @@ class OrthogonalImage(MultiImage):
                         mpl_kwargs=mpl_kwargs,
                         show=False,
                         colorbar=False,
-                        no_ylabel=True,
+                        no_ylabel=False,
                         no_title=True)
 
         # Plot structures on orthogonal image
@@ -2320,10 +2320,10 @@ class StructLoader:
             else {}
 
         # Format colors and names
-        #  self.config = core.get_config()["STRUCTURES"]
-        names, self.default_names = self.load_settings(
+        self.config = core.get_config()["STRUCTURES"]
+        names, self.default_names, self.nested_colors = self.load_settings(
             names, "default_struct_names", "path", "name")
-        colors, self.default_colors = self.load_settings(
+        colors, self.default_colors, self.nested_names = self.load_settings(
             colors, "default_struct_colors", "name", "color")
 
         # Convert structure input into a dict
@@ -2358,26 +2358,56 @@ class StructLoader:
             for p in paths:
                 self.load_structs_from_file(p, label, names, colors)
 
+    def load_settings_from_json(self, path, json_key, json_value):
+        """Load a settings dictionary from a json file."""
+
+        with open(path) as f:
+            settings_list = json.load(f)
+
+        # Process json list into settings map
+        settings = {}
+        for entry in settings_list:
+            keys = entry[json_key]
+            if not core.is_list(keys):
+                keys = [keys]
+            val = entry[json_value]
+            for key in keys:
+                if key not in settings:
+                    settings[key] = val
+                else:
+                    print(f"Warning: duplicate key {key} found in settings "
+                          f"file {path}! Will be ignored.")
+
+        return settings
+
     def load_settings(self, settings, default_file, json_key, json_value):
-        """Either convert an input value into a settings list, or load default
-        settings."""
+        """Load default settings and custom settings."""
 
-        # Load defaults
-        #  path = os.path.expanduser(self.config[default_file])
-        #  with open(path) as f:
-            #  default_list = json.load(f)
-        #  defaults = [[entry[json_key], entry[json_value]]
-                    #  for entry in default_list]
-        #  for i, (key, value) in enumerate(defaults):
-            #  if not core.is_list(key):
-                #  defaults[i] = [[key], value]
-        defaults = []
+        #  Load defaults
+        default_path = os.path.expanduser(self.config[default_file])
+        default_settings = self.load_settings_from_json(default_path, 
+                                                        json_key, 
+                                                        json_value)
+
         if settings is None:
-            return defaults, defaults
+            return default_settings, default_settings, False
+        
+        # Load custom settings from json
+        if isinstance(settings, str) and settings.endswith(".json"):
+            custom_path = os.path.expanduser(settings)
+            custom_settings = self.load_settings_from_json(custom_path,
+                                                           json_key,
+                                                           json_value)
+            custom_settings.update(
+                {key: val for key, val in default_settings.items()
+                 if key not in custom_settings})
+            return custom_settings, default_settings
 
-        # Convert lists to enumerated dicts
-        if core.is_list(settings):
+        # Convert single list to enumerate dicts
+        elif core.is_list(settings):
             settings = {i + 1: value for i, value in enumerate(settings)}
+
+        # Convert label dict of lists into enumerated dicts
         elif isinstance(settings, dict):
             for label, s in settings.items():
                 if core.is_list(s):
@@ -2387,15 +2417,24 @@ class StructLoader:
         # Check for nested dict
         nested_dicts = [isinstance(val, dict) for val in settings.values()]
         if all(nested_dicts):
-            output = {}
-            for label, sdict in settings.items():
-                output[label] = [[[key], val] for key, val in sdict.items()]
-            return output, defaults
+
+            # Include default settings in each label dict
+            custom_settings = settings.copy()
+            for label in settings:
+                custom_settings[label].update(
+                    {key: val for key, val in default_settings.items()
+                     if key not in settings[label]})
 
         elif any(nested_dicts):
             raise TypeError
 
-        return [[[key], val] for key, val in settings.items()], defaults
+        else :
+            custom_settings = settings.copy()
+            custom_settings.update(
+                {key: val for key, val in default_settings.items()
+                 if key not in custom_settings})
+
+        return custom_settings, default_settings
 
     def load_structs_from_file(self, paths, label, names, colors):
         """Search for filenames matching <paths> and load structs from all
@@ -2406,7 +2445,7 @@ class StructLoader:
 
         # Get colors and names dicts
         if isinstance(colors, dict):
-            colors = colors.get(label, self.default_colors)
+            colors = colors[label]
         if isinstance(names, dict):
             names = names.get(label, self.default_names)
 
@@ -2420,10 +2459,12 @@ class StructLoader:
         if key is None:
             return
 
-        for wildcards, value in settings:
-            for wildcard in wildcards:
-                if fnmatch.fnmatch(standard_str(key), standard_str(wildcard)):
-                    return value
+        # Try wildcard matches
+        for wildcard, value in settings.items():
+            if wildcard == key:
+                return value
+            if fnmatch.fnmatch(standard_str(key), standard_str(wildcard)):
+                return value
 
     def add_struct(self, path, label, names, colors):
         """Create StructImage object and add to list."""
