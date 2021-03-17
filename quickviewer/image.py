@@ -2440,7 +2440,11 @@ class StructLoader:
         # Load all structs in the final dict
         for label, paths in struct_dict.items():
             for p in paths:
-                self.load_structs_from_file(p, label, names, colors, multi)
+                if p.startswith("multi:"):
+                    self.load_structs_from_file(p[6:], label, names, colors,
+                                                True)
+                else:
+                    self.load_structs_from_file(p, label, names, colors, multi)
 
     def load_structs_from_file(self, paths, label, names, colors, multi=False):
         """Search for filenames matching <paths> and load structs from all
