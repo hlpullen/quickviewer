@@ -1816,7 +1816,7 @@ class ImageViewer():
 
         # Disable irrelevant sliders
         self.ui_struct_opacity.disabled = self.struct_plot_type \
-                in ["contour", "none", "contour + centroid"]
+                in ["contour", "none", "centroid"]
         self.ui_struct_linewidth.disabled = self.struct_plot_type \
                 in ["mask", "none"]
 
@@ -1867,7 +1867,8 @@ class ImageViewer():
         elif event.key == "c":
             if self.im.has_structs:
                 next_type = {"mask": "contour", "contour": "filled",
-                             "filled": "none", "none": "mask"}
+                             "filled": "centroid", "centroid": "none",
+                             "none": "mask"}
                 self.ui_struct_plot_type.value = \
                     next_type[self.ui_struct_plot_type.value]
 
@@ -2152,9 +2153,12 @@ class ImageViewer():
         struct_kwargs = {}
         if self.ui_struct_plot_type.value != self.struct_plot_type:
             self.update_struct_slider()
-        if self.struct_plot_type in ["contour", "filled"]:
+        if self.struct_plot_type in ["contour", "filled", "centroid"]:
             self.struct_linewidth = self.ui_struct_linewidth.value
             struct_kwargs["linewidth"] = self.struct_linewidth
+        if self.struct_plot_type == "centroid":
+            struct_kwargs["markersize"] = 7 * np.sqrt(self.struct_linewidth)
+            struct_kwargs["markeredgewidth"] = np.sqrt(self.struct_linewidth)
         if self.struct_plot_type == "mask":
             self.struct_mask_opacity = self.ui_struct_opacity.value
             struct_kwargs["alpha"] = self.struct_mask_opacity

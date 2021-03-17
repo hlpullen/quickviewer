@@ -27,8 +27,7 @@ _orient = {"y-z": [1, 2, 0], "x-z": [0, 2, 1], "x-y": [1, 0, 2]}
 _n_rot = {"y-z": 2, "x-z": 2, "x-y": 1}
 _orthog = {'x-y': 'y-z', 'y-z': 'x-z', 'x-z': 'y-z'}
 _df_plot_types = ["grid", "quiver", "none"]
-_struct_plot_types = ["contour", "mask", "filled", "contour + centroid", 
-                      "none"]
+_struct_plot_types = ["contour", "mask", "filled", "centroid", "none"]
 _default_figsize = 6
 _default_spacing = 30
 
@@ -348,20 +347,20 @@ class NiftiImage:
     def idx_to_pos(self, idx, ax):
         """Convert an index to a position in mm along a given axis."""
 
-        if ax == "z":
-            return self.origin[ax] + idx * self.voxel_sizes[ax]
-        else:
+        if ax != "z":
             return self.origin[ax] \
                     + (self.n_voxels[ax] - 1 - idx) * self.voxel_sizes[ax]
+        else:
+            return self.origin[ax] + idx * self.voxel_sizes[ax]
 
     def pos_to_idx(self, pos, ax):
         """Convert a position in mm to an index along a given axis."""
 
-        if ax == "z":
-            idx = round((pos - self.origin[ax]) / self.voxel_sizes[ax])
-        else:
+        if ax != "z":
             idx = round(self.n_voxels[ax] - 1 + (self.origin[ax] - pos) / 
                         self.voxel_sizes[ax])
+        else:
+            idx = round((pos - self.origin[ax]) / self.voxel_sizes[ax])
 
         if idx < 0 or idx >= self.n_voxels[ax]:
             if idx < 0:
@@ -706,6 +705,7 @@ class NiftiImage:
             self.ax.set_ylabel(_plot_axes[view][1] + units)
         else:
             self.ax.set_yticks([])
+
         if self.title and not no_title:
             self.ax.set_title(self.title)
 
@@ -1124,7 +1124,7 @@ class StructImage(NiftiImage):
 
         if not hasattr(self, "centroid"):
             self.centroid = {}
-            centroid = ndimage.measurements.center_of_mass(self.data)
+            cy, cx, cz = ndimage.measurements.center_of_mass(self.data)
             centroid = [centroid[1], centroid[0], centroid[2]]
             axes = ["x", "y", "z"]
             self.centroid["voxels"] = [self.idx_to_slice(c, axes[i]) 
@@ -1140,13 +1140,14 @@ class StructImage(NiftiImage):
         if not self.on_slice(view, sl):
             return None, None
         self.set_slice(view, sl)
-        centroid = ndimage.measurements.center_of_mass(self.current_slice)
-        centroid = [centroid[1], centroid[0]]
+        cy, cx = ndimage.measurements.center_of_mass(self.current_slice)
         x_ax, y_ax = _plot_axes[view]
         conversion = self.idx_to_slice if units == "voxels" else \
                 self.idx_to_pos
-        return (conversion(centroid[0], x_ax), 
-                conversion(centroid[1], y_ax))
+        if y_ax == "y":
+            cy = self.n_voxels["y"] - cy
+        return (conversion(cx, x_ax), 
+                conversion(cy, y_ax))
 
     def get_volume(self, units):
         """Get total structure volume in voxels, mm, or ml."""
@@ -1287,7 +1288,8 @@ class StructImage(NiftiImage):
         plot_type="contour",
         zoom=None,
         zoom_centre=None,
-        show=False
+        show=False,
+        no_title=False
     ):
         """Plot structure.
 
@@ -1323,27 +1325,29 @@ class StructImage(NiftiImage):
         if not self.valid or not self.visible:
             return
 
+        mpl_kwargs = {} if mpl_kwargs is None else mpl_kwargs
+
         # Make plot
-        if plot_type == "contour":
-            self.plot_contour(view, sl, pos, ax, mpl_kwargs, zoom, zoom_centre)
+        if plot_type in ["contour", "centroid"]:
+            centroid = plot_type == "centroid"
+            self.plot_contour(view, sl, pos, ax, mpl_kwargs, zoom, zoom_centre,
+                              no_title=no_title, centroid=centroid)
         elif plot_type == "mask":
-            self.plot_mask(view, sl, pos, ax, mpl_kwargs, zoom, zoom_centre)
+            self.plot_mask(view, sl, pos, ax, mpl_kwargs, zoom, zoom_centre,
+                           no_title=no_title)
         elif plot_type == "filled":
             mask_kwargs = {"alpha": mpl_kwargs.get("alpha", 0.3)}
-            self.plot_mask(view, sl, pos, ax, mask_kwargs, zoom, zoom_centre)
+            self.plot_mask(view, sl, pos, ax, mask_kwargs, zoom, zoom_centre,
+                           no_title=no_title)
             contour_kwargs = {"linewidth": mpl_kwargs.get("linewidth", 2)}
             self.plot_contour(view, sl, pos, self.ax, contour_kwargs,
-                              zoom, zoom_centre)
-        elif plot_type == "contour + centroid":
-            print("plotting contour and centroid")
-            self.plot_contour(view, sl, pos, ax, mpl_kwargs, zoom, zoom_centre,
-                              centroid=True)
+                              zoom, zoom_centre, no_title=no_title)
 
         if show:
             plt.show()
 
     def plot_mask(self, view, sl, pos, ax, mpl_kwargs=None, zoom=None,
-                  zoom_centre=None):
+                  zoom_centre=None, no_title=False):
         """Plot structure as a colored mask."""
 
         # Get slice
@@ -1366,13 +1370,14 @@ class StructImage(NiftiImage):
             **self.get_kwargs(mpl_kwargs, default=self.mask_kwargs)
         )
         self.adjust_ax(view, zoom, zoom_centre)
+        self.label_ax(view, no_title=no_title)
 
     def plot_contour(self, view, sl, pos, ax, mpl_kwargs=None, zoom=None,
-                     zoom_centre=None, centroid=True):
+                     zoom_centre=None, centroid=False, no_title=False):
         """Plot structure as a contour."""
 
         self.load()
-        self.set_ax(view, ax, zoom)
+        self.set_ax(view, ax, zoom=zoom)
         if not self.on_slice(view, sl):
             return
 
@@ -1385,12 +1390,13 @@ class StructImage(NiftiImage):
             points_y = [p[1] for p in points]
             self.ax.plot(points_x, points_y, **kwargs)
 
-        #  if centroid:
-            #  units = "voxels" if self.scale_in_mm else "mm"
-            #  x, y = self.get_centroid_2d(view, sl, units)
-            #  self.ax.plot(x, y, '+', color=self.color)
+        if centroid:
+            units = "voxels" if not self.scale_in_mm else "mm"
+            x, y = self.get_centroid_2d(view, sl, units)
+            self.ax.plot(x, y, '+', **kwargs)
 
         self.adjust_ax(view, zoom, zoom_centre)
+        self.label_ax(view, no_title=no_title)
 
     def on_slice(self, view, sl):
         """Return True if a contour exists for this structure on a given slice.
@@ -1446,10 +1452,10 @@ class StructImage(NiftiImage):
         x_ax, y_ax = _plot_axes[view]
         if len(non_zero):
             y, x = non_zero.mean(0)
+            if y_ax == "y":
+                y = self.n_voxels["y"] - y
             convert = self.idx_to_pos if self.scale_in_mm \
                 else self.idx_to_slice
-            if y_ax != "x":
-                y = self.n_voxels[y_ax] - y
             return [convert(x, x_ax), convert(y, y_ax)]
         else:
             return [0, 0]
@@ -1949,8 +1955,12 @@ class OrthogonalImage(MultiImage):
         for struct in self.structs:
             if not struct.visible:
                 continue
+            plot_type = struct_plot_type
+            if plot_type == "centroid":
+                plot_type = "contour"
             struct.plot(orthog_view, sl=orthog_sl, ax=self.orthog_ax, 
-                        mpl_kwargs=struct_kwargs, plot_type=struct_plot_type)
+                        mpl_kwargs=struct_kwargs, plot_type=plot_type,
+                        no_title=True)
 
         # Plot indicator line
         pos = sl if not self.scale_in_mm else self.slice_to_pos(
@@ -2216,11 +2226,12 @@ class StructComparison:
             return
 
         # Make plot
-        if plot_type == "contour":
+        if plot_type in ["contour", "centroid"]:
+            centroid = plot_type == "centroid"
             self.s1.plot_contour(view, sl, pos, ax, mpl_kwargs, zoom, 
-                                 zoom_centre)
+                                 zoom_centre, centroid=centroid)
             self.s2.plot_contour(view, sl, pos, self.s1.ax, mpl_kwargs, zoom, 
-                                 zoom_centre)
+                                 zoom_centre, centroid=centroid)
         elif plot_type == "mask":
             self.plot_mask(view, sl, pos, ax, mpl_kwargs, zoom, zoom_centre)
         elif plot_type == "filled":
