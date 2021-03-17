@@ -2555,7 +2555,6 @@ class StructLoader:
             return
 
         # Look for structures with matching names
-        self.structs = sorted(self.structs)
         unique_names = set([s.name for s in self.structs])
         n_per_name = {n: len([s for s in self.structs if s.name == n])
                       for n in unique_names}
@@ -2570,8 +2569,8 @@ class StructLoader:
                       " Structure comparison will not be run.")
 
         # Make structure comparisons
-        names_to_compare = sorted([name for name in n_per_name 
-                                   if n_per_name[name] == 2])
+        names_to_compare = [name for name in n_per_name 
+                            if n_per_name[name] == 2]
         for name in names_to_compare:
             structs = [s for s in self.structs if s.name == name]
             self.comparisons.append(
@@ -2629,8 +2628,6 @@ class StructLoader:
             s.load()
             self.set_unique_name(s)
 
-        self.structs = sorted(self.structs)
-        self.comparison_structs = sorted(self.comparison_structs)
         self.loaded = True
 
     def get_structs(self, ignore_unpaired=False, ignore_empty=False):
