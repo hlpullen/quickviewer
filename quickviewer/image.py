@@ -375,7 +375,7 @@ class NiftiImage:
     def idx_to_slice(self, idx, ax):
         """Convert an index to a slice number along a given axis."""
 
-        if ax == "x":
+        if self.voxel_sizes[ax] < 0:
             return idx + 1
         else:
             return self.n_voxels[ax] - idx
@@ -383,7 +383,7 @@ class NiftiImage:
     def slice_to_idx(self, sl, ax):
         """Convert a slice number to an index along a given axis."""
 
-        if ax == "x":
+        if self.voxel_sizes[ax] < 0:
             idx = sl - 1
         else:
             idx = self.n_voxels[ax] - sl
@@ -1260,7 +1260,7 @@ class StructImage(NiftiImage):
                             y * abs(self.voxel_sizes[y_ax])
                     else:
                         x = self.idx_to_slice(x, x_ax)
-                        if y_ax == "x":
+                        if self.voxel_sizes[y_ax] < 0:
                             y = self.idx_to_slice(y, y_ax)
                         else:
                             y = self.idx_to_slice(self.n_voxels[y_ax] - y, 
@@ -2464,7 +2464,7 @@ class StructLoader:
         # Load all structs in the final dict
         for label, paths in struct_dict.items():
             for p in paths:
-                if p.startswith("multi:"):
+                if isinstance(p, str) and p.startswith("multi:"):
                     self.load_structs_from_file(p[6:], label, names, colors,
                                                 True)
                 else:
@@ -2475,7 +2475,10 @@ class StructLoader:
         files."""
 
         # Get files
-        files = core.find_files(paths, ext=".nii*")
+        if isinstance(paths, str):
+            files = core.find_files(paths, ext=".nii*")
+        else:
+            files = paths
 
         # Get colors and names dicts
         if core.is_nested(colors):
@@ -2510,7 +2513,10 @@ class StructLoader:
         """Create StructImage object and add to list."""
 
         self.loaded = False
-        name = self.find_name_match(names, path)
+        if isinstance(path, str):
+            name = self.find_name_match(names, path)
+        else:
+            name = "Structure {len(self.structs) + 1}"
 
         # Only one structure per file
         if not multi:
