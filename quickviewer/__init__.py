@@ -24,10 +24,6 @@ mpl.rcParams["font.family"] = "serif"
 mpl.rcParams["font.size"] = 14.0
 
 
-# Check settings file exists
-check_settings_file()
-
-
 class QuickViewer:
     """Display multiple ViewerImages and comparison images."""
 
@@ -38,6 +34,7 @@ class QuickViewer:
         mask=None,
         dose=None,
         structs=None,
+        multi_structs=None,
         jacobian=None,
         df=None,
         share_slider=True,
@@ -140,6 +137,8 @@ class QuickViewer:
                 be nested inside a dictionary if the user wants to apply 
                 different name and color options to the structures associated
                 with different labels.
+
+        multi_structs : str/list/dict, default=None
 
         jacobian : string/nifti/array/list, default=None
             Source(s) of jacobian determinant array(s) to overlay on each plot 
@@ -393,15 +392,6 @@ class QuickViewer:
             be the central slice of that structure. This supercedes <init_pos>
             and <init_sl>.
 
-        many_structs_per_file : bool, default=False
-            If True, multiple structures will be loaded from files containing
-            multiple structure masks in a single array with different values.
-
-            Can also be a dict where keys are structure set labels (see 
-            <structs> parameter) and values are bools indicating whether
-            multiple structure masks should be searched for in files associated
-            with that label.
-
         struct_names : list/dict, default=None
             Custom names for structures. 
 
@@ -546,6 +536,8 @@ class QuickViewer:
         self.dose = self.get_input_list(dose)
         self.mask = self.get_input_list(mask)
         self.structs = self.get_input_list(structs, allow_sublist=True)
+        self.multi_structs = self.get_input_list(multi_structs, 
+                                                 allow_sublist=True)
         self.jacobian = self.get_input_list(jacobian)
         self.df = self.get_input_list(df)
 
@@ -559,8 +551,9 @@ class QuickViewer:
             viewer = viewer_type(
                 self.nii[i], title=self.title[i], dose=self.dose[i],
                 mask=self.mask[i], structs=self.structs[i],
-                jacobian=self.jacobian[i], df=self.df[i], standalone=False,
-                scale_in_mm=scale_in_mm, legend_loc=legend_loc, **kwargs)
+                multi_structs=self.multi_structs[i], jacobian=self.jacobian[i], 
+                df=self.df[i], standalone=False, scale_in_mm=scale_in_mm, 
+                legend_loc=legend_loc, **kwargs)
             if viewer.im.valid:
                 self.viewer.append(viewer)
         self.n = len(self.viewer)
@@ -1645,22 +1638,36 @@ class ImageViewer():
 
         # Structure comparison display
         self.ui_struct_comp = []
-        self.ui_struct_dice = []
+        x_ax, y_ax = _plot_axes[self.view]
+        comps = {
+            "dice": "Dice score",
+            "rel_vol": "Relative volume difference",
+            #  "rel_area": "Relative area",
+            #  "rel_x": "",
+            #  "rel_y": ""
+        }
+        self.ui_comp_lists = {}
+        for c in comps:
+            l = []
+            setattr(self, f"ui_struct_{c}", l)
+            self.ui_comp_lists[c] = l
         layout = ipyw.Layout(align_items="center", padding="0px 0px 0px 50px")
         if self.compare_structs:
 
             self.ui_struct_comp.append(ipyw.HTML(
                 value="<b>Structure comparison:</b>"))
-            self.ui_struct_dice.append(ipyw.HTML(
-                value="<b>Dice score</b>"))
+            for key, comp in self.ui_comp_lists.items():
+                comp.append(ipyw.HTML(value=f"<b>{comps[key]}</b>"))
 
             for sc in self.im.struct_comparisons:
                 self.ui_struct_comp.append(ipyw.Label(value=sc.name))
-                self.ui_struct_dice.append(ipyw.Label())
+                for comp in self.ui_comp_lists.values():
+                    comp.append(ipyw.Label())
 
             self.lower_ui.append(ipyw.HBox([
                 ipyw.VBox(self.ui_struct_comp),
-                ipyw.VBox(self.ui_struct_dice, layout=layout)
+                *[ipyw.VBox(comp, layout=layout) for comp in 
+                  self.ui_comp_lists.values()]
             ]))
             self.update_struct_comparisons()
 
@@ -1737,10 +1744,30 @@ class ImageViewer():
         if not self.compare_structs:
             return
 
+        blank = "—"
         for i, sc in enumerate(self.im.struct_comparisons):
+
+            vol = sc.relative_vol()
+            self.ui_struct_rel_vol[i + 1].value = f"{vol:.3f}"
+
+            if not sc.on_slice(self.view, self.slice[self.view]):
+                for comp in self.ui_comp_lists.values():
+                    comp[i + 1].value = blank
+                continue
+
             dice = sc.dice_score(self.view, self.slice[self.view])
-            dice_str = "{:.3f}".format(dice) if dice is not None else "—"
-            self.ui_struct_dice[i + 1].value = dice_str
+            self.ui_struct_dice[i + 1].value = f"{dice:.3f}"
+
+            #  area = sc.relative_area(self.view, self.slice[self.view])
+            #  self.ui_struct_rel_area[i + 1].value = f"{area:.3f}"
+
+            #  x, y = sc.relative_extents(self.view, self.slice[self.view])
+            #  self.ui_struct_rel_x[i + 1].value = f"{x:.3f}"
+            #  self.ui_struct_rel_y[i + 1].value = f"{y:.3f}"
+
+            #  x_ax, y_ax = _plot_axes[self.view]
+            #  self.ui_struct_rel_x[0].value = f"<b>Relative {x_ax} length</b>"
+            #  self.ui_struct_rel_y[0].value = f"<b>Relative {y_ax} length</b>"
                 
     def update_struct_info(self):
         """Update structure info UI to reflect current view/slice."""

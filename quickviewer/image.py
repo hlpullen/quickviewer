@@ -14,6 +14,7 @@ import skimage.measure
 import matplotlib.patches as mpatches
 from timeit import default_timer as timer
 import json
+from scipy import ndimage
 
 from quickviewer import core
 
@@ -509,9 +510,14 @@ class NiftiImage:
             False.
         """
 
+        # Don't do anything if already on this slice
+        idx = self.get_idx(view, sl, pos)
+        if hasattr(self, "view"):
+            if self.view == view and self.idx == idx:
+                return
+
         # Assign current orientation and slice index
         self.view = view
-        idx = self.get_idx(view, sl, pos)
         self.idx = idx
         self.sl = self.idx_to_slice(idx, _slider_axes[view])
 
@@ -1112,6 +1118,33 @@ class StructImage(NiftiImage):
 
             return n1 < n2
 
+    def get_centroid(self, units="voxels"):
+        """Get the centroid position in 3D."""
+
+        if not hasattr(self, "centroid"):
+            self.centroid = {}
+            centroid = ndimage.measurements.center_of_mass(self.data)
+            axes = ["x", "y", "z"]
+            self.centroid["voxels"] = [self.idx_to_slice(c, axes[i]) 
+                                       for i, c in enumerate(centroid)]
+            self.centroid["mm"] = [self.idx_to_pos(c, axes[i]) 
+                                   for i, c in enumerate(centroid)]
+
+        return self.centroid[units]
+
+    def get_centroid_2d(self, view, sl, units="voxels"):
+        """Get the centroid position on a 2D slice."""
+
+        if not self.on_slice(view, sl):
+            return None, None
+        self.set_slice(view, sl)
+        centroid = ndimage.measurements.center_of_mass(self.current_slice)
+        x_ax, y_ax = _plot_axes[view]
+        conversion = self.idx_to_slice if units == "voxels" else \
+                self.idx_to_pos
+        return (conversion(centroid[0], x_ax), 
+                conversion(centroid[1], y_ax))
+
     def get_volume(self, units):
         """Get total structure volume in voxels, mm, or ml."""
 
@@ -1421,9 +1454,9 @@ class MultiImage(NiftiImage):
         jacobian=None,
         df=None,
         structs=None,
+        multi_structs=None,
         struct_colors=None,
         structs_as_mask=False,
-        many_structs_per_file=False,
         struct_names=None,
         compare_structs=False,
         ignore_empty_structs=False,
@@ -1467,12 +1500,8 @@ class MultiImage(NiftiImage):
         structs_as_mask : bool, default=False
             If True, structures will be used as masks.
 
-        many_structs_per_file : bool, default=False
-            If True, multiple structures will be loaded from files containing
-            multiple structure masks in a single array with different values.
-
         struct_names : list/dict, default=None
-            If <many_structs_per_file>, this parameter will be used to name
+            For multi_structs, this parameter will be used to name
             the structures. Can either be a list (i.e. the first structure in 
             the file will be given the first name in the list and so on), or a 
             dict of numbers and names (e.g. {1: "first structure"} etc).
@@ -1496,12 +1525,12 @@ class MultiImage(NiftiImage):
         self.load_to(jacobian, "jacobian", kwargs)
         self.load_df(df)
         self.load_structs(structs, 
-                          struct_colors, 
-                          many_structs_per_file,
-                          struct_names, 
-                          compare_structs, 
-                          ignore_empty_structs,
-                          ignore_unpaired_structs)
+                          multi_structs,
+                          names=struct_names, 
+                          colors=struct_colors, 
+                          compare_structs=compare_structs, 
+                          ignore_empty=ignore_empty_structs,
+                          ignore_unpaired=ignore_unpaired_structs)
         self.structs_as_mask = structs_as_mask
         if self.has_structs and structs_as_mask:
             self.has_mask = True
@@ -1534,10 +1563,10 @@ class MultiImage(NiftiImage):
         self.has_df = self.df.valid
 
     def load_structs(self, 
-                     structs, 
-                     colors, 
-                     many_per_file=False,
+                     structs=None,
+                     multi_structs=None,
                      names=None, 
+                     colors=None, 
                      compare_structs=False, 
                      ignore_empty=False,
                      ignore_unpaired=False
@@ -1546,13 +1575,13 @@ class MultiImage(NiftiImage):
         <structs>, and assign the colors in <colors>."""
 
         self.has_structs = False
-        if structs is None:
+        if structs is None and multi_structs is None:
             self.structs = []
             self.struct_comparisons = []
             self.standalone_structs = []
             return
 
-        loader = StructLoader(structs, names, colors, many_per_file)
+        loader = StructLoader(structs, multi_structs, names, colors)
         self.structs = loader.get_structs(ignore_unpaired, ignore_empty)
 
         if compare_structs:
@@ -2234,26 +2263,60 @@ class StructComparison:
 
         self.s1.adjust_ax(view, zoom, zoom_centre)
 
+    def on_slice(self, view, sl):
+        """Check whether both structures are on a given slice."""
+        
+        if not self.is_valid():
+            return False
+        return self.s1.on_slice(view, sl) and self.s2.on_slice(view, sl)
+
     def dice_score(self, view, sl):
         """Get dice score on a given slice."""
 
-        if not self.is_valid():
+        if not self.on_slice(view, sl):
             return
-        if not self.s1.on_slice(view, sl) or not self.s2.on_slice(view, sl):
-            return
-
         self.s1.set_slice(view, sl)
         self.s2.set_slice(view, sl)
         slice1 = self.s1.current_slice
         slice2 = self.s2.current_slice
         return (slice1 & slice2).sum() / np.mean([slice1.sum(), slice2.sum()])
 
+    def vol_ratio(self):
+        """Get relative volume of the two structures."""
+
+        v1 = self.s1.get_volume("voxels")
+        v2 = self.s2.get_volume("voxels")
+        return v1 / v2
+
+    def relative_vol(self):
+        """Get relative structure volume difference."""
+
+        v1 = self.s1.get_volume("voxels")
+        v2 = self.s2.get_volume("voxels")
+        return (v1 - v2) / v1
+
+    def area_ratio(self, view, sl):
+
+        if not self.on_slice(view, sl):
+            return
+        a1 = self.s1.get_area(view, sl)
+        a2 = self.s2.get_area(view, sl)
+        return a1 / a2
+
+    def extent_ratio(self, view, sl):
+
+        if not self.on_slice(view, sl):
+            return
+        x1, y1 = self.s1.get_extents(view, sl)
+        x2, y2 = self.s2.get_extents(view, sl)
+        return x1 / x2, y1 / y2
+
 
 class StructLoader:
     """Class for loading and storing multiple StructImages."""
 
-    def __init__(self, structs, names=None, colors=None, many_per_file=False,
-                 struct_kwargs=None):
+    def __init__(self, structs=None, multi_structs=None, names=None, 
+                 colors=None, struct_kwargs=None):
         """Load structures. 
 
         Parameters
@@ -2272,6 +2335,8 @@ class StructLoader:
                 (d) A list of pairs filepaths or wildcard filepaths, which
                 should point to one file only. These pairs of files will then
                 be used for comparisons.
+
+        multi_structs : str/list/dict
 
         names : list/dict, default=None
             A dictionary where keys are filenames or wildcards matching 
@@ -2298,14 +2363,6 @@ class StructLoader:
             for different labels. If None, defaults will be taken from the file
             given in ~/.quickviewer/settings.ini, if it exists.
 
-        many_per_file : bool, default=False
-            If True, each file will be checked for multiple label masks with
-            different values and multiple structures will be loaded from that 
-            file. If False, all nonzero values in a file will be taken to be 
-            part of the same structure mask.
-
-            Can also be a dict where keys are labels and values are booleans.
-
         struct_kwargs : dict, default=None
             Keyword arguments to pass to any created StructImage objects.
         """
@@ -2315,28 +2372,54 @@ class StructLoader:
         self.structs = []
         self.comparisons = []
         self.comparison_structs = []
-        self.many_per_file = many_per_file
         self.struct_kwargs = struct_kwargs if struct_kwargs is not None \
             else {}
+        if structs is None and multi_structs is None:
+            return
 
         # Format colors and names
-        self.config = core.get_config()["STRUCTURES"]
-        names, self.default_names, self.nested_colors = self.load_settings(
-            names, "default_struct_names", "path", "name")
-        colors, self.default_colors, self.nested_names = self.load_settings(
-            colors, "default_struct_colors", "name", "color")
+        names = self.load_settings(names)
+        colors = self.load_settings(colors)
 
-        # Convert structure input into a dict
-        struct_dict = {}
+        # Load all structs and multi structs
+        self.load_structs(structs, names, colors, False)
+        self.load_structs(multi_structs, names, colors, True)
+
+    def load_settings(self, settings):
+        """Process a settings dict into a standard format."""
+
+        if settings is None:
+            return {}
         
-        # Structures already in a dict of labels and sources
+        # Convert single list to enumerated dict
+        elif core.is_list(settings):
+            settings = {value: i + 1 for i, value in enumerate(settings)}
+
+        # Convert label dict of lists into enumerated dicts
+        elif isinstance(settings, dict):
+            for label, s in settings.items():
+                if core.is_list(s):
+                    settings[label] = {value: i + 1 for i, value in 
+                                       enumerate(s)}
+
+        return settings
+
+    def load_structs(self, structs, names, colors, multi=False):
+        """Load a list/dict of structres."""
+
+        if structs is None:
+            return
+        struct_dict = {}
+
+        # Put into standard format
+        # Case where structs are already in a dict of labels and sources
         if isinstance(structs, dict):
             struct_dict = structs
             for label, path in struct_dict.items():
                 if not core.is_list(path):
                     struct_dict[label] = [path]
 
-        # List of structure inputs
+        # Case where structs are in a list
         elif isinstance(structs, list):
 
             # Special case: pairs of structure sources for comparison
@@ -2354,89 +2437,12 @@ class StructLoader:
         else:
             struct_dict[""] = [structs]
 
+        # Load all structs in the final dict
         for label, paths in struct_dict.items():
             for p in paths:
-                self.load_structs_from_file(p, label, names, colors)
+                self.load_structs_from_file(p, label, names, colors, multi)
 
-    def load_settings_from_json(self, path, json_key, json_value):
-        """Load a settings dictionary from a json file."""
-
-        with open(path) as f:
-            settings_list = json.load(f)
-
-        # Process json list into settings map
-        settings = {}
-        for entry in settings_list:
-            keys = entry[json_key]
-            if not core.is_list(keys):
-                keys = [keys]
-            val = entry[json_value]
-            for key in keys:
-                if key not in settings:
-                    settings[key] = val
-                else:
-                    print(f"Warning: duplicate key {key} found in settings "
-                          f"file {path}! Will be ignored.")
-
-        return settings
-
-    def load_settings(self, settings, default_file, json_key, json_value):
-        """Load default settings and custom settings."""
-
-        #  Load defaults
-        default_path = os.path.expanduser(self.config[default_file])
-        default_settings = self.load_settings_from_json(default_path, 
-                                                        json_key, 
-                                                        json_value)
-
-        if settings is None:
-            return default_settings, default_settings, False
-        
-        # Load custom settings from json
-        if isinstance(settings, str) and settings.endswith(".json"):
-            custom_path = os.path.expanduser(settings)
-            custom_settings = self.load_settings_from_json(custom_path,
-                                                           json_key,
-                                                           json_value)
-            custom_settings.update(
-                {key: val for key, val in default_settings.items()
-                 if key not in custom_settings})
-            return custom_settings, default_settings
-
-        # Convert single list to enumerate dicts
-        elif core.is_list(settings):
-            settings = {i + 1: value for i, value in enumerate(settings)}
-
-        # Convert label dict of lists into enumerated dicts
-        elif isinstance(settings, dict):
-            for label, s in settings.items():
-                if core.is_list(s):
-                    settings[label] = {i + 1: value for i, value in 
-                                       enumerate(s)}
-
-        # Check for nested dict
-        nested_dicts = [isinstance(val, dict) for val in settings.values()]
-        if all(nested_dicts):
-
-            # Include default settings in each label dict
-            custom_settings = settings.copy()
-            for label in settings:
-                custom_settings[label].update(
-                    {key: val for key, val in default_settings.items()
-                     if key not in settings[label]})
-
-        elif any(nested_dicts):
-            raise TypeError
-
-        else :
-            custom_settings = settings.copy()
-            custom_settings.update(
-                {key: val for key, val in default_settings.items()
-                 if key not in custom_settings})
-
-        return custom_settings, default_settings
-
-    def load_structs_from_file(self, paths, label, names, colors):
+    def load_structs_from_file(self, paths, label, names, colors, multi=False):
         """Search for filenames matching <paths> and load structs from all
         files."""
 
@@ -2444,46 +2450,45 @@ class StructLoader:
         files = core.find_files(paths, ext=".nii*")
 
         # Get colors and names dicts
-        if isinstance(colors, dict):
-            colors = colors[label]
-        if isinstance(names, dict):
-            names = names.get(label, self.default_names)
+        if core.is_nested(colors):
+            colors = colors.get(label, {})
+        if core.is_nested(names):
+            names = names.get(label, {})
 
         # Load each file
         for f in files:
-            self.add_struct(f, label, names, colors)
+            self.add_struct(f, label, names, colors, multi)
 
-    def find_settings_match(self, settings, key):
-        """Find a key that matches a wildcard in settings."""
+    def find_name_match(self, names, path):
+        """Find the first name in a names dictionary that matches a given 
+        filepath."""
 
-        if key is None:
-            return
+        for name, paths in names.items():
+            if not core.is_list(paths):
+                paths = [paths]
+            for comp_path in paths:
+                if fnmatch.fnmatch(str(path), str(comp_path)):
+                    return name
 
-        # Try wildcard matches
-        for wildcard, value in settings.items():
-            if wildcard == key:
-                return value
-            if fnmatch.fnmatch(standard_str(key), standard_str(wildcard)):
-                return value
+    def find_color_match(self, colors, name):
+        """Find the first color in a color dictionary that matches a given
+        structure name."""
 
-    def add_struct(self, path, label, names, colors):
+        for comp_name, color in colors.items():
+            if fnmatch.fnmatch(standard_str(name), standard_str(comp_name)):
+                return color
+
+    def add_struct(self, path, label, names, colors, multi=False):
         """Create StructImage object and add to list."""
-                
-        self.loaded = False
-        name = self.find_settings_match(names, path)
 
-        # Find many_per_file for this label
-        if isinstance(self.many_per_file, dict) and self.many_per_file.get(
-            label, False):
-            many_per_file = True
-        else:
-            many_per_file = self.many_per_file
+        self.loaded = False
+        name = self.find_name_match(names, path)
 
         # Only one structure per file
-        if not many_per_file:
+        if not multi:
             struct = StructImage(path, label=label, name=name, load=False, 
                                  **self.struct_kwargs)
-            color = self.find_settings_match(colors, struct.name)
+            color = self.find_color_match(colors, struct.name)
             if color is not None:
                 struct.assign_color(color)
             self.structs.append(struct)
@@ -2501,7 +2506,7 @@ class StructLoader:
         if len(mask_labels) < 2:
             struct = StructImage(path, label=label, name=name, load=False, 
                                  **self.struct_kwargs)
-            color = self.find_settings_match(colors, struct.name)
+            color = self.find_color_match(colors, struct.name)
             if color is not None:
                 struct.assign_color(color)
             self.structs.append(struct)
@@ -2510,10 +2515,10 @@ class StructLoader:
         # Load multiple massk
         for ml in mask_labels:
 
-            name = self.find_settings_match(names, ml)
+            name = self.find_name_match(names, ml)
             if name is None:
                 name = f"Structure {ml}"
-            color = self.find_settings_match(colors, name)
+            color = self.find_color_match(colors, name)
 
             struct = StructImage(data == ml, name=name, label=label, 
                                  color=color, **kwargs)
@@ -2527,8 +2532,8 @@ class StructLoader:
         for pair in structs:
             s_pair = []
             for path in pair:
-                name = self.find_settings_match(names, path)
-                color = self.find_settings_match(colors, name)
+                name = self.find_name_match(names, path)
+                color = self.find_color_match(colors, name)
                 s_pair.append(StructImage(path, name=name, color=color, 
                                           load=False, **self.struct_kwargs))
 

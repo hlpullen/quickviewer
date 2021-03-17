@@ -178,3 +178,10 @@ def get_config():
     config = configparser.ConfigParser()
     config.read(user_settings)
     return config
+
+
+def is_nested(d):
+    """Check whether a dict <d> has further dicts nested inside."""
+
+    return all([isinstance(val, dict) for val in d.values()])
+
