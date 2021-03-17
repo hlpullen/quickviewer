@@ -1816,7 +1816,7 @@ class ImageViewer():
 
         # Disable irrelevant sliders
         self.ui_struct_opacity.disabled = self.struct_plot_type \
-                in ["contour", "none"]
+                in ["contour", "none", "contour + centroid"]
         self.ui_struct_linewidth.disabled = self.struct_plot_type \
                 in ["mask", "none"]
 

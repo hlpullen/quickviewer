@@ -27,7 +27,8 @@ _orient = {"y-z": [1, 2, 0], "x-z": [0, 2, 1], "x-y": [1, 0, 2]}
 _n_rot = {"y-z": 2, "x-z": 2, "x-y": 1}
 _orthog = {'x-y': 'y-z', 'y-z': 'x-z', 'x-z': 'y-z'}
 _df_plot_types = ["grid", "quiver", "none"]
-_struct_plot_types = ["contour", "mask", "filled", "none"]
+_struct_plot_types = ["contour", "mask", "filled", "contour + centroid", 
+                      "none"]
 _default_figsize = 6
 _default_spacing = 30
 
@@ -1124,6 +1125,7 @@ class StructImage(NiftiImage):
         if not hasattr(self, "centroid"):
             self.centroid = {}
             centroid = ndimage.measurements.center_of_mass(self.data)
+            centroid = [centroid[1], centroid[0], centroid[2]]
             axes = ["x", "y", "z"]
             self.centroid["voxels"] = [self.idx_to_slice(c, axes[i]) 
                                        for i, c in enumerate(centroid)]
@@ -1139,6 +1141,7 @@ class StructImage(NiftiImage):
             return None, None
         self.set_slice(view, sl)
         centroid = ndimage.measurements.center_of_mass(self.current_slice)
+        centroid = [centroid[1], centroid[0]]
         x_ax, y_ax = _plot_axes[view]
         conversion = self.idx_to_slice if units == "voxels" else \
                 self.idx_to_pos
@@ -1331,6 +1334,10 @@ class StructImage(NiftiImage):
             contour_kwargs = {"linewidth": mpl_kwargs.get("linewidth", 2)}
             self.plot_contour(view, sl, pos, self.ax, contour_kwargs,
                               zoom, zoom_centre)
+        elif plot_type == "contour + centroid":
+            print("plotting contour and centroid")
+            self.plot_contour(view, sl, pos, ax, mpl_kwargs, zoom, zoom_centre,
+                              centroid=True)
 
         if show:
             plt.show()
@@ -1361,7 +1368,7 @@ class StructImage(NiftiImage):
         self.adjust_ax(view, zoom, zoom_centre)
 
     def plot_contour(self, view, sl, pos, ax, mpl_kwargs=None, zoom=None,
-                     zoom_centre=None):
+                     zoom_centre=None, centroid=True):
         """Plot structure as a contour."""
 
         self.load()
@@ -1377,6 +1384,12 @@ class StructImage(NiftiImage):
             points_x = [p[0] for p in points]
             points_y = [p[1] for p in points]
             self.ax.plot(points_x, points_y, **kwargs)
+
+        #  if centroid:
+            #  units = "voxels" if self.scale_in_mm else "mm"
+            #  x, y = self.get_centroid_2d(view, sl, units)
+            #  self.ax.plot(x, y, '+', color=self.color)
+
         self.adjust_ax(view, zoom, zoom_centre)
 
     def on_slice(self, view, sl):
