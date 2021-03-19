@@ -2268,7 +2268,7 @@ def in_notebook():
 
 
 def write_translation_to_file(
-    output_file, dx=0, dy=0, dz=0, input_file=None, overwrite=False
+    output_file, dx=None, dy=None, dz=None, input_file=None, overwrite=False
 ):
 
     """Open an existing elastix transformation file and create a new
