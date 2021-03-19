@@ -2299,8 +2299,8 @@ def write_translation_to_file(
 
         infile = open(input_file, "r")
 
-        # Reverse directions of deltas for consistency with elastix
-        delta = {ax: -d for ax, d in delta.items()}
+        #  # Reverse directions of deltas for consistency with elastix
+        #  delta = {ax: -d for ax, d in delta.items()}
 
         # Create output text
         out_text = ""
