@@ -6,6 +6,7 @@ import ipywidgets as ipyw
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib as mpl
+import pandas as pd
 
 from quickviewer.core import to_inches, check_settings_file
 from quickviewer.image import MultiImage, OrthogonalImage, ChequerboardImage, \
@@ -1533,7 +1534,7 @@ class ImageViewer():
         if not shared_ui:
 
             # Mask checkbox
-            self.ui_mask = ipyw.Checkbox(value=self.im.has_mask,
+            self.ui_mask = ipyw.Checkbox(value=self.im.has_mask, indent=False,
                                          description="Apply mask")
             if self.im.has_mask:
                 self.extra_ui.append(self.ui_mask)
@@ -1678,17 +1679,19 @@ class ImageViewer():
         self.ui_struct_x = []
         self.ui_struct_y = []
         self.ui_struct_centre = []
+        self.col_names = {}
         if self.struct_info:
 
             self.ui_struct_checkboxes.append(
-                ipyw.HTML(value="<b>Structures:</b>"))
-
+                ipyw.HTML(value="&nbsp;"))
             vol_units = self.vol_units if self.vol_units != "mm" \
                 else "mm<sup>3</sup>"
+            self.col_names["volume"] = f"Volume ({vol_units})"
             self.ui_struct_vol.append(ipyw.HTML(
                 value=f"<b>Volume ({vol_units})</b>"))
             area_units = self.area_units if self.area_units != "mm" \
                 else "mm<sup>2</sup>"
+            self.col_names["area"] = f"Area ({area_units})"
             self.ui_struct_area.append(ipyw.HTML(
                 value=f"<b>Area ({area_units})</b>"))
 
@@ -1700,8 +1703,12 @@ class ImageViewer():
                 value=f"<b>Centroid{centre_units}</b>"))
 
         # Make checkbox for each structure
+        struct_info = []
         for s in self.im.structs:
-            s.checkbox = ipyw.Checkbox(value=True, description=s.name_unique)
+
+            s.checkbox = ipyw.Checkbox(value=True, indent=False)
+                                       #  description=s.name_unique,
+                                       #  indent=False)
             self.ui_struct_checkboxes.append(s.checkbox)
             if not self.struct_info:
                 self.lower_ui.append(s.checkbox)
@@ -1717,12 +1724,30 @@ class ImageViewer():
                 self.ui_struct_y.append(s.ui_y)
                 s.ui_centre = ipyw.Label()
                 self.ui_struct_centre.append(s.ui_centre)
+            
+            headers = ["volume", "area", "x", "y", "centroid_x", "centroid_y"]
+            row = {
+                "Structure": 
+                '<span style="background-color: rgb({}, {}, {})">{}</span>'.format(
+                    s.color[0] * 255, s.color[1] * 255, s.color[2] * 255,
+                    s.name_nice)}
+            row.update({h: None for h in headers})
+            struct_info.append(row)
+        
         self.visible_structs = self.get_struct_visibility()
+        self.df_struct_info = pd.DataFrame(struct_info)
+        self.ui_table = ipyw.HTML()
+        self.ui_struct_info_table = ipyw.HBox([
+            ipyw.VBox(self.ui_struct_checkboxes, 
+                      layout=ipyw.Layout(width="30px")),
+            self.ui_table,
+        ])
 
         if self.struct_info:
             self.update_struct_info()
             self.lower_ui.append(ipyw.HBox([
                 ipyw.VBox(self.ui_struct_checkboxes),
+                          #  layout=ipyw.Layout(width="100px")),
                 ipyw.VBox(self.ui_struct_vol,
                           layout=ipyw.Layout(align_items="center")),
                 ipyw.VBox(self.ui_struct_area, layout=layout),
@@ -1784,7 +1809,7 @@ class ImageViewer():
         fmt = "{:.1f}" if self.length_units == "mm" else "{:.0f}"
         area_fmt = "{:.1f}" if self.area_units == "mm" else "{:.0f}"
         centre_fmt = "{:.1f}" if self.im.scale_in_mm else "{:.0f}"
-        for s in self.im.structs:
+        for i, s in enumerate(self.im.structs):
 
             # Get area
             area = s.get_area(self.view, self.slice[self.view],
@@ -1810,6 +1835,41 @@ class ImageViewer():
             centre_str = f"({centre_fmt}, {centre_fmt})"
             s.ui_centre.value = centre_str.format(*centre) if centre[0] is \
                     not None else "—"
+
+            # Update dataframe
+            self.df_struct_info["volume"].iloc[i] = s.get_volume(self.vol_units)
+            self.df_struct_info["area"].iloc[i] = area
+            self.df_struct_info["x"].iloc[i] = extents[0]
+            self.df_struct_info["y"].iloc[i] = extents[1]
+            self.df_struct_info["centroid_x"].iloc[i] = centre[0]
+            self.df_struct_info["centroid_y"].iloc[i] = centre[1]
+
+        # Update structure dataframe and UI
+        x_ax, y_ax = _plot_axes[self.view]
+        centroid_units = " (mm)" if self.im.scale_in_mm else ""
+        self.col_names.update({
+            "x": f"{x_ax} length ({self.length_units})",
+            "y": f"{y_ax} length ({self.length_units})",
+            "centroid_x": f"{x_ax} centroid{centroid_units}",
+            "centroid_y": f"{y_ax} centroid{centroid_units}",
+        })
+        html = self.df_struct_info.rename(self.col_names, axis=1).fillna("—").\
+                to_html(index=False,
+                        float_format=lambda x: f"{x:.1f}")
+        header = """
+            <head>
+                <style>
+                    th, td {
+                        padding: 2px 10px;
+                    }
+                    th {
+                        background-color: rgb(225, 225, 225);
+                    }
+                </style>
+            </head>
+        """
+        table_html = (header + html).replace("&gt;", ">").replace("&lt;", "<")
+        self.ui_table.value = table_html
 
     def update_struct_sliders(self):
         """Update struct sliders depending on current plot type."""
@@ -2073,13 +2133,15 @@ class ImageViewer():
     def show_in_notebook(self, show):
         """Display interactive output in a jupyter notebook."""
 
-        from IPython.display import display
+        from IPython.display import display, HTML
         ui_kw = {str(np.random.rand()): ui for ui in self.all_ui if
                  hasattr(ui, "value")}
         self.out = ipyw.interactive_output(self.plot, ui_kw)
         to_display = [self.upper_ui_box, self.out]
         if len(self.lower_ui):
             to_display.append(self.lower_ui_box)
+        for v in self.viewer:
+            to_display.append(v.ui_struct_info_table)
         if show:
             display(*to_display)
 
