@@ -1697,7 +1697,7 @@ class ImageViewer():
 
             centre_units = " (mm)" if self.im.scale_in_mm else ""
             self.ui_struct_centre.append(ipyw.HTML(
-                value=f"<b>Centre{centre_units}</b>"))
+                value=f"<b>Centroid{centre_units}</b>"))
 
         # Make checkbox for each structure
         for s in self.im.structs:
@@ -1804,7 +1804,9 @@ class ImageViewer():
             s.ui_y.value = extent_strs[1]
 
             # Get centre
-            centre = s.get_centre(self.view, self.slice[self.view])
+            centre_units = "mm" if self.im.scale_in_mm else "voxels"
+            centre = s.get_centroid_2d(self.view, self.slice[self.view],
+                                       centre_units)
             centre_str = f"({centre_fmt}, {centre_fmt})"
             s.ui_centre.value = centre_str.format(*centre) if centre[0] is \
                     not None else "—"

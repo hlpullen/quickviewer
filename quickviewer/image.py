@@ -1464,7 +1464,7 @@ class StructImage(NiftiImage):
         non_zero = np.argwhere(self.current_slice)
         x_ax, y_ax = _plot_axes[view]
         if len(non_zero):
-            y, x = non_zero.mean(0)
+            y, x = (non_zero.max(0) + non_zero.min(0)) / 2
             convert = self.idx_to_pos if self.scale_in_mm \
                 else self.idx_to_slice
             if y_ax == "y":
