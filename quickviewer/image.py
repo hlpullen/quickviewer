@@ -14,7 +14,6 @@ import skimage.measure
 import matplotlib.patches as mpatches
 from timeit import default_timer as timer
 import json
-from scipy import ndimage
 
 from quickviewer import core
 
@@ -1108,6 +1107,8 @@ class StructImage(NiftiImage):
 
         self.loaded = True
 
+        print("centroid:", self.get_centroid("mm"))
+
     def __lt__(self, other):
         """Compare structures by name."""
 
@@ -1134,8 +1135,8 @@ class StructImage(NiftiImage):
 
         if not hasattr(self, "centroid"):
             self.centroid = {}
-            cy, cx, cz = ndimage.measurements.center_of_mass(self.data)
-            cy = self.n_voxels["y"] - 1 - cy
+            non_zero = np.argwhere(self.data)
+            cx, cy, cz = non_zero.mean(0)
             centroid = [cx, cy, cz]
             axes = ["x", "y", "z"]
             self.centroid["voxels"] = [self.idx_to_slice(c, axes[i]) 
@@ -1151,7 +1152,8 @@ class StructImage(NiftiImage):
         if not self.on_slice(view, sl):
             return None, None
         self.set_slice(view, sl)
-        cy, cx = ndimage.measurements.center_of_mass(self.current_slice)
+        non_zero = np.argwhere(self.current_slice)
+        cy, cx = non_zero.mean(0)
         x_ax, y_ax = _plot_axes[view]
         conversion = self.idx_to_slice if units == "voxels" else \
                 self.idx_to_pos
