@@ -347,6 +347,8 @@ class NiftiImage:
     def idx_to_pos(self, idx, ax):
         """Convert an index to a position in mm along a given axis."""
 
+        #  if ax == "y":
+            #  idx = self.n_voxels[ax] - 1 - idx
         if ax != "z":
             return self.origin[ax] \
                     + (self.n_voxels[ax] - 1 - idx) * self.voxel_sizes[ax]
@@ -362,6 +364,9 @@ class NiftiImage:
         else:
             idx = round((pos - self.origin[ax]) / self.voxel_sizes[ax])
 
+        #  if ax == "y":
+            #  idx = self.n_voxels[ax] - 1 - idx
+
         if idx < 0 or idx >= self.n_voxels[ax]:
             if idx < 0:
                 idx = 0
@@ -375,7 +380,9 @@ class NiftiImage:
     def idx_to_slice(self, idx, ax):
         """Convert an index to a slice number along a given axis."""
 
-        if self.voxel_sizes[ax] < 0:
+        #  if ax == "y":
+            #  idx = self.n_voxels[ax] - 1 - idx
+        if ax == "x":
             return idx + 1
         else:
             return self.n_voxels[ax] - idx
@@ -383,10 +390,13 @@ class NiftiImage:
     def slice_to_idx(self, sl, ax):
         """Convert a slice number to an index along a given axis."""
 
-        if self.voxel_sizes[ax] < 0:
+        if ax == "x":
             idx = sl - 1
         else:
             idx = self.n_voxels[ax] - sl
+
+        #  if ax == "y":
+            #  idx = self.n_voxels[ax] - 1 - idx
 
         if idx < 0 or idx >= self.n_voxels[ax]:
             if idx < 0:
@@ -1125,7 +1135,8 @@ class StructImage(NiftiImage):
         if not hasattr(self, "centroid"):
             self.centroid = {}
             cy, cx, cz = ndimage.measurements.center_of_mass(self.data)
-            centroid = [centroid[1], centroid[0], centroid[2]]
+            cy = self.n_voxels["y"] - 1 - cy
+            centroid = [cx, cy, cz]
             axes = ["x", "y", "z"]
             self.centroid["voxels"] = [self.idx_to_slice(c, axes[i]) 
                                        for i, c in enumerate(centroid)]
@@ -1145,7 +1156,7 @@ class StructImage(NiftiImage):
         conversion = self.idx_to_slice if units == "voxels" else \
                 self.idx_to_pos
         if y_ax == "y":
-            cy = self.n_voxels["y"] - cy
+            cy = self.n_voxels[y_ax] - 1 - cy
         return (conversion(cx, x_ax), 
                 conversion(cy, y_ax))
 
@@ -1203,6 +1214,8 @@ class StructImage(NiftiImage):
                 vals = nonzero[:, n]
                 if len(vals):
                     mid_idx = np.mean(vals)
+                    if ax == "y":
+                        mid_idx = self.n_voxels[ax] - 1 - mid_idx
                     self.centre["voxels"].append(
                         self.idx_to_slice(mid_idx, ax))
                     self.centre["mm"].append(
@@ -1452,10 +1465,10 @@ class StructImage(NiftiImage):
         x_ax, y_ax = _plot_axes[view]
         if len(non_zero):
             y, x = non_zero.mean(0)
-            if y_ax == "y":
-                y = self.n_voxels["y"] - y
             convert = self.idx_to_pos if self.scale_in_mm \
                 else self.idx_to_slice
+            if y_ax == "y":
+                y = self.n_voxels[y_ax] - 1 - y
             return [convert(x, x_ax), convert(y, y_ax)]
         else:
             return [0, 0]
