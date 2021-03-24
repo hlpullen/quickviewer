@@ -26,7 +26,8 @@ _orient = {"y-z": [1, 2, 0], "x-z": [0, 2, 1], "x-y": [1, 0, 2]}
 _n_rot = {"y-z": 2, "x-z": 2, "x-y": 1}
 _orthog = {'x-y': 'y-z', 'y-z': 'x-z', 'x-z': 'y-z'}
 _df_plot_types = ["grid", "quiver", "none"]
-_struct_plot_types = ["contour", "mask", "filled", "centroid", "none"]
+_struct_plot_types = ["contour", "mask", "filled", "centroid", 
+                      "filled centroid", "none"]
 _default_figsize = 6
 _default_spacing = 30
 
@@ -1107,8 +1108,6 @@ class StructImage(NiftiImage):
 
         self.loaded = True
 
-        print("centroid:", self.get_centroid("mm"))
-
     def __lt__(self, other):
         """Compare structures by name."""
 
@@ -1341,22 +1340,30 @@ class StructImage(NiftiImage):
             return
 
         mpl_kwargs = {} if mpl_kwargs is None else mpl_kwargs
+        linewidth = mpl_kwargs.get("linewidth", 2)
+        contour_kwargs = {"linewidth": linewidth}
+        centroid = "centroid" in plot_type
+        if centroid:
+            contour_kwargs["markersize"] = mpl_kwargs.get(
+                "markersize", 7 * np.sqrt(linewidth))
+            contour_kwargs["markeredgewidth"] = mpl_kwargs.get(
+                "markeredgewidth", np.sqrt(linewidth))
 
         # Make plot
         if plot_type in ["contour", "centroid"]:
-            centroid = plot_type == "centroid"
-            self.plot_contour(view, sl, pos, ax, mpl_kwargs, zoom, zoom_centre,
-                              no_title=no_title, centroid=centroid)
+            self.plot_contour(view, sl, pos, ax, contour_kwargs, zoom, 
+                              zoom_centre, no_title=no_title, 
+                              centroid=centroid)
         elif plot_type == "mask":
             self.plot_mask(view, sl, pos, ax, mpl_kwargs, zoom, zoom_centre,
                            no_title=no_title)
-        elif plot_type == "filled":
+        elif plot_type in ["filled", "filled centroid"]:
             mask_kwargs = {"alpha": mpl_kwargs.get("alpha", 0.3)}
             self.plot_mask(view, sl, pos, ax, mask_kwargs, zoom, zoom_centre,
                            no_title=no_title)
-            contour_kwargs = {"linewidth": mpl_kwargs.get("linewidth", 2)}
             self.plot_contour(view, sl, pos, self.ax, contour_kwargs,
-                              zoom, zoom_centre, no_title=no_title)
+                              zoom, zoom_centre, no_title=no_title,
+                              centroid=centroid)
 
         if show:
             plt.show()
@@ -1974,6 +1981,8 @@ class OrthogonalImage(MultiImage):
             plot_type = struct_plot_type
             if plot_type == "centroid":
                 plot_type = "contour"
+            elif plot_type == "filled centroid":
+                plot_type = "filled"
             struct.plot(orthog_view, sl=orthog_sl, ax=self.orthog_ax, 
                         mpl_kwargs=struct_kwargs, plot_type=plot_type,
                         no_title=True)
@@ -2242,22 +2251,30 @@ class StructComparison:
             return
 
         # Make plot
+        linewidth = mpl_kwargs.get("linewidth", 2)
+        contour_kwargs = {"linewidth": linewidth}
+        centroid = "centroid" in plot_type
+        if centroid:
+            contour_kwargs["markersize"] = mpl_kwargs.get(
+                "markersize", 7 * np.sqrt(linewidth))
+            contour_kwargs["markeredgewidth"] = mpl_kwargs.get(
+                "markeredgewidth", np.sqrt(linewidth))
+
         if plot_type in ["contour", "centroid"]:
-            centroid = plot_type == "centroid"
-            self.s1.plot_contour(view, sl, pos, ax, mpl_kwargs, zoom, 
+            centroid = plot_type != "contour"
+            self.s1.plot_contour(view, sl, pos, ax, contour_kwargs, zoom, 
                                  zoom_centre, centroid=centroid)
-            self.s2.plot_contour(view, sl, pos, self.s1.ax, mpl_kwargs, zoom, 
-                                 zoom_centre, centroid=centroid)
+            self.s2.plot_contour(view, sl, pos, self.s1.ax, contour_kwargs, 
+                                 zoom, zoom_centre, centroid=centroid)
         elif plot_type == "mask":
             self.plot_mask(view, sl, pos, ax, mpl_kwargs, zoom, zoom_centre)
-        elif plot_type == "filled":
+        elif plot_type in ["filled", "filled centroid"]:
             mask_kwargs = {"alpha": mpl_kwargs.get("alpha", 0.3)}
             self.plot_mask(view, sl, pos, ax, mask_kwargs, zoom, zoom_centre)
-            contour_kwargs = {"linewidth": mpl_kwargs.get("linewidth", 2)}
             self.s1.plot_contour(view, sl, pos, self.s1.ax, contour_kwargs, 
-                                 zoom, zoom_centre)
+                                 zoom, zoom_centre, centroid=centroid)
             self.s2.plot_contour(view, sl, pos, self.s1.ax, contour_kwargs, 
-                                 zoom, zoom_centre)
+                                 zoom, zoom_centre, centroid=centroid)
 
         if show:
             plt.show()
