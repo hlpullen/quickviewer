@@ -366,7 +366,7 @@ class NiftiImage:
             if idx < 0:
                 idx = 0
             if idx >= self.n_voxels[ax]:
-                idx = self.n_voxels[ax] -1
+                idx = self.n_voxels[ax] - 1
             #  print(f"Warning: position {pos} outside valid range. Will "
                   #  f"plot slice at {self.idx_to_pos(idx, ax):.1f}")
 
@@ -1600,7 +1600,8 @@ class MultiImage(NiftiImage):
             self.standalone_structs = []
             return
 
-        loader = StructLoader(structs, multi_structs, names, colors)
+        loader = StructLoader(structs, multi_structs, names, colors,
+                              struct_kwargs={"scale_in_mm": self.scale_in_mm})
         self.structs = loader.get_structs(ignore_unpaired, ignore_empty)
 
         if compare_structs:
@@ -1967,11 +1968,11 @@ class OrthogonalImage(MultiImage):
             sl, _slider_axes[view])
         if view == "x-y":
             full_y = self.extent[orthog_view][2:] if self.scale_in_mm else \
-                [0, self.n_voxels[_plot_axes[orthog_view][1]] - 1]
+                [0.5, self.n_voxels[_plot_axes[orthog_view][1]] + 0.5]
             self.orthog_ax.plot([pos, pos], full_y, 'r')
         else:
             full_x = self.extent[orthog_view][:2] if self.scale_in_mm else \
-                [0, self.n_voxels[_plot_axes[orthog_view][0]] - 1]
+                [0.5, self.n_voxels[_plot_axes[orthog_view][0]] + 0.5]
             self.orthog_ax.plot(full_x, [pos, pos], 'r')
 
         if show:

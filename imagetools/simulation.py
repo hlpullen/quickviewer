@@ -8,6 +8,10 @@ import numpy as np
 import nibabel
 import logging
 
+from quickviewer.image import NiftiImage, _axes
+from quickviewer.core import make_three
+
+
 class GeometricNifti():
     """Class for creating a NIfTI file containing synthetic image data."""
 
@@ -51,10 +55,18 @@ class GeometricNifti():
         ])
         self.data = self.make_data(noise_range)
 
+        # Mak NiftiImage object
+        self.im = NiftiImage(self.data, self.affine)
+
         # Write to file if a filename is given
         if filename is not None:
             self.filename = os.path.expanduser(filename)
             self.write()
+
+    def get_data(self):
+        """Get data in orientation consistent with dcm2nii."""
+
+        return self.data[:, ::-1, :]
 
     def write(self, filename=None):
         """Write to a NIfTI file.
@@ -77,16 +89,14 @@ class GeometricNifti():
                                    "or write()!")
 
         # Write to file
-        self.nii = nibabel.Nifti1Image(self.data, self.affine)
+        self.nii = nibabel.Nifti1Image(self.get_data(), self.affine)
         self.nii.to_filename(os.path.expanduser(filename))
         print(f"Wrote NIfTI image to file {filename}")
 
     def get_image_centre(self):
         """Get coordinates (in voxels) of the centre of the image."""
 
-        return (float(self.shape[0] / 2), 
-                float(self.shape[1] / 2), 
-                float(self.shape[2] / 2))
+        return [float(self.shape[i] - 1) / 2 for i in range(3)]
 
     def make_data(self, noise_range=None):
         """Make blank image array or noisy array."""
@@ -104,17 +114,15 @@ class GeometricNifti():
         Parameters
         ----------
         side_length : float or tuple
-            Length of the sides of the cuboid. If a float is given, a cube
-            will be created.
+            Length of the sides of the cuboid in voxels. If a single value is 
+            given, a cube will be created.
 
         centre : tuple, default=None
-            Coordinates (in voxels) of the centre of the cuboid. If None,
-            the cuboid will be placed at the centre of the image.
+            Coordinates (in array indices) of the centre of the cuboid. If 
+            None, the cuboid will be placed at the centre of the image.
         """
 
         # Set shape parameters
-        side_lengths = side_length if isinstance(side_length, tuple) \
-                else (side_length, side_length, side_length)
         cuboid_centre = centre if centre is not None \
                 else self.get_image_centre()
 
@@ -123,7 +131,7 @@ class GeometricNifti():
         indices = np.indices(self.shape)
         for i in range(3):
             distance_to_centre = abs(indices[i] - cuboid_centre[i])
-            data *= distance_to_centre <= side_lengths[i] / 2.0
+            data *= distance_to_centre <= side_length[i] / 2.0
         return data
 
     def make_sphere_data(self, radius, centre=None):
@@ -231,9 +239,21 @@ class GeometricNifti():
         # Add the data
         self.data += intensity * data_to_add
 
-    def add_cuboid(self, side_length, centre=None, intensity=1.0, above=True):
+    def add_cuboid(self, side_length, centre=None, intensity=1.0, above=True,
+                   scale_in_mm=True):
         """Add a cuboid to the image array."""
 
+        # Convert side length and centre to indices
+        if scale_in_mm:
+            if centre is not None:
+                centre = [self.im.pos_to_idx(c, ax) for c, ax in 
+                          zip(centre, _axes)]
+                centre[1] = self.im.n_voxels["y"] - 1 - centre[1]
+            side_length = make_three(side_length)
+            side_length = [abs(sl / self.voxel_sizes[i]) for i, sl in 
+                           enumerate(side_length)]
+
+        # Create cuboid
         self.add_data(self.make_cuboid_data(side_length, centre), intensity, 
                       above)
 

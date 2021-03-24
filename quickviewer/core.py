@@ -185,3 +185,11 @@ def is_nested(d):
 
     return all([isinstance(val, dict) for val in d.values()])
 
+
+def make_three(var):
+    """Ensure a variable is a tuple with 3 entries."""
+    
+    if is_list(var):
+        return var
+
+    return [var, var, var]
