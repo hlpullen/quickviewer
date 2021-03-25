@@ -2343,7 +2343,7 @@ class StructComparison:
         slice."""
 
         cx1, cy1 = self.s1.get_centroid_2d(view, sl, units)
-        cx2, cy2 = self.s1.get_centroid_2d(view, sl, units)
+        cx2, cy2 = self.s2.get_centroid_2d(view, sl, units)
         if cx1 is None or cx2 is None:
             return None, None
         return cx1 - cx2, cy1 - cy2

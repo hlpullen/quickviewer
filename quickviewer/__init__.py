@@ -1279,7 +1279,7 @@ class ImageViewer():
         if struct_opacity is not None:
             if struct_plot_type == "mask":
                 self.struct_mask_opacity = struct_opacity
-            elif struct_plot_type == "filled":
+            elif struct_plot_type in ["filled", "filled centroid"]:
                 self.struct_filled_opacity = struct_opacity
         self.struct_linewidth = struct_linewidth
         self.struct_legend = struct_legend
@@ -1865,7 +1865,7 @@ class ImageViewer():
         # Set opacity of masked or filled structs
         if self.struct_plot_type == "mask":
             self.ui_struct_opacity.value = self.struct_mask_opacity
-        elif self.struct_plot_type == "filled":
+        elif self.struct_plot_type in ["filled", "filled centroid"]:
             self.ui_struct_opacity.value = self.struct_filled_opacity
 
     def set_callbacks(self):
