@@ -13,7 +13,6 @@ import re
 import skimage.measure
 import matplotlib.patches as mpatches
 from timeit import default_timer as timer
-import json
 
 from quickviewer import core
 
@@ -1143,7 +1142,7 @@ class StructImage(NiftiImage):
             self.centroid["mm"] = [self.idx_to_pos(c, axes[i]) 
                                    for i, c in enumerate(centroid)]
 
-        return self.centroid[units]
+        return np.array(self.centroid[units])
 
     def get_centroid_2d(self, view, sl, units="voxels"):
         """Get the centroid position on a 2D slice."""
@@ -2211,6 +2210,11 @@ class StructComparison:
                 else StructImage(s, **kwargs)
             setattr(self, f"s{i + 1}", s)
 
+        mean_sq_col = (
+            np.array(self.s1.color) ** 2 
+            + np.array(self.s2.color) ** 2) / 2
+        self.color = np.sqrt(mean_sq_col)
+
     def is_valid(self):
         """Check both structures are valid and in same reference frame."""
 
@@ -2291,14 +2295,10 @@ class StructComparison:
         diff1 = self.s1.current_slice & ~self.s2.current_slice
         diff2 = self.s2.current_slice & ~self.s1.current_slice
         overlap = self.s1.current_slice & self.s2.current_slice
-        mean_sq_col = (
-            np.array(self.s1.color) ** 2 
-            + np.array(self.s2.color) ** 2) / 2
-        mean_col = np.sqrt(mean_sq_col)
         to_plot = [
             (diff1, self.s1.color),
             (diff2, self.s2.color),
-            (overlap, mean_col)
+            (overlap, self.color)
         ]
 
         for im, color in to_plot:
@@ -2327,6 +2327,27 @@ class StructComparison:
             return False
         return self.s1.on_slice(view, sl) and self.s2.on_slice(view, sl)
 
+    def centroid_distance(self, units="voxels"):
+        """Get total centroid distance."""
+
+        if not hasattr(self, "centroid_dist"):
+            self.centroid_dist = {
+                units: np.linalg.norm(self.s1.get_centroid(units) 
+                                      - self.s2.get_centroid(units)) 
+                for units in ["mm", "voxels"]}
+
+        return self.centroid_dist[units]
+
+    def centroid_distance_2d(self, view, sl, units="voxels"):
+        """Get distances between centroid in x, y directions for current "
+        slice."""
+
+        cx1, cy1 = self.s1.get_centroid_2d(view, sl, units)
+        cx2, cy2 = self.s1.get_centroid_2d(view, sl, units)
+        if cx1 is None or cx2 is None:
+            return None, None
+        return cx1 - cx2, cy1 - cy2
+
     def dice_score(self, view, sl):
         """Get dice score on a given slice."""
 
@@ -2337,6 +2358,15 @@ class StructComparison:
         slice1 = self.s1.current_slice
         slice2 = self.s2.current_slice
         return (slice1 & slice2).sum() / np.mean([slice1.sum(), slice2.sum()])
+
+    def global_dice_score(self):
+        """Global dice score for entire structures."""
+
+        if not hasattr(self, "global_dice"):
+            self.global_dice = (self.s1.data & self.s2.data).sum() / \
+                    np.mean([self.s1.data.sum(), self.s2.data.sum()])
+
+        return self.global_dice
 
     def vol_ratio(self):
         """Get relative volume of the two structures."""
@@ -2351,6 +2381,15 @@ class StructComparison:
         v1 = self.s1.get_volume("voxels")
         v2 = self.s2.get_volume("voxels")
         return (v1 - v2) / v1
+
+    def relative_area(self, view, sl):
+        """Get relative structure area difference on a slice."""
+
+        a1 = self.s1.get_area(view, sl)
+        a2 = self.s2.get_area(view, sl)
+        if a1 is None or a2 is None:
+            return None
+        return (a1 - a2) / a1
 
     def area_ratio(self, view, sl):
 

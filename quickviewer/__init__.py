@@ -363,6 +363,10 @@ class QuickViewer:
             If True, the lengths and volumes of each structure will be 
             displayed below the plot.
 
+        struct_info_dp : int, default=1
+            Number of decimal places to show for floats in structure info and 
+            comparison tables.
+
         length_units : str, default=None
             Units in which to display the lengths of structures if 
             <struct_info> if True. If None, units will be voxels if 
@@ -797,11 +801,6 @@ class QuickViewer:
             # Add plot title to structure UI
             if many_with_structs and v.im.has_structs:
                 title = f"<b>{v.im.title + ':'}</b>"
-                #  if v.compare_structs:
-                    #  v.ui_struct_comp[0].value = title
-                #  elif v.struct_info:
-                    #  v.ui_struct_checkboxes[0].value = title
-                #  else:
                 self.lower_ui.append(ipyw.HTML(value=title))
 
             # Add to overall lower UI
@@ -1195,6 +1194,7 @@ class ImageViewer():
         struct_opacity=None,
         struct_linewidth=2,
         struct_info=False,
+        struct_info_dp=1,
         length_units=None,
         area_units=None,
         vol_units=None,
@@ -1290,6 +1290,7 @@ class ImageViewer():
         self.compare_structs = kwargs.get("compare_structs", False) \
                 and len(self.im.struct_comparisons)
         self.struct_info = struct_info
+        self.float_str = "{:." + str(struct_info_dp) + "f}"
         def get_units(units):
             if units is None:
                 return "mm" if self.im.scale_in_mm else "voxels"
@@ -1625,6 +1626,20 @@ class ImageViewer():
             + [self.trigger]
         )
 
+    def get_struct_html(self, struct):
+        """Get HTML string containing name and colour for a structure."""
+
+        if not struct.visible:
+            return ('<p style="color: rgb(100, 100, 100)">'
+                    f'{struct.name_unique}</p>')
+
+        red, green, blue = [c * 255 for c in struct.color[:3]]
+        text_col = "black" if (red * 0.299 + green * 0.587 + blue * 0.114) \
+                > 186 else "white"
+        return ('<p style="background-color: rgb({}, {}, {}); '
+                'color: {};">&nbsp;{}&nbsp;</p>').format(
+                    red, green, blue, text_col, struct.name_unique)
+
     def make_lower_ui(self):
 
         # Saving UI
@@ -1638,39 +1653,26 @@ class ImageViewer():
                 self.lower_ui.extend([self.save_name, self.save_button])
 
         # Structure comparison display
-        self.ui_struct_comp = []
-        x_ax, y_ax = _plot_axes[self.view]
-        comps = {
-            "dice": "Dice score",
-            "rel_vol": "Relative volume difference",
-            #  "rel_area": "Relative area",
-            #  "rel_x": "",
-            #  "rel_y": ""
+        struct_comps = []
+        centroid_units = "mm" if self.im.scale_in_mm else "voxels"
+        self.comp_col_names = {
+            "comp": "Comparison",
+            "dice": "Dice",
+            "vol": "Rel. vol. diff.",
+            "centroid": f"Centroid dist. ({centroid_units})",
+            "dice_slice": "Dice",
+            "area": "Rel. area diff.",
+            "Slice": "Slice-by-slice",
+            "Global": "Overall",
         }
-        self.ui_comp_lists = {}
-        for c in comps:
-            l = []
-            setattr(self, f"ui_struct_{c}", l)
-            self.ui_comp_lists[c] = l
-        layout = ipyw.Layout(align_items="center", padding="0px 0px 0px 50px")
-        if self.compare_structs:
+        for c in self.im.struct_comparisons:
+            row = {h: None for h in ["comp", "dice", "vol", "centroid",
+                                     "dice_slice", "area", "centroid_x",
+                                     "centroid_y"]}
+            struct_comps.append(row)
 
-            self.ui_struct_comp.append(ipyw.HTML(
-                value="<b>Structure comparison:</b>"))
-            for key, comp in self.ui_comp_lists.items():
-                comp.append(ipyw.HTML(value=f"<b>{comps[key]}</b>"))
-
-            for sc in self.im.struct_comparisons:
-                self.ui_struct_comp.append(ipyw.Label(value=sc.name))
-                for comp in self.ui_comp_lists.values():
-                    comp.append(ipyw.Label())
-
-            self.lower_ui.append(ipyw.HBox([
-                ipyw.VBox(self.ui_struct_comp),
-                *[ipyw.VBox(comp, layout=layout) for comp in 
-                  self.ui_comp_lists.values()]
-            ]))
-            self.update_struct_comparisons()
+        self.df_struct_comp = pd.DataFrame(struct_comps)
+        self.ui_struct_comp_table = ipyw.HTML()
 
         # Structure checkboxes and info table
         self.ui_struct_checkboxes = [ipyw.HTML(value="&nbsp;")]
@@ -1680,42 +1682,40 @@ class ImageViewer():
         area_units = self.area_units if self.area_units != "mm" \
             else "mm<sup>2</sup>"
         self.col_names = {
+            "struct": "Structure",
             "volume": f"Volume ({vol_units})",
             "area": f"Area ({area_units})",
         }
 
         for s in self.im.structs:
-
             s.checkbox = ipyw.Checkbox(value=True, indent=False)
             self.ui_struct_checkboxes.append(s.checkbox)
-
             if not self.struct_info:
                 self.lower_ui.append(s.checkbox)
                 s.checkbox.description = s.name_nice
             else:
-
-                red, green, blue = [c * 255 for c in s.color[:3]]
-                text_col = "black" if (red * 0.299 + green * 0.587 
-                                       + blue * 0.114) > 186 else "white"
-                struct_str = ('<span style="background-color: rgb({}, {}, {});'
-                              'color: {}">&nbsp;{}&nbsp;</span>').format(
-                                 red, green, blue, text_col, s.name_nice)
-                row = {"Structure": struct_str}
-                row.update({h: None for h in ["volume", "area", "x", "y", 
-                                              "centroid_x", "centroid_y"]})
+                row = {h: None for h in ["struct", "volume", "area", "x", 
+                                         "y", "centroid_x", "centroid_y"]}
                 struct_info.append(row)
         
         self.visible_structs = self.get_struct_visibility()
         self.df_struct_info = pd.DataFrame(struct_info)
         self.ui_struct_table = ipyw.HTML()
         self.ui_struct_info = ipyw.HBox([
+            self.ui_struct_table,
             ipyw.VBox(self.ui_struct_checkboxes, 
                       layout=ipyw.Layout(width="30px")),
-            self.ui_struct_table,
         ])
 
+        if self.compare_structs:
+            self.df_struct_comp.columns = pd.MultiIndex.from_tuples([
+                ("", "comp"), ("Global", "dice"), ("Global", "vol"),
+                ("Global", "centroid"), ("Slice", "dice_slice"), 
+                ("Slice", "area"), ("Slice", "centroid_x"), 
+                ("Slice", "centroid_y")])
+            self.update_struct_comparisons()
+            self.lower_ui.append(self.ui_struct_comp_table)
         if self.struct_info:
-
             self.update_struct_info()
             self.lower_ui.append(self.ui_struct_info)
 
@@ -1732,30 +1732,65 @@ class ImageViewer():
         if not self.compare_structs:
             return
 
-        blank = "—"
+        centroid_units = "mm" if self.im.scale_in_mm else "voxels"
+        to_drop = []
         for i, sc in enumerate(self.im.struct_comparisons):
 
-            vol = sc.relative_vol()
-            self.ui_struct_rel_vol[i + 1].value = f"{vol:.3f}"
-
-            if not sc.on_slice(self.view, self.slice[self.view]):
-                for comp in self.ui_comp_lists.values():
-                    comp[i + 1].value = blank
+            if not (sc.s1.visible and sc.s2.visible):
+                to_drop.append(i)
                 continue
 
-            dice = sc.dice_score(self.view, self.slice[self.view])
-            self.ui_struct_dice[i + 1].value = f"{dice:.3f}"
+            # Structure names
+            self.df_struct_comp.at[i, ("", "comp")] = \
+                    self.get_struct_html(sc.s1) + self.get_struct_html(sc.s2)
 
-            #  area = sc.relative_area(self.view, self.slice[self.view])
-            #  self.ui_struct_rel_area[i + 1].value = f"{area:.3f}"
+            # Global metrics
+            dice = sc.global_dice_score()
+            vol = sc.relative_vol()
+            centroid_dist = sc.centroid_distance(centroid_units)
 
-            #  x, y = sc.relative_extents(self.view, self.slice[self.view])
-            #  self.ui_struct_rel_x[i + 1].value = f"{x:.3f}"
-            #  self.ui_struct_rel_y[i + 1].value = f"{y:.3f}"
+            # Slice-by-slice metrics
+            dice_slice = sc.dice_score(self.view, self.slice[self.view])
+            area = sc.relative_area(self.view, self.slice[self.view])
+            centroid_x, centroid_y = sc.centroid_distance_2d(
+                self.view, self.slice[self.view], centroid_units)
 
-            #  x_ax, y_ax = _plot_axes[self.view]
-            #  self.ui_struct_rel_x[0].value = f"<b>Relative {x_ax} length</b>"
-            #  self.ui_struct_rel_y[0].value = f"<b>Relative {y_ax} length</b>"
+            # Fill dataframe
+            self.df_struct_comp.at[i, ("Global", "dice")] = dice
+            self.df_struct_comp.at[i, ("Global", "vol")] = vol
+            self.df_struct_comp.at[i, ("Global", "centroid")] = centroid_dist
+            self.df_struct_comp.at[i, ("Slice", "area")] = area
+            self.df_struct_comp.at[i, ("Slice", "dice_slice")] = dice_slice
+            self.df_struct_comp.at[i, ("Slice", "centroid_x")] = centroid_x
+            self.df_struct_comp.at[i, ("Slice", "centroid_y")] = centroid_y
+
+        # Convert dataframe to HTML
+        x_ax, y_ax = _plot_axes[self.view]
+        self.comp_col_names.update({
+            "centroid_x": f"{x_ax} dist. ({centroid_units})",
+            "centroid_y": f"{y_ax} dist. ({centroid_units})",
+        })
+        html = self.df_struct_comp.drop(self.df_struct_comp.index[to_drop]).\
+                rename(self.comp_col_names, axis=1).\
+                fillna("—").\
+                to_html(index=False, float_format=lambda x: 
+                        self.float_str.format(x))
+        header = """
+            <head>
+                <style>
+                    th, td {
+                        padding: 2px 10px;
+                    }
+                    th {
+                        background-color: rgb(225, 225, 225);
+                        text-align: center;
+                    }
+                </style>
+            </head>
+        """
+        table_html = (header + html).replace("&gt;", ">").\
+                replace("&lt;", "<").replace("&amp;", "&")
+        self.ui_struct_comp_table.value = table_html
                 
     def update_struct_info(self):
         """Update structure info UI to reflect current view/slice."""
@@ -1765,23 +1800,31 @@ class ImageViewer():
 
         for i, s in enumerate(self.im.structs):
 
-            # Get metrics
-            volume = s.get_volume(self.vol_units)
-            area = s.get_area(self.view, self.slice[self.view],
-                              self.area_units)
-            extents = s.get_extents(self.view, self.slice[self.view],
-                                    self.length_units)
-            centre_units = "mm" if self.im.scale_in_mm else "voxels"
-            centre = s.get_centroid_2d(self.view, self.slice[self.view],
-                                       centre_units)
+            # Structure name
+            self.df_struct_info["struct"].iloc[i] = self.get_struct_html(s)
 
-            # Update dataframe
-            self.df_struct_info["volume"].iloc[i] = volume
-            self.df_struct_info["area"].iloc[i] = area
-            self.df_struct_info["x"].iloc[i] = extents[0]
-            self.df_struct_info["y"].iloc[i] = extents[1]
-            self.df_struct_info["centroid_x"].iloc[i] = centre[0]
-            self.df_struct_info["centroid_y"].iloc[i] = centre[1]
+            if s.visible:
+
+                # Get metrics
+                volume = s.get_volume(self.vol_units)
+                area = s.get_area(self.view, self.slice[self.view],
+                                  self.area_units)
+                extents = s.get_extents(self.view, self.slice[self.view],
+                                        self.length_units)
+                centre_units = "mm" if self.im.scale_in_mm else "voxels"
+                centre = s.get_centroid_2d(self.view, self.slice[self.view],
+                                           centre_units)
+
+                # Update dataframe
+                self.df_struct_info["volume"].iloc[i] = volume
+                self.df_struct_info["area"].iloc[i] = area
+                self.df_struct_info["x"].iloc[i] = extents[0]
+                self.df_struct_info["y"].iloc[i] = extents[1]
+                self.df_struct_info["centroid_x"].iloc[i] = centre[0]
+                self.df_struct_info["centroid_y"].iloc[i] = centre[1]
+
+            else:
+                self.df_struct_info.iloc[i, 1:] = None
 
         # Convert dataframe to HTML
         x_ax, y_ax = _plot_axes[self.view]
@@ -1793,8 +1836,8 @@ class ImageViewer():
             "centroid_y": f"{y_ax} centroid{centroid_units}",
         })
         html = self.df_struct_info.rename(self.col_names, axis=1).fillna("—").\
-                to_html(index=False,
-                        float_format=lambda x: f"{x:.1f}")
+                to_html(index=False, 
+                        float_format=lambda x: self.float_str.format(x))
         header = """
             <head>
                 <style>
@@ -1803,6 +1846,7 @@ class ImageViewer():
                     }
                     th {
                         background-color: rgb(225, 225, 225);
+                        text-align: center;
                     }
                 </style>
             </head>
@@ -2150,6 +2194,15 @@ class ImageViewer():
             if self.jacobian_kwargs is not None:
                 jacobian_kwargs.update(jacobian_kwargs)
 
+        # Structure visibility
+        for s in self.im.structs:
+            s.visible = s.checkbox.value
+        vis = self.get_struct_visibility()
+        if vis != self.visible_structs:
+            self.visible_structs = vis
+            if self.im.structs_as_mask:
+                self.im.set_masks()
+
         # Get structure settings
         self.update_struct_info()
         self.update_struct_comparisons()
@@ -2166,15 +2219,6 @@ class ImageViewer():
         elif self.struct_plot_type in ["filled", "filled centroid"]:
             self.struct_filled_opacity = self.ui_struct_opacity.value
             struct_kwargs["alpha"] = self.struct_filled_opacity
-
-        # Structure visibility
-        for s in self.im.structs:
-            s.visible = s.checkbox.value
-        vis = self.get_struct_visibility()
-        if vis != self.visible_structs:
-            self.visible_structs = vis
-            if self.im.structs_as_mask:
-                self.im.set_masks()
 
         # Check whether colorbar already drawn
         colorbar = self.colorbar
