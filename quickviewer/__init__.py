@@ -1291,6 +1291,7 @@ class ImageViewer():
                 and len(self.im.struct_comparisons)
         self.struct_info = struct_info
         self.float_str = "{:." + str(struct_info_dp) + "f}"
+        self.float_fmt = lambda x: self.float_str.format(x)
         def get_units(units):
             if units is None:
                 return "mm" if self.im.scale_in_mm else "voxels"
@@ -1662,8 +1663,8 @@ class ImageViewer():
             "centroid": f"Centroid dist. ({centroid_units})",
             "dice_slice": "Dice",
             "area": "Rel. area diff.",
-            "Slice": "Slice-by-slice",
-            "Global": "Overall",
+            "slice": "Slice-by-slice",
+            "overall": "Overall",
         }
         for c in self.im.struct_comparisons:
             row = {h: None for h in ["comp", "dice", "vol", "centroid",
@@ -1675,7 +1676,8 @@ class ImageViewer():
         self.ui_struct_comp_table = ipyw.HTML()
 
         # Structure checkboxes and info table
-        self.ui_struct_checkboxes = [ipyw.HTML(value="&nbsp;")]
+        blank = ipyw.HTML(value="&nbsp;")
+        self.ui_struct_checkboxes = [blank, blank]
         struct_info = []
         vol_units = self.vol_units if self.vol_units != "mm" \
             else "mm<sup>3</sup>"
@@ -1683,8 +1685,10 @@ class ImageViewer():
             else "mm<sup>2</sup>"
         self.col_names = {
             "struct": "Structure",
-            "volume": f"Volume ({vol_units})",
+            "vol": f"Volume ({vol_units})",
             "area": f"Area ({area_units})",
+            "slice": "Slice-by-slice",
+            "overall": "Overall",
         }
 
         for s in self.im.structs:
@@ -1693,7 +1697,7 @@ class ImageViewer():
             if not self.struct_info:
                 row = {"struct": None}
             else:
-                row = {h: None for h in ["struct", "volume", "area", "x", 
+                row = {h: None for h in ["struct", "vol", "area", "x", 
                                          "y", "centroid_x", "centroid_y"]}
             struct_info.append(row)
         
@@ -1706,16 +1710,60 @@ class ImageViewer():
                       layout=ipyw.Layout(width="30px")),
         ])
 
+        # Table saving UI
+        self.ui_table_content = ipyw.Dropdown(
+            options=["All", "Overall", "Slice-by-slice"],
+            description="Metrics to save", style=_style)
+        self.ui_table_format = ipyw.Dropdown(
+            options=["tex", "csv"], description="Format", style=_style)
+        self.ui_table_opts = ipyw.VBox([self.ui_table_content,
+                                        self.ui_table_format])
+        table_saving = [self.ui_table_opts]
+        if self.struct_info:
+            self.ui_table_struct_info_name = ipyw.Text(
+                description="File:", indent=False, value="struct_info"
+            )
+            self.ui_table_struct_info_button = ipyw.Button(
+                description="Save struct info"
+            )
+            self.ui_table_struct_info_button.on_click(
+                self.save_struct_info_table)
+            table_saving.append(ipyw.VBox([
+                self.ui_table_struct_info_name,
+                self.ui_table_struct_info_button]))
+        if self.compare_structs:
+            self.ui_table_struct_comp_name = ipyw.Text(
+                description="File:", indent=False, value="struct_comparison"
+            )
+            self.ui_table_struct_comp_button = ipyw.Button(
+                description="Save comparisons", style=_style
+            )
+            self.ui_table_struct_comp_button.on_click(
+                self.save_struct_comp_table)
+            table_saving.append(ipyw.VBox([
+                self.ui_table_struct_comp_name,
+                self.ui_table_struct_comp_button]))
+        self.ui_table_saving = ipyw.HBox(table_saving)
+
+        # Add to lower UI
         if self.compare_structs:
             self.df_struct_comp.columns = pd.MultiIndex.from_tuples([
-                ("", "comp"), ("Global", "dice"), ("Global", "vol"),
-                ("Global", "centroid"), ("Slice", "dice_slice"), 
-                ("Slice", "area"), ("Slice", "centroid_x"), 
-                ("Slice", "centroid_y")])
+                ("", "comp"), ("overall", "dice"), ("overall", "vol"),
+                ("overall", "centroid"), ("slice", "dice_slice"), 
+                ("slice", "area"), ("slice", "centroid_x"), 
+                ("slice", "centroid_y")])
             self.update_struct_comparisons()
             self.lower_ui.append(self.ui_struct_comp_table)
+        if self.struct_info:
+            self.df_struct_info.columns = pd.MultiIndex.from_tuples([
+                ("", "struct"), ("overall", "vol"), ("slice", "area"),
+                ("slice", "x"), ("slice", "y"), ("slice", "centroid_x"),
+                ("slice", "centroid_y")])
         self.update_struct_info()
         self.lower_ui.append(self.ui_struct_info)
+
+        if self.compare_structs or self.struct_info:
+            self.lower_ui.append(self.ui_table_saving)
 
     def get_struct_visibility(self):
         """Get list of currently visible structures from checkboxes."""
@@ -1753,13 +1801,13 @@ class ImageViewer():
                 self.view, self.slice[self.view], centroid_units)
 
             # Fill dataframe
-            self.df_struct_comp.at[i, ("Global", "dice")] = dice
-            self.df_struct_comp.at[i, ("Global", "vol")] = vol
-            self.df_struct_comp.at[i, ("Global", "centroid")] = centroid_dist
-            self.df_struct_comp.at[i, ("Slice", "area")] = area
-            self.df_struct_comp.at[i, ("Slice", "dice_slice")] = dice_slice
-            self.df_struct_comp.at[i, ("Slice", "centroid_x")] = centroid_x
-            self.df_struct_comp.at[i, ("Slice", "centroid_y")] = centroid_y
+            self.df_struct_comp.at[i, ("overall", "dice")] = dice
+            self.df_struct_comp.at[i, ("overall", "vol")] = vol
+            self.df_struct_comp.at[i, ("overall", "centroid")] = centroid_dist
+            self.df_struct_comp.at[i, ("slice", "area")] = area
+            self.df_struct_comp.at[i, ("slice", "dice_slice")] = dice_slice
+            self.df_struct_comp.at[i, ("slice", "centroid_x")] = centroid_x
+            self.df_struct_comp.at[i, ("slice", "centroid_y")] = centroid_y
 
         # Convert dataframe to HTML
         x_ax, y_ax = _plot_axes[self.view]
@@ -1770,8 +1818,7 @@ class ImageViewer():
         html = self.df_struct_comp.drop(self.df_struct_comp.index[to_drop]).\
                 rename(self.comp_col_names, axis=1).\
                 fillna("—").\
-                to_html(index=False, float_format=lambda x: 
-                        self.float_str.format(x))
+                to_html(index=False, float_format=self.float_fmt)
         header = """
             <head>
                 <style>
@@ -1795,7 +1842,7 @@ class ImageViewer():
         for i, s in enumerate(self.im.structs):
 
             # Structure name
-            self.df_struct_info["struct"].iloc[i] = self.get_struct_html(s)
+            self.df_struct_info.at[i, ("", "struct")] = self.get_struct_html(s)
             if not self.struct_info:
                 continue
 
@@ -1812,12 +1859,12 @@ class ImageViewer():
                                            centre_units)
 
                 # Update dataframe
-                self.df_struct_info["volume"].iloc[i] = volume
-                self.df_struct_info["area"].iloc[i] = area
-                self.df_struct_info["x"].iloc[i] = extents[0]
-                self.df_struct_info["y"].iloc[i] = extents[1]
-                self.df_struct_info["centroid_x"].iloc[i] = centre[0]
-                self.df_struct_info["centroid_y"].iloc[i] = centre[1]
+                self.df_struct_info.at[i, ("overall", "vol")] = volume
+                self.df_struct_info.at[i, ("slice", "area")] = area
+                self.df_struct_info.at[i, ("slice", "x")] = extents[0]
+                self.df_struct_info.at[i, ("slice", "y")] = extents[1]
+                self.df_struct_info.at[i, ("slice", "centroid_x")] = centre[0]
+                self.df_struct_info.at[i, ("slice", "centroid_y")] = centre[1]
 
             else:
                 self.df_struct_info.iloc[i, 1:] = None
@@ -1832,8 +1879,7 @@ class ImageViewer():
             "centroid_y": f"{y_ax} centroid{centroid_units}",
         })
         html = self.df_struct_info.rename(self.col_names, axis=1).fillna("—").\
-                to_html(index=False, 
-                        float_format=lambda x: self.float_str.format(x))
+                to_html(index=False, float_format=self.float_fmt)
         header = """
             <head>
                 <style>
@@ -2275,6 +2321,70 @@ class ImageViewer():
         """Save figure to a file."""
 
         self.im.fig.savefig(self.save_name.value)
+
+    def save_struct_info_table(self, _):
+
+        df = self.df_struct_info.copy()
+        col_names = self.col_names.copy()
+        for v in ["area", "vol"]:
+            col_names[v] = col_names[v].replace("<sup>", "").\
+                    replace("</sup>", "")
+        df.rename(col_names, axis=1, inplace=True)
+
+        to_drop = []
+        for i, s in enumerate(self.im.structs):
+            if not s.visible:
+                to_drop.append(i)
+            df.iloc[i, 0] = s.name_unique
+        df.drop(to_drop, inplace=True)
+
+        self.save_table(df, self.ui_table_struct_info_name.value)
+
+    def save_struct_comp_table(self, _):
+
+        df = self.df_struct_comp.copy()
+        df.rename(self.comp_col_names, axis=1, inplace=True)
+
+        to_drop = []
+        for i, sc in enumerate(self.im.struct_comparisons):
+            if not (sc.s1.visible and sc.s2.visible):
+                to_drop.append(i)
+            df.iloc[i, 0] = sc.name
+        df.drop(to_drop, inplace=True)
+
+        self.save_table(df, self.ui_table_struct_comp_name.value)
+
+    def save_table(self, df, filename, col_names=None):
+        """Save the table inside a DataFrame."""
+
+        fmt = self.ui_table_format.value
+        content = self.ui_table_content.value
+
+        # Get subset of table to save
+        if content == "All":
+            df_to_save = df.copy()
+        else:
+            df_to_save = df[["", content]].copy()
+            df_to_save.columns = df_to_save.columns.droplevel()
+
+        # Format filename
+        if not filename.endswith(fmt):
+            filename += "." + fmt
+
+        # Save
+        if fmt == "csv": 
+            df_to_save.to_csv(filename, index=False, 
+                              float_format=self.float_str)
+        elif fmt == "tex":
+            df_to_save.fillna("--", inplace=True)
+            f = open(filename, "w")
+            tex = df_to_save.to_latex(index=False, multicolumn_format="c",
+                                      float_format=self.float_fmt)
+            tex = tex.replace("<sup>", "$^").replace("</sup>", "$")
+            f.write(tex)
+            f.close()
+
+        print("Saved table to", filename)
 
 
 class OrthogViewer(ImageViewer):
