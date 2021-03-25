@@ -13,6 +13,7 @@ import re
 import skimage.measure
 import matplotlib.patches as mpatches
 from timeit import default_timer as timer
+import matplotlib as mpl
 
 from quickviewer import core
 
@@ -247,7 +248,7 @@ class NiftiImage:
                            "vmax": 200}
         self.mask_color = "black"
 
-    def get_relative_width(self, view, zoom=None, n_colorbars=0):
+    def get_relative_width(self, view, zoom=None, n_colorbars=0, figsize=None):
         """Get width:height ratio for this plot.
 
         Parameters
@@ -262,19 +263,39 @@ class NiftiImage:
             Number of colorbars to account for in computing the plot width.
         """
 
-        # Get relative x/y length
+        # Get x and y lengths
         x_length, y_length = self.get_lengths(view)
-        width = x_length / y_length
+
+        # Account for axis labels and title
+        font = mpl.rcParams["font.size"] / 72
+        y_pad = 2 * font
+        if self.title:
+            y_pad += 1.2 * font
+        y_ax = _plot_axes[view][1]
+        max_y = np.max([abs(lim) for lim in self.lims[y_ax]])
+        max_y_digits = np.floor(np.log10(max_y))
+        minus = any([lim < 0 for lim in self.lims[y_ax]])
+        x_pad = (0.7 * max_y_digits + 1.2 * minus + 1) * font
 
         # Account for zoom
         zoom = self.get_ax_dict(zoom)
         if zoom is not None:
             x, y = _plot_axes[view]
-            width *= (zoom[y] / zoom[x])
+            y_length /= zoom[y]
+            x_length /= zoom[x]
 
         # Add extra width for colorbars
         colorbar_frac = 0.3
-        width *= 1 + n_colorbars * colorbar_frac / width
+        x_length *= 1 + (n_colorbars * colorbar_frac)
+        x_pad += 7 * font * n_colorbars
+
+        # Get width ratio
+        if figsize is None:
+            figsize = _default_figsize
+        total_y = figsize + y_pad
+        total_x = figsize * x_length / y_length + x_pad
+        width = total_x / total_y
+
         return width
 
     def set_ax(self, view, ax=None, gs=None, figsize=None, zoom=None, 
@@ -322,7 +343,7 @@ class NiftiImage:
             return
 
         # Get relative width
-        rel_width = self.get_relative_width(view, zoom, n_colorbars)
+        rel_width = self.get_relative_width(view, zoom, n_colorbars, figsize)
 
         # Create new figure and axes
         figsize = _default_figsize if figsize is None else figsize
@@ -1700,11 +1721,12 @@ class MultiImage(NiftiImage):
 
         return colorbar * (1 + self.has_dose + self.has_jacobian)
 
-    def get_relative_width(self, view, zoom=None, colorbar=False):
+    def get_relative_width(self, view, zoom=None, colorbar=False, 
+                           figsize=None):
         """Get the relative width for this plot, including all colorbars."""
 
         return NiftiImage.get_relative_width(
-            self, view, zoom, self.get_n_colorbars(colorbar))
+            self, view, zoom, self.get_n_colorbars(colorbar), figsize)
 
     def plot(
         self,
@@ -1898,12 +1920,15 @@ class OrthogonalImage(MultiImage):
         self.orthog_slices = {ax: int(self.n_voxels[ax] / 2)
                               for ax in _axes}
 
-    def get_relative_width(self, view, zoom=None, colorbar=False):
+    def get_relative_width(self, view, zoom=None, colorbar=False, 
+                           figsize=None):
         """Get width:height ratio for the full plot (main plot + orthogonal
         view)."""
 
-        width_own = MultiImage.get_relative_width(self, view, zoom, colorbar)
-        width_orthog = MultiImage.get_relative_width(self, _orthog[view])
+        width_own = MultiImage.get_relative_width(self, view, zoom, colorbar,
+                                                  figsize)
+        width_orthog = MultiImage.get_relative_width(self, _orthog[view],
+                                                     figsize)
         return width_own + width_orthog
 
     def set_axes(self, view, ax=None, gs=None, figsize=None, zoom=None,
@@ -1918,8 +1943,8 @@ class OrthogonalImage(MultiImage):
             self.ax = ax
 
         width_ratios = [
-            MultiImage.get_relative_width(self, view, zoom, colorbar),
-            MultiImage.get_relative_width(self, _orthog[view])
+            MultiImage.get_relative_width(self, view, zoom, colorbar, figsize),
+            MultiImage.get_relative_width(self, _orthog[view], figsize)
         ]
         if gs is None:
             figsize = _default_figsize if figsize is None else figsize
@@ -2033,7 +2058,7 @@ class ComparisonImage(NiftiImage):
         self.title = title
         self.gs = None
 
-    def get_relative_width(self, view, n_colorbars=0):
+    def get_relative_width(self, view, n_colorbars=0, figsize=None):
         """Get relative width of widest of the two images."""
         
         height = max([im.get_lengths(view)[1] for im in self.ims])
