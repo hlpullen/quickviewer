@@ -803,7 +803,7 @@ class QuickViewer:
             # Add plot title to structure UI
             if many_with_structs and v.im.has_structs:
                 if not hasattr(v.im, "title") or not v.im.title:
-                    title = f"<b>Image {i}</b>"
+                    title = f"<b>Image {i + 1}</b>"
                 else:
                     title = f"<b>{v.im.title + ':'}</b>"
                 self.lower_ui.append(ipyw.HTML(value=title))
