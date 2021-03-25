@@ -717,6 +717,8 @@ class QuickViewer:
         # Make UI for other images
         for v in self.viewer[1:]:
             v.make_ui(vimage=v0, share_slider=share_slider)
+            v0.structs_for_jump.update(v.structs_for_jump)
+        v0.ui_struct_jump.options = list(v0.structs_for_jump.keys())
 
         # Make UI for each image (= unique HU/slice sliders and struct jump)
         self.per_image_ui = []
@@ -796,11 +798,14 @@ class QuickViewer:
         # Structure UI
         many_with_structs = sum([v.im.has_structs for v in self.viewer]) > 1
         self.ui_struct_checkboxes = []
-        for v in self.viewer:
+        for i, v in enumerate(self.viewer):
 
             # Add plot title to structure UI
             if many_with_structs and v.im.has_structs:
-                title = f"<b>{v.im.title + ':'}</b>"
+                if not hasattr(v.im, "title") or not v.im.title:
+                    title = f"<b>Image {i}</b>"
+                else:
+                    title = f"<b>{v.im.title + ':'}</b>"
                 self.lower_ui.append(ipyw.HTML(value=title))
 
             # Add to overall lower UI
@@ -1677,7 +1682,8 @@ class ImageViewer():
 
         # Structure checkboxes and info table
         blank = ipyw.HTML(value="&nbsp;")
-        self.ui_struct_checkboxes = [blank, blank]
+        self.ui_struct_checkboxes = [blank, blank] if self.struct_info \
+                else [blank]
         struct_info = []
         vol_units = self.vol_units if self.vol_units != "mm" \
             else "mm<sup>3</sup>"
@@ -1768,7 +1774,8 @@ class ImageViewer():
     def get_struct_visibility(self):
         """Get list of currently visible structures from checkboxes."""
 
-        return [s.name_unique for s in self.im.structs if s.checkbox.value]
+        return [name for name, s in self.structs_for_jump.items()
+                if hasattr(s, "checkbox") and s.checkbox.value]
 
     def update_struct_comparisons(self):
         """Update structure comparison metrics to reflect the current 
@@ -1842,9 +1849,11 @@ class ImageViewer():
         for i, s in enumerate(self.im.structs):
 
             # Structure name
-            self.df_struct_info.at[i, ("", "struct")] = self.get_struct_html(s)
             if not self.struct_info:
+                self.df_struct_info.at[i, "struct"] = self.get_struct_html(s)
                 continue
+
+            self.df_struct_info.at[i, ("", "struct")] = self.get_struct_html(s)
 
             if s.visible:
 
@@ -2251,7 +2260,7 @@ class ImageViewer():
         self.update_struct_comparisons()
         struct_kwargs = {}
         if self.ui_struct_plot_type.value != self.struct_plot_type:
-            self.update_struct_slider()
+            self.update_struct_sliders()
         if self.struct_plot_type in ["contour", "filled", "centroid", 
                                      "filled centroid"]:
             self.struct_linewidth = self.ui_struct_linewidth.value
