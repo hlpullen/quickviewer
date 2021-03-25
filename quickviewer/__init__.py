@@ -1691,12 +1691,11 @@ class ImageViewer():
             s.checkbox = ipyw.Checkbox(value=True, indent=False)
             self.ui_struct_checkboxes.append(s.checkbox)
             if not self.struct_info:
-                self.lower_ui.append(s.checkbox)
-                s.checkbox.description = s.name_nice
+                row = {"struct": None}
             else:
                 row = {h: None for h in ["struct", "volume", "area", "x", 
                                          "y", "centroid_x", "centroid_y"]}
-                struct_info.append(row)
+            struct_info.append(row)
         
         self.visible_structs = self.get_struct_visibility()
         self.df_struct_info = pd.DataFrame(struct_info)
@@ -1715,15 +1714,13 @@ class ImageViewer():
                 ("Slice", "centroid_y")])
             self.update_struct_comparisons()
             self.lower_ui.append(self.ui_struct_comp_table)
-        if self.struct_info:
-            self.update_struct_info()
-            self.lower_ui.append(self.ui_struct_info)
+        self.update_struct_info()
+        self.lower_ui.append(self.ui_struct_info)
 
     def get_struct_visibility(self):
         """Get list of currently visible structures from checkboxes."""
 
-        return [s.description for s in self.ui_struct_checkboxes[1:] 
-                if s.value]
+        return [s.name_unique for s in self.im.structs if s.checkbox.value]
 
     def update_struct_comparisons(self):
         """Update structure comparison metrics to reflect the current 
@@ -1795,13 +1792,12 @@ class ImageViewer():
     def update_struct_info(self):
         """Update structure info UI to reflect current view/slice."""
 
-        if not self.struct_info:
-            return
-
         for i, s in enumerate(self.im.structs):
 
             # Structure name
             self.df_struct_info["struct"].iloc[i] = self.get_struct_html(s)
+            if not self.struct_info:
+                continue
 
             if s.visible:
 
@@ -2200,6 +2196,7 @@ class ImageViewer():
         vis = self.get_struct_visibility()
         if vis != self.visible_structs:
             self.visible_structs = vis
+            self.ui_struct_jump.options = [""] + self.visible_structs
             if self.im.structs_as_mask:
                 self.im.set_masks()
 

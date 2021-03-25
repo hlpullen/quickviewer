@@ -20,6 +20,7 @@ setuptools.setup(
                       'matplotlib',
                       'nibabel',
                       'numpy',
+                      'pandas',
                       'pydicom',
                       'scikit-image',
                      ],
