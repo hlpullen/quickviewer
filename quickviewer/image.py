@@ -14,6 +14,7 @@ import skimage.measure
 import matplotlib.patches as mpatches
 from timeit import default_timer as timer
 import matplotlib as mpl
+from matplotlib.ticker import AutoMinorLocator
 
 from quickviewer import core
 
@@ -617,7 +618,8 @@ class NiftiImage:
              mask_color="black", 
              no_ylabel=False,
              no_title=False,
-             annotate_slice=None
+             annotate_slice=None,
+             minor_ticks=None
             ):
         """Plot a 2D slice of the image.
 
@@ -710,6 +712,9 @@ class NiftiImage:
 
         self.label_ax(view, no_ylabel, no_title, annotate_slice)
         self.adjust_ax(view, zoom, zoom_centre)
+        if minor_ticks:
+            self.ax.xaxis.set_minor_locator(AutoMinorLocator(minor_ticks))
+            self.ax.yaxis.set_minor_locator(AutoMinorLocator(minor_ticks))
 
         # Draw colorbar
         if colorbar and kwargs.get("alpha", 1) > 0:
@@ -1749,7 +1754,8 @@ class MultiImage(NiftiImage):
         struct_plot_type="contour",
         struct_legend=True,
         legend_loc='lower left',
-        annotate_slice=None
+        annotate_slice=None,
+        minor_ticks=None
     ):
         """Plot a 2D slice of this image and all extra features.
 
@@ -1856,7 +1862,8 @@ class MultiImage(NiftiImage):
         NiftiImage.plot(
             self, view, sl, pos, ax=self.ax, mpl_kwargs=mpl_kwargs,
             show=False, colorbar=colorbar, masked=masked,
-            invert_mask=invert_mask, mask_color=mask_color, figsize=figsize)
+            invert_mask=invert_mask, mask_color=mask_color, figsize=figsize,
+            minor_ticks=minor_ticks)
 
         # Plot dose field
         self.dose.plot(
@@ -1968,6 +1975,7 @@ class OrthogonalImage(MultiImage):
              colorbar=False,
              struct_kwargs=None,
              struct_plot_type=None,
+             minor_ticks=None,
              **kwargs
             ):
         """Plot MultiImage and orthogonal view of main image and structs."""
@@ -1978,8 +1986,8 @@ class OrthogonalImage(MultiImage):
         MultiImage.plot(self, view, sl=sl, pos=pos, ax=self.ax, zoom=zoom,
                         zoom_centre=zoom_centre, colorbar=colorbar, show=False, 
                         mpl_kwargs=mpl_kwargs, struct_kwargs=struct_kwargs,
-                        struct_plot_type=struct_plot_type,
-                        **kwargs)
+                        struct_plot_type=struct_plot_type, 
+                        minor_ticks=minor_ticks, **kwargs)
 
         # Plot orthogonal view
         orthog_view = _orthog[view]
@@ -1992,7 +2000,9 @@ class OrthogonalImage(MultiImage):
                         show=False,
                         colorbar=False,
                         no_ylabel=False,
-                        no_title=True)
+                        no_title=True,
+                        minor_ticks=minor_ticks
+                       )
 
         # Plot structures on orthogonal image
         for struct in self.structs:

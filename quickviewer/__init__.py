@@ -1211,6 +1211,7 @@ class ImageViewer():
         annotate_slice=None,
         save_as=None,
         show=True,
+        minor_ticks=None,
         **kwargs
     ):
 
@@ -1255,6 +1256,7 @@ class ImageViewer():
         self.zoom = zoom
         self.zoom_centre = zoom_centre
         self.zoom_ui = zoom_ui
+        self.minor_ticks = minor_ticks
 
         # HU range settings
         self.hu = hu
@@ -2300,6 +2302,7 @@ class ImageViewer():
                         struct_legend=self.struct_legend,
                         legend_loc=self.legend_loc,
                         annotate_slice=self.annotate_slice,
+                        minor_ticks=self.minor_ticks,
                         show=False)
         self.plotting = False
         self.colorbar_drawn = True
