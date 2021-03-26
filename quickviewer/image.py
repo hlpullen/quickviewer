@@ -263,6 +263,9 @@ class NiftiImage:
             Number of colorbars to account for in computing the plot width.
         """
 
+        if figsize is None:
+            figsize = _default_figsize
+
         # Get x and y lengths
         x_length, y_length = self.get_lengths(view)
 
@@ -270,7 +273,7 @@ class NiftiImage:
         font = mpl.rcParams["font.size"] / 72
         y_pad = 2 * font
         if self.title:
-            y_pad += 1.2 * font
+            y_pad += 1.5 * font
         y_ax = _plot_axes[view][1]
         max_y = np.max([abs(lim) for lim in self.lims[y_ax]])
         max_y_digits = np.floor(np.log10(max_y))
@@ -285,13 +288,11 @@ class NiftiImage:
             x_length /= zoom[x]
 
         # Add extra width for colorbars
-        colorbar_frac = 0.3
+        colorbar_frac = 0.4 * 5 / figsize
         x_length *= 1 + (n_colorbars * colorbar_frac)
         #  x_pad += 7 * font * n_colorbars
 
         # Get width ratio
-        if figsize is None:
-            figsize = _default_figsize
         total_y = figsize + y_pad
         total_x = figsize * x_length / y_length + x_pad
         width = total_x / total_y
@@ -725,14 +726,14 @@ class NiftiImage:
         """Assign x/y axis labels and title to the plot."""
 
         units = " (mm)" if self.scale_in_mm else ""
-        self.ax.set_xlabel(_plot_axes[view][0] + units)
+        self.ax.set_xlabel(_plot_axes[view][0] + units, labelpad=0)
         if not no_ylabel:
             self.ax.set_ylabel(_plot_axes[view][1] + units)
         else:
             self.ax.set_yticks([])
 
         if self.title and not no_title:
-            self.ax.set_title(self.title)
+            self.ax.set_title(self.title, pad=8)
 
         # Slice annotation
         if annotate_slice is not None:
