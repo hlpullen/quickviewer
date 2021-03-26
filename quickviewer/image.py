@@ -287,7 +287,7 @@ class NiftiImage:
         # Add extra width for colorbars
         colorbar_frac = 0.3
         x_length *= 1 + (n_colorbars * colorbar_frac)
-        x_pad += 7 * font * n_colorbars
+        #  x_pad += 7 * font * n_colorbars
 
         # Get width ratio
         if figsize is None:
@@ -540,13 +540,8 @@ class NiftiImage:
             False.
         """
 
-        # Don't do anything if already on this slice
-        idx = self.get_idx(view, sl, pos)
-        if hasattr(self, "view"):
-            if self.view == view and self.idx == idx:
-                return
-
         # Assign current orientation and slice index
+        idx = self.get_idx(view, sl, pos)
         self.view = view
         self.idx = idx
         self.sl = self.idx_to_slice(idx, _slider_axes[view])
