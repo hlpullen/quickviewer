@@ -14,7 +14,8 @@ import skimage.measure
 import matplotlib.patches as mpatches
 from timeit import default_timer as timer
 import matplotlib as mpl
-from matplotlib.ticker import AutoMinorLocator
+from matplotlib.ticker import MultipleLocator, AutoMinorLocator, \
+        FormatStrFormatter
 
 from quickviewer import core
 
@@ -619,7 +620,9 @@ class NiftiImage:
              no_ylabel=False,
              no_title=False,
              annotate_slice=None,
-             minor_ticks=None
+             major_ticks=None,
+             minor_ticks=None,
+             ticks_all_sides=False,
             ):
         """Plot a 2D slice of the image.
 
@@ -712,9 +715,17 @@ class NiftiImage:
 
         self.label_ax(view, no_ylabel, no_title, annotate_slice)
         self.adjust_ax(view, zoom, zoom_centre)
+        if major_ticks:
+            self.ax.xaxis.set_major_locator(MultipleLocator(major_ticks))
+            self.ax.yaxis.set_major_locator(MultipleLocator(major_ticks))
         if minor_ticks:
             self.ax.xaxis.set_minor_locator(AutoMinorLocator(minor_ticks))
             self.ax.yaxis.set_minor_locator(AutoMinorLocator(minor_ticks))
+        if ticks_all_sides:
+            self.ax.tick_params(bottom=True, top=True, left=True, right=True)
+            if minor_ticks:
+                self.ax.tick_params(which="minor", bottom=True, top=True, 
+                                    left=True, right=True)
 
         # Draw colorbar
         if colorbar and kwargs.get("alpha", 1) > 0:
@@ -1755,7 +1766,9 @@ class MultiImage(NiftiImage):
         struct_legend=True,
         legend_loc='lower left',
         annotate_slice=None,
-        minor_ticks=None
+        major_ticks=None,
+        minor_ticks=None,
+        ticks_all_sides=False
     ):
         """Plot a 2D slice of this image and all extra features.
 
@@ -1863,7 +1876,8 @@ class MultiImage(NiftiImage):
             self, view, sl, pos, ax=self.ax, mpl_kwargs=mpl_kwargs,
             show=False, colorbar=colorbar, masked=masked,
             invert_mask=invert_mask, mask_color=mask_color, figsize=figsize,
-            minor_ticks=minor_ticks)
+            major_ticks=major_ticks, minor_ticks=minor_ticks,
+            ticks_all_sides=ticks_all_sides)
 
         # Plot dose field
         self.dose.plot(
@@ -1975,7 +1989,9 @@ class OrthogonalImage(MultiImage):
              colorbar=False,
              struct_kwargs=None,
              struct_plot_type=None,
+             major_ticks=None,
              minor_ticks=None,
+             ticks_all_sides=False,
              **kwargs
             ):
         """Plot MultiImage and orthogonal view of main image and structs."""
@@ -1987,7 +2003,9 @@ class OrthogonalImage(MultiImage):
                         zoom_centre=zoom_centre, colorbar=colorbar, show=False, 
                         mpl_kwargs=mpl_kwargs, struct_kwargs=struct_kwargs,
                         struct_plot_type=struct_plot_type, 
-                        minor_ticks=minor_ticks, **kwargs)
+                        major_ticks=major_ticks, minor_ticks=minor_ticks, 
+                        ticks_all_sides=ticks_all_sides, 
+                        **kwargs)
 
         # Plot orthogonal view
         orthog_view = _orthog[view]
@@ -2001,7 +2019,9 @@ class OrthogonalImage(MultiImage):
                         colorbar=False,
                         no_ylabel=False,
                         no_title=True,
-                        minor_ticks=minor_ticks
+                        major_ticks=major_ticks,
+                        minor_ticks=minor_ticks,
+                        ticks_all_sides=ticks_all_sides,
                        )
 
         # Plot structures on orthogonal image

@@ -359,7 +359,7 @@ class QuickViewer:
             Initial linewidth of structures when plotted as contours. Can later 
             be changed interactively.
 
-        struct_info : bool, default=True
+        struct_info : bool, default=False
             If True, the lengths and volumes of each structure will be 
             displayed below the plot.
 
@@ -527,6 +527,19 @@ class QuickViewer:
             Origin position in mm, given in the order (y, x, z). Only used if
             image source is a numpy array and <affine> is None.
 
+        major_ticks : float, default=None
+            If not None, this value will be used as the interval between major
+            tick marks. Otherwise, automatic matplotlib axis tick spacing will
+            be used.
+
+        minor_ticks : int, default=None
+            If None, no minor ticks will be plotted. Otherwise, this value will
+            be the number of minor tick divisions per major tick interval.
+
+        ticks_all_sides : bool, default=False
+            If True, major (and minor if using) tick marks will be shown above
+            and to the right hand side of the plot as well as below and to the 
+            left. The top/right ticks will not be labelled.
         """
 
         # Get image file inputs
@@ -1211,7 +1224,9 @@ class ImageViewer():
         annotate_slice=None,
         save_as=None,
         show=True,
+        major_ticks=None,
         minor_ticks=None,
+        ticks_all_sides=False,
         **kwargs
     ):
 
@@ -1256,7 +1271,9 @@ class ImageViewer():
         self.zoom = zoom
         self.zoom_centre = zoom_centre
         self.zoom_ui = zoom_ui
+        self.major_ticks = major_ticks
         self.minor_ticks = minor_ticks
+        self.ticks_all_sides = ticks_all_sides
 
         # HU range settings
         self.hu = hu
@@ -2302,7 +2319,9 @@ class ImageViewer():
                         struct_legend=self.struct_legend,
                         legend_loc=self.legend_loc,
                         annotate_slice=self.annotate_slice,
+                        major_ticks=self.major_ticks,
                         minor_ticks=self.minor_ticks,
+                        ticks_all_sides=self.ticks_all_sides,
                         show=False)
         self.plotting = False
         self.colorbar_drawn = True
