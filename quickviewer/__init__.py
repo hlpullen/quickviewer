@@ -63,7 +63,7 @@ class QuickViewer:
         Parameters
         ----------
 
-        nii : string/nifti/array/list
+        nii : string/nifti/array/list, default=None
             Source of image data for each plot. If multiple plots are to be
             shown, this must be a list. Image sources can be any of:
             (a) The path to a NIfTI file;
@@ -233,6 +233,19 @@ class QuickViewer:
 
         Keyword arguments
         -----------------
+
+        timeseries : str/list/dict, default=None
+            A series of image files taken at difference dates. This can be:
+            (a) The path to a directory containing multiple image files/
+                multiple directories each containing one image file;
+            (b) A list of paths to image files;
+            (c) A dict of dates and image files.
+
+            In cases (a) and (b), QuickViewer will attempt to infer the date
+            first from the filename, then from the directory name if no valid
+            date is found within the filename. The date will be taken from 
+            the first unbroken string of numbers that can be successfully
+            parsed with dateutil.parser.
 
         init_view : string, default='x-y'
             Orientation at which to initially display the image(s).

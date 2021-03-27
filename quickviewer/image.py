@@ -1,5 +1,6 @@
 """Classes for plotting images from NIfTI files or NumPy arrays."""
 
+import dateutil.parser
 import copy
 import fnmatch
 import matplotlib.gridspec as gridspec
@@ -873,7 +874,7 @@ class TimeNifti(NiftiImage):
 
         if isinstance(timeseries, dict):
             dates = {dateutil.parser.parse(key): val for key, val in 
-                     timeseries}
+                     timeseries.items()}
 
         else:
             if isinstance(timeseries, str):
