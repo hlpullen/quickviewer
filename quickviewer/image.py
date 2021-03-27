@@ -846,75 +846,6 @@ class NiftiImage:
                           ::round(self.downsample["z"])]
 
 
-class TimeNifti(NiftiImage):
-    """NiftiImage containing images for multiple timepoints."""
-
-    def __init__(self, timeseries, **kwargs):
-        """Load a series of images from either a list, dict, or directory."""
-
-        # Get dict of dates and image files
-        dates = self.get_date_dict(timeseries)
-        self.dates = list(dates.keys())
-
-        # Load all images
-        if "title" in kwargs:
-            kwargs.pop("title")
-        self.ims = [
-            NiftiImage(file, title=date, **kwargs) for date, file in 
-            dates.items()
-        ]
-
-        # Use earliest image for own frame of reference
-        NiftiImage.__init__(self, dates[self.dates[0]], title=self.dates[0], 
-                            **kwargs)
-        self.date = self.dates[0]
-
-    def get_date_dict(self, timeseries):
-        """Convert list/dict/directory to sorted dict of dates and files."""
-
-        if isinstance(timeseries, dict):
-            dates = {dateutil.parser.parse(key): val for key, val in 
-                     timeseries.items()}
-
-        else:
-            if isinstance(timeseries, str):
-                files = core.find_files(timeseries)
-            elif core.is_list(timeseries):
-                files = timeseries
-            else:
-                raise TypeError("Timeseries must be a list, dict, or str.")
-
-            # Find date-like string in filenames
-            dates = {}
-            for file in files:
-                base = os.path.basename(file)
-                date = core.find_date(base)
-                if not date:
-                    dirname = os.path.basename(os.path.dirname(file))
-                    date = core.find_date(dirname)
-                if not date:
-                    raise TypeError("Date-like string could not be found in "
-                                    f"filename of dirname of {file}!")
-                dates[date] = file
-
-        # Sort by date
-        dates_sorted = sorted(list(dates.keys()))
-        date_strs = {date: f"{date.day}/{date.month}/{date.year}"
-                     for date in dates_sorted}
-        return {date_strs[date]: dates[date] for date in dates_sorted}
-
-    def set_image(self, n):
-        """Go to the nth image in series."""
-
-        if n < 1:
-            n = 1
-        if n > len(self.dates) or n == -1:
-            n = len(self.dates)
-        self.data = self.ims[n - 1].data
-        self.date = self.dates[n - 1]
-        self.title = self.date
-
-
 class DeformationImage(NiftiImage):
     """Class for loading a plotting a deformation field."""
 
@@ -1585,7 +1516,7 @@ class StructImage(NiftiImage):
             return [0, 0]
 
 
-class MultiImage(TimeNifti):
+class MultiImage(NiftiImage):
     """Class for loading and plotting an image along with an optional mask,
     dose field, structures, jacobian determinant, and deformation field."""
 
@@ -1666,8 +1597,18 @@ class MultiImage(TimeNifti):
             NiftiImage.__init__(self, nii, **kwargs)
             self.timeseries = False
         else:
-            TimeNifti.__init__(self, timeseries, **kwargs)
             self.timeseries = True
+            dates = self.get_date_dict(timeseries)
+            self.dates = list(dates.keys())
+            if "title" in kwargs:
+                kwargs.pop("title")
+            self.ims = {
+                date: NiftiImage(file, title=date, **kwargs) for date, file in 
+                dates.items()
+            }
+            NiftiImage.__init__(self, dates[self.dates[0]], 
+                                title=self.dates[0], **kwargs)
+            self.date = self.dates[0]
         if not self.valid:
             return
 
@@ -1676,6 +1617,8 @@ class MultiImage(TimeNifti):
         self.load_to(mask, "mask", kwargs)
         self.load_to(jacobian, "jacobian", kwargs)
         self.load_df(df)
+
+        # Load structs
         self.load_structs(structs, 
                           multi_structs,
                           names=struct_names, 
@@ -1683,6 +1626,8 @@ class MultiImage(TimeNifti):
                           compare_structs=compare_structs, 
                           ignore_empty=ignore_empty_structs,
                           ignore_unpaired=ignore_unpaired_structs)
+
+        # Mask settings
         self.structs_as_mask = structs_as_mask
         if self.has_structs and structs_as_mask:
             self.has_mask = True
@@ -1727,25 +1672,125 @@ class MultiImage(TimeNifti):
         <structs>, and assign the colors in <colors>."""
 
         self.has_structs = False
-        if structs is None and multi_structs is None:
+        if not (structs or multi_structs):
             self.structs = []
             self.struct_comparisons = []
             self.standalone_structs = []
             return
 
-        loader = StructLoader(structs, multi_structs, names, colors,
-                              struct_kwargs={"scale_in_mm": self.scale_in_mm})
-        self.structs = loader.get_structs(ignore_unpaired, ignore_empty)
+        # Check whether a timeseries of structs is being used
+        self.struct_timeseries = False
+        if self.timeseries:
+            try:
+                struct_dates = self.get_date_dict(structs, True)
+                self.struct_timeseries = len(struct_dates) > 1
+            except TypeError:
+                pass
 
-        if compare_structs:
-            self.struct_comparisons = loader.get_comparisons(ignore_empty)
-            self.standalone_structs = loader.get_standalone_structs(
-                ignore_unpaired, ignore_empty)
+        # No timeseries: load single set of structs
+        if not self.struct_timeseries:
+            loader = StructLoader(structs, multi_structs, names, colors,
+                                  struct_kwargs={"scale_in_mm": 
+                                                 self.scale_in_mm})
+            self.structs = loader.get_structs(ignore_unpaired, ignore_empty)
+
+            if compare_structs:
+                self.struct_comparisons = loader.get_comparisons(ignore_empty)
+                self.standalone_structs = loader.get_standalone_structs(
+                    ignore_unpaired, ignore_empty)
+            else:
+                self.standalone_structs = self.structs
+                self.struct_comparisons = []
+
+            self.has_structs = bool(len(self.structs))
+
+        # Load timeseries of structs
         else:
-            self.standalone_structs = self.structs
-            self.struct_comparisons = []
+            self.dated_structs = {}
+            self.dated_comparisons = {}
+            self.dated_standalone_structs = {}
+            for date, structs in struct_dates.items():
 
-        self.has_structs = bool(len(self.structs))
+                if date not in self.dates:
+                    continue
+
+                loader = StructLoader(structs, names=names, colors=colors,
+                                      struct_kwargs={"scale_in_mm": 
+                                                     self.scale_in_mm})
+                self.dated_structs[date] = loader.get_structs(
+                    ignore_unpaired, ignore_empty)
+
+                if compare_structs:
+                    self.dated_comparisons[date] = \
+                            loader.get_comparisons(ignore_empty)
+                    self.dated_standalone_structs = \
+                            loader.get_standalone_structs(ignore_unpaired,
+                                                          ignore_empty)
+                else:
+                    self.dated_comparisons[date] = []
+                    self.dated_standalone_structs[date] = \
+                            self.dated_structs[date]
+
+            self.has_structs = any([len(s) for s in 
+                                    self.dated_structs.values()])
+
+            # Set to current date
+            if self.date in self.dated_structs:
+                self.structs = self.dated_structs[date]
+                self.struct_comparisons = self.dated_comparisons[date]
+                self.standalone_structs = self.dated_standalone_structs[date]
+
+    def get_date_dict(self, timeseries, single_layer=False):
+        """Convert list/dict/directory to sorted dict of dates and files."""
+
+        if isinstance(timeseries, dict):
+            dates = {dateutil.parser.parse(key): val for key, val in 
+                     timeseries.items()}
+
+        else:
+            if isinstance(timeseries, str):
+                files = core.find_files(timeseries)
+            elif core.is_list(timeseries):
+                files = timeseries
+            else:
+                raise TypeError("Timeseries must be a list, dict, or str.")
+
+            # Find date-like string in filenames
+            dates = {}
+            for file in files:
+                dirname = os.path.basename(os.path.dirname(file))
+                date = core.find_date(dirname)
+                if not date:
+                    base = os.path.basename(file)
+                    date = core.find_date(base)
+                if not date:
+                    raise TypeError("Date-like string could not be found in "
+                                    f"filename of dirname of {file}!")
+                dates[date] = file
+
+        # Sort by date
+        dates_sorted = sorted(list(dates.keys()))
+        date_strs = {date: f"{date.day}/{date.month}/{date.year}"
+                     for date in dates_sorted}
+        return {date_strs[date]: dates[date] for date in dates_sorted}
+
+    def set_date(self, n):
+        """Go to the nth image in series."""
+
+        if n < 1:
+            n = 1
+        if n > len(self.dates) or n == -1:
+            n = len(self.dates)
+        self.date = self.dates[n - 1]
+        self.data = self.ims[self.date].data
+        self.title = self.date
+
+        # Set structs
+        if self.has_structs and self.struct_timeseries:
+            self.structs = self.dated_structs.get(self.date, [])
+            self.struct_comparisosn = self.dated_comparisons.get(self.date, [])
+            self.standalone_structs = \
+                    self.dated_standalone_structs.get(self.date, [])
 
     def set_plotting_defaults(self):
         """Set default matplotlib plotting options for main image, dose field,
@@ -1952,7 +1997,7 @@ class MultiImage(TimeNifti):
 
         # Set date
         if self.timeseries:
-            self.set_image(n_date)
+            self.set_date(n_date)
 
         # Plot image
         self.set_ax(view, ax, gs, figsize, zoom, colorbar)
@@ -2605,7 +2650,7 @@ class StructLoader:
         self.comparison_structs = []
         self.struct_kwargs = struct_kwargs if struct_kwargs is not None \
             else {}
-        if structs is None and multi_structs is None:
+        if not (structs or multi_structs):
             return
 
         # Format colors and names
@@ -2613,8 +2658,11 @@ class StructLoader:
         colors = self.load_settings(colors)
 
         # Load all structs and multi structs
-        self.load_structs(structs, names, colors, False)
-        self.load_structs(multi_structs, names, colors, True)
+        if not structs:
+            structs = multi_structs
+        elif structs and multi_structs:
+            structs = structs + ["multi:" + ms for ms in multi_structs]
+        self.load_structs(structs, names, colors)
 
     def load_settings(self, settings):
         """Process a settings dict into a standard format."""
@@ -2635,11 +2683,12 @@ class StructLoader:
 
         return settings
 
-    def load_structs(self, structs, names, colors, multi=False):
+    def load_structs(self, structs, names, colors):
         """Load a list/dict of structres."""
 
         if structs is None:
             return
+
         struct_dict = {}
 
         # Put into standard format
@@ -2675,7 +2724,7 @@ class StructLoader:
                     self.load_structs_from_file(p[6:], label, names, colors,
                                                 True)
                 else:
-                    self.load_structs_from_file(p, label, names, colors, multi)
+                    self.load_structs_from_file(p, label, names, colors, False)
 
     def load_structs_from_file(self, paths, label, names, colors, multi=False):
         """Search for filenames matching <paths> and load structs from all

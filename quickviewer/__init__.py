@@ -242,10 +242,10 @@ class QuickViewer:
             (c) A dict of dates and image files.
 
             In cases (a) and (b), QuickViewer will attempt to infer the date
-            first from the filename, then from the directory name if no valid
-            date is found within the filename. The date will be taken from 
-            the first unbroken string of numbers that can be successfully
-            parsed with dateutil.parser.
+            first from the directory name, then from the filename if no valid
+            date is found within the directory name. The date is taken from the 
+            first unbroken string of numbers that can be successfully parsed 
+            with dateutil.parser.
 
         init_view : string, default='x-y'
             Orientation at which to initially display the image(s).
@@ -1740,15 +1740,22 @@ class ImageViewer():
             "overall": "Overall",
         }
 
+        self.struct_checkboxes = {
+            s: ipyw.Checkbox(value=True, indent=False) for s in 
+            self.structs_for_jump.keys() if s}
+        self.ui_struct_checkboxes = list(self.struct_checkboxes.values())
         for s in self.im.structs:
-            s.checkbox = ipyw.Checkbox(value=True, indent=False)
-            self.ui_struct_checkboxes.append(s.checkbox)
+            s.checkbox = self.struct_checkboxes[s.name_unique]
             if not self.struct_info:
                 row = {"struct": None}
             else:
                 row = {h: None for h in ["struct", "vol", "area", "x", 
                                          "y", "centroid_x", "centroid_y"]}
             struct_info.append(row)
+        if self.im.struct_timeseries:
+            for ts in self.im.dated_structs.values():
+                for s in ts:
+                    s.checkbox = self.struct_checkboxes[s.name_unique]
         
         self.visible_structs = self.get_struct_visibility()
         self.df_struct_info = pd.DataFrame(struct_info)
@@ -1817,8 +1824,8 @@ class ImageViewer():
     def get_struct_visibility(self):
         """Get list of currently visible structures from checkboxes."""
 
-        return [name for name, s in self.structs_for_jump.items()
-                if hasattr(s, "checkbox") and s.checkbox.value]
+        return [name for name in self.structs_for_jump if name and 
+                self.struct_checkboxes[name].value]
 
     def update_struct_comparisons(self):
         """Update structure comparison metrics to reflect the current 
