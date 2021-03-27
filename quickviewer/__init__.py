@@ -30,7 +30,7 @@ class QuickViewer:
 
     def __init__(
         self,
-        nii,
+        nii=None,
         title=None,
         mask=None,
         dose=None,
@@ -601,6 +601,8 @@ class QuickViewer:
         self.plotting = False
 
         # Make UI
+        if any([v.im.timeseries for v in self.viewer]):
+            share_slider = False
         self.make_ui(share_slider)
 
         # Display
@@ -1183,7 +1185,7 @@ class ImageViewer():
 
     def __init__(
         self,
-        nii,
+        nii=None,
         init_view="x-y",
         init_sl=None,
         init_pos=None,
@@ -1554,6 +1556,15 @@ class ImageViewer():
                 self.current_zoom = vimage.current_zoom
                 self.current_centre = vimage.current_centre
             self.own_ui_slice = False
+
+        # Make time slider
+        if self.im.timeseries:
+            self.ui_time = ipyw.IntSlider(
+                min=1, max=len(self.im.dates), style=_style,
+                description="Timepoint", 
+                continuous_update=self.continuous_update
+            )
+            self.main_ui.append(self.ui_time)
 
         # Extra sliders
         self.extra_ui = []
@@ -2241,6 +2252,8 @@ class ImageViewer():
         if self.plotting:
             return
         self.plotting = True
+
+        # Set slice and view
         self.set_slice_and_view()
 
         # Get main image settings
@@ -2296,6 +2309,11 @@ class ImageViewer():
         if not self.in_notebook and self.colorbar_drawn:
             colorbar = False
 
+        # Get date argument
+        n_date = 1
+        if self.im.timeseries:
+            n_date = self.ui_time.value
+
         # Make plot
         self.plot_image(self.im,
                         view=self.view,
@@ -2322,6 +2340,7 @@ class ImageViewer():
                         major_ticks=self.major_ticks,
                         minor_ticks=self.minor_ticks,
                         ticks_all_sides=self.ticks_all_sides,
+                        n_date=n_date,
                         show=False)
         self.plotting = False
         self.colorbar_drawn = True
