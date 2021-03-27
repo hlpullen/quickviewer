@@ -856,12 +856,16 @@ class TimeNifti(NiftiImage):
         self.dates = list(dates.keys())
 
         # Load all images
+        if "title" in kwargs:
+            kwargs.pop("title")
         self.ims = [
-            NiftiImage(file, **kwargs) for file in dates.values()
+            NiftiImage(file, title=date, **kwargs) for date, file in 
+            dates.items()
         ]
 
         # Use earliest image for own frame of reference
-        NiftiImage.__init__(self, dates[self.dates[0]], **kwargs)
+        NiftiImage.__init__(self, dates[self.dates[0]], title=self.dates[0], 
+                            **kwargs)
         self.date = self.dates[0]
 
     def get_date_dict(self, timeseries):
@@ -894,7 +898,9 @@ class TimeNifti(NiftiImage):
 
         # Sort by date
         dates_sorted = sorted(list(dates.keys()))
-        return {date: dates[date] for date in dates_sorted}
+        date_strs = {date: f"{date.day}/{date.month}/{date.year}"
+                     for date in dates_sorted}
+        return {date_strs[date]: dates[date] for date in dates_sorted}
 
     def set_image(self, n):
         """Go to the nth image in series."""
@@ -905,6 +911,7 @@ class TimeNifti(NiftiImage):
             n = len(self.dates)
         self.data = self.ims[n - 1].data
         self.date = self.dates[n - 1]
+        self.title = self.date
 
 
 class DeformationImage(NiftiImage):
