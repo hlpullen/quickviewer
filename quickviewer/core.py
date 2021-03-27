@@ -1,5 +1,7 @@
 """Core functions for loading image files."""
 
+import re
+import dateutil.parser
 import os
 import nibabel
 import numpy as np
@@ -193,3 +195,17 @@ def make_three(var):
         return var
 
     return [var, var, var]
+
+
+def find_date(s):
+    """Find a date-like object in a string."""
+
+    # Split into numeric strings
+    nums = re.findall("[0-9]+", s)
+
+    # Look for first date-like object
+    for num in nums:
+        try:
+            return dateutil.parser.parse(num)
+        except dateutil.parser.ParserError:
+            continue

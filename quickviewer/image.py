@@ -845,6 +845,68 @@ class NiftiImage:
                           ::round(self.downsample["z"])]
 
 
+class TimeNifti(NiftiImage):
+    """NiftiImage containing images for multiple timepoints."""
+
+    def __init__(self, timeseries, **kwargs):
+        """Load a series of images from either a list, dict, or directory."""
+
+        # Get dict of dates and image files
+        dates = self.get_date_dict(timeseries)
+        self.dates = list(dates.keys())
+
+        # Load all images
+        self.ims = [
+            NiftiImage(file, **kwargs) for file in dates.values()
+        ]
+
+        # Use earliest image for own frame of reference
+        NiftiImage.__init__(self, dates[self.dates[0]], **kwargs)
+        self.date = self.dates[0]
+
+    def get_date_dict(self, timeseries):
+        """Convert list/dict/directory to sorted dict of dates and files."""
+
+        if isinstance(timeseries, dict):
+            dates = {dateutil.parser.parse(key): val for key, val in 
+                     timeseries}
+
+        else:
+            if isinstance(timeseries, str):
+                files = core.find_files(timeseries)
+            elif core.is_list(timeseries):
+                files = timeseries
+            else:
+                raise TypeError("Timeseries must be a list, dict, or str.")
+
+            # Find date-like string in filenames
+            dates = {}
+            for file in files:
+                base = os.path.basename(file)
+                date = core.find_date(base)
+                if not date:
+                    dirname = os.path.basename(os.path.dirname(file))
+                    date = core.find_date(dirname)
+                if not date:
+                    raise TypeError("Date-like string could not be found in "
+                                    f"filename of dirname of {file}!")
+                dates[date] = file
+
+        # Sort by date
+        dates_sorted = sorted(list(dates.keys()))
+        return {date: dates[date] for date in dates_sorted}
+
+    def set_image(self, n):
+        """Go to the nth image in series."""
+
+        if n < 1:
+            n = 1
+        if n > len(self.dates) or n == -1:
+            n = len(self.dates)
+        self.data = self.ims[n - 1].data
+        self.date = self.dates[n - 1]
+
+
 class DeformationImage(NiftiImage):
     """Class for loading a plotting a deformation field."""
 
@@ -1515,19 +1577,20 @@ class StructImage(NiftiImage):
             return [0, 0]
 
 
-class MultiImage(NiftiImage):
+class MultiImage(TimeNifti):
     """Class for loading and plotting an image along with an optional mask,
     dose field, structures, jacobian determinant, and deformation field."""
 
     def __init__(
         self,
-        nii,
+        nii=None,
         dose=None,
         mask=None,
         jacobian=None,
         df=None,
         structs=None,
         multi_structs=None,
+        timeseries=None,
         struct_colors=None,
         structs_as_mask=False,
         struct_names=None,
@@ -1587,8 +1650,16 @@ class MultiImage(NiftiImage):
             will be masked (or values above, if <invert_mask> is True).
         """
 
+        if not nii and not timeseries:
+            raise TypeError("Either <nii> or <timeseries> must be set!")
+
         # Load the scan image
-        NiftiImage.__init__(self, nii, **kwargs)
+        if nii:
+            NiftiImage.__init__(self, nii, **kwargs)
+            self.timeseries = False
+        else:
+            TimeNifti.__init__(self, timeseries, **kwargs)
+            self.timeseries = True
         if not self.valid:
             return
 
@@ -1751,6 +1822,7 @@ class MultiImage(NiftiImage):
         zoom=None,
         zoom_centre=None,
         mpl_kwargs=None,
+        n_date=1,
         show=True,
         colorbar=False,
         dose_kwargs=None,
@@ -1869,6 +1941,10 @@ class MultiImage(NiftiImage):
             Color for annotation of slice number. If None, no annotation will 
             be added. If True, the default color (white) will be used.
         """
+
+        # Set date
+        if self.timeseries:
+            self.set_image(n_date)
 
         # Plot image
         self.set_ax(view, ax, gs, figsize, zoom, colorbar)
