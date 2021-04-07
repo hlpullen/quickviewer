@@ -1672,6 +1672,7 @@ class MultiImage(NiftiImage):
         <structs>, and assign the colors in <colors>."""
 
         self.has_structs = False
+        self.struct_timeseries = False
         if not (structs or multi_structs):
             self.structs = []
             self.struct_comparisons = []
@@ -1679,7 +1680,6 @@ class MultiImage(NiftiImage):
             return
 
         # Check whether a timeseries of structs is being used
-        self.struct_timeseries = False
         if self.timeseries:
             try:
                 struct_dates = self.get_date_dict(structs, True)
@@ -1786,7 +1786,7 @@ class MultiImage(NiftiImage):
         self.title = self.date
 
         # Set structs
-        if self.has_structs and self.struct_timeseries:
+        if self.struct_timeseries:
             self.structs = self.dated_structs.get(self.date, [])
             self.struct_comparisosn = self.dated_comparisons.get(self.date, [])
             self.standalone_structs = \
@@ -2658,11 +2658,8 @@ class StructLoader:
         colors = self.load_settings(colors)
 
         # Load all structs and multi structs
-        if not structs:
-            structs = multi_structs
-        elif structs and multi_structs:
-            structs = structs + ["multi:" + ms for ms in multi_structs]
-        self.load_structs(structs, names, colors)
+        self.load_structs(structs, names, colors, False)
+        self.load_structs(multi_structs, names, colors, True)
 
     def load_settings(self, settings):
         """Process a settings dict into a standard format."""
@@ -2683,7 +2680,7 @@ class StructLoader:
 
         return settings
 
-    def load_structs(self, structs, names, colors):
+    def load_structs(self, structs, names, colors, multi=False):
         """Load a list/dict of structres."""
 
         if structs is None:
@@ -2724,7 +2721,7 @@ class StructLoader:
                     self.load_structs_from_file(p[6:], label, names, colors,
                                                 True)
                 else:
-                    self.load_structs_from_file(p, label, names, colors, False)
+                    self.load_structs_from_file(p, label, names, colors, multi)
 
     def load_structs_from_file(self, paths, label, names, colors, multi=False):
         """Search for filenames matching <paths> and load structs from all
