@@ -2419,7 +2419,10 @@ class ImageViewer():
         for i, sc in enumerate(self.im.struct_comparisons):
             if not (sc.s1.visible and sc.s2.visible):
                 to_drop.append(i)
-            df.iloc[i, 0] = sc.name
+            if sc.name:
+                df.iloc[i, 0] = sc.name
+            else:
+                df.iloc[i, 0] = f"{sc.s1.name_unique} vs. {sc.s2.name_unique}"
         df.drop(to_drop, inplace=True)
 
         self.save_table(df, self.ui_table_struct_comp_name.value)

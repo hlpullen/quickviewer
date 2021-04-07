@@ -42,6 +42,9 @@ standard_colors = (
     + list(matplotlib.cm.Set3.colors)
     + list(matplotlib.cm.tab20.colors)
 )
+to_del = [9, 10]
+for d in to_del:
+    del standard_colors[d]
 
 
 class NiftiImage:
@@ -1534,6 +1537,7 @@ class MultiImage(NiftiImage):
         structs_as_mask=False,
         struct_names=None,
         compare_structs=False,
+        comp_type="auto",
         ignore_empty_structs=False,
         ignore_unpaired_structs=False,
         mask_threshold=0.5,
@@ -1625,7 +1629,8 @@ class MultiImage(NiftiImage):
                           colors=struct_colors, 
                           compare_structs=compare_structs, 
                           ignore_empty=ignore_empty_structs,
-                          ignore_unpaired=ignore_unpaired_structs)
+                          ignore_unpaired=ignore_unpaired_structs,
+                          comp_type=comp_type)
 
         # Mask settings
         self.structs_as_mask = structs_as_mask
@@ -1666,7 +1671,8 @@ class MultiImage(NiftiImage):
                      colors=None, 
                      compare_structs=False, 
                      ignore_empty=False,
-                     ignore_unpaired=False
+                     ignore_unpaired=False,
+                     comp_type="auto"
                     ):
         """Load structures from a path/wildcard or list of paths/wildcards in
         <structs>, and assign the colors in <colors>."""
@@ -1690,6 +1696,7 @@ class MultiImage(NiftiImage):
         # No timeseries: load single set of structs
         if not self.struct_timeseries:
             loader = StructLoader(structs, multi_structs, names, colors,
+                                  comp_type=comp_type,
                                   struct_kwargs={"scale_in_mm": 
                                                  self.scale_in_mm})
             self.structs = loader.get_structs(ignore_unpaired, ignore_empty)
@@ -1715,6 +1722,7 @@ class MultiImage(NiftiImage):
                     continue
 
                 loader = StructLoader(structs, names=names, colors=colors,
+                                      comp_type=comp_type,
                                       struct_kwargs={"scale_in_mm": 
                                                      self.scale_in_mm})
                 self.dated_structs[date] = loader.get_structs(
@@ -2385,10 +2393,28 @@ class StructComparison:
         """
 
         self.name = name
-        for i, s in enumerate([struct1, struct2]):
-            struct = s if isinstance(s, StructImage) \
-                else StructImage(s, **kwargs)
-            setattr(self, f"s{i + 1}", s)
+
+        # Two structures
+        if isinstance(struct2, StructImage):
+            self.two_structs = True
+            for i, s in enumerate([struct1, struct2]):
+                struct = s if isinstance(s, StructImage) \
+                    else StructImage(s, **kwargs)
+                setattr(self, f"s{i + 1}", s)
+
+        # List of structures
+        else:
+            self.two_structs = False
+            self.s1 = struct1
+            voxel_sizes = list(self.s1.voxel_sizes.values())
+            origin = list(self.s1.origin.values())
+            data = struct2[0].data
+            for s in struct2[1:]:
+                data += s.data
+            self.s2 = StructImage(data, name="others", load=True,
+                                  voxel_sizes=voxel_sizes, origin=origin)
+            self.s2.name_unique = "vs. others"
+            self.s2.color = matplotlib.colors.to_rgba("white")
 
         mean_sq_col = (
             np.array(self.s1.color) ** 2 
@@ -2425,6 +2451,12 @@ class StructComparison:
             return
         if mpl_kwargs is None:
             mpl_kwargs = {}
+
+        if not self.two_structs:
+            self.s1.plot(view=view, sl=sl, pos=pos, ax=ax, 
+                         mpl_kwargs=mpl_kwargs, plot_type=plot_type, zoom=zoom, 
+                         zoom_centre=zoom_centre, show=show)
+            return
 
         # If one structure isn't currently visible, only plot the other
         if not self.s1.visible or not self.s2.visible:
@@ -2592,7 +2624,7 @@ class StructLoader:
     """Class for loading and storing multiple StructImages."""
 
     def __init__(self, structs=None, multi_structs=None, names=None, 
-                 colors=None, struct_kwargs=None):
+                 colors=None, comp_type="auto", struct_kwargs=None):
         """Load structures. 
 
         Parameters
@@ -2641,6 +2673,15 @@ class StructLoader:
 
         struct_kwargs : dict, default=None
             Keyword arguments to pass to any created StructImage objects.
+
+        comp_type : str, default="auto"
+            Option for method of comparing any loaded structures. Can be:
+            - "auto": Structures will be matched based on name if many are
+              loaded, pairs if a list of pairs is given, or simply matched
+              if only two structs are loaded.
+            - "pairs": Every possible pair of loaded structs will be compared.
+            - "others": Each structure will be compared to the mean of all of the 
+            others.
         """
 
         # Lists for storing structures
@@ -2648,6 +2689,7 @@ class StructLoader:
         self.structs = []
         self.comparisons = []
         self.comparison_structs = []
+        self.comp_type = comp_type
         self.struct_kwargs = struct_kwargs if struct_kwargs is not None \
             else {}
         if not (structs or multi_structs):
@@ -2833,6 +2875,23 @@ class StructLoader:
         StructComparison objects."""
         
         if len(self.comparisons) and self.loaded:
+            return
+
+        # Match all pairs
+        if self.comp_type == "pairs":
+            for i, s1 in enumerate(self.structs):
+                for s2 in self.structs[i + 1:]:
+                    self.comparisons.append(StructComparison(s1, s2))
+            self.comparison_structs = self.structs
+            return
+
+        # Match each to all others
+        if self.comp_type == "others":
+            for i, s in enumerate(self.structs):
+                others = [self.structs[j] for j in range(len(self.structs))
+                          if j != i]
+                self.comparisons.append(StructComparison(s, others))
+            self.comparison_structs = self.structs
             return
 
         # Case with only two structures
