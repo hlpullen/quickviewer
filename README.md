@@ -61,6 +61,8 @@ QuickViewer("my_file.nii", save_as="output_image.pdf")
 ```
 The file `output_image.pdf` will automatically be created when this command is run. When QuickViewer is run with the `save_as` option, an extra widget will appear below the image:
 
+<img src="images/save_as.png" alt="quickviewer file saving widget" height="70"/>
+
 This can be used to overwrite the original output file after some changes have been made via the other widgets, or to save the image to a different file.
 
 #### Displaying multiple images
@@ -70,6 +72,8 @@ To show multiple images side-by-side, you can give QuickViewer a list of filepat
 QuickViewer(["my_file.nii", "another_file.nii"])
 ```
 The result will look something like this:
+
+<img src="images/two_images.png" alt="two images in quickviewer" height="500"/>
 
 If the two images are in the same frame of reference, they will automatically share their HU and position sliders, so that you can scroll through both simultaneously. This behaviour can be turned off with the `share_slider` argument:
 ```
