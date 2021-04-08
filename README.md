@@ -82,6 +82,14 @@ QuickViewer(["my_file.nii", "another_file.nii"], share_slider=False)
 
 #### Orthogonal view
 
+An orthogonal view of the image can be displayed alongside the main view, with an indicator to show where in the image the current slice is. This option is accessed by running:
+```
+QuickViewer("my_file.nii", orthog_view=True)
+```
+For example, when viewing in the x-y (axial) orientation, the y-z (sagittal) view will be displayed:
+
+<img src="images/orthog_view.png" alt="axial and sagittal views" height="500"/>
+
 #### More display settings
 
 ##### Initial QuickViewer config
@@ -126,6 +134,7 @@ For large images, you may sometimes wish to downsample for speed. This can be do
 ##### Other display options
 
 There are  several options for fine-tuning the appearance of the plot:
+- `colorbar`: show a colorbar for the HU grayscale.
 - `figsize`: sets the figure height in inches (default = 5 inches).
 - `xlim`/`ylim`/`zlim`: set these to a pair of values to specify custom `x`, `y`, or `z` limits (i.e. to crop the plot).
 - `plots_per_row`: maximum number of images to display per row, when using multiple images; this allows images to be spread over multiple rows.
