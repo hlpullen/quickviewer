@@ -1415,7 +1415,7 @@ class ImageViewer():
             return sl
 
     def make_ui(self, vimage=None, share_slider=True):
-        """Make Jupyter notebook UI. If qv_image contains another ImageViewer
+        """Make Jupyter notebook UI. If vimage contains another ImageViewer
         instance, the UI will be taken from that image. If share_slider is
         False, independent HU and slice sliders will be created."""
 
@@ -1444,13 +1444,12 @@ class ImageViewer():
                                     self.im.structs}}
         structs_standard = {standard_str(s): s for s in self.structs_for_jump}
         if standard_str(self.init_struct) in structs_standard:
-            init_struct = structs_standard[standard_str(self.init_struct)]
+            self.current_struct = structs_standard[standard_str(self.init_struct)]
         else:
-            init_struct = ""
-        self.current_struct = structs_standard[standard_str(self.init_struct)]
+            self.current_struct = ""
         self.ui_struct_jump = ipyw.Dropdown(
             options=self.structs_for_jump.keys(),
-            value=init_struct,
+            value=self.current_struct,
             description="Jump to",
             style=_style,
         )
@@ -1797,7 +1796,7 @@ class ImageViewer():
             options=["All", "Overall", "Slice-by-slice"],
             description="Metrics to save", style=_style)
         self.ui_table_format = ipyw.Dropdown(
-            options=["tex", "csv"], description="Format", style=_style)
+            options=["csv", "tex"], description="Format", style=_style)
         self.ui_table_opts = ipyw.VBox([self.ui_table_content,
                                         self.ui_table_format])
         table_saving = [self.ui_table_opts]
@@ -2214,10 +2213,11 @@ class ImageViewer():
         self.current_struct = self.ui_struct_jump.value
         struct = self.structs_for_jump[self.current_struct]
         if not struct.empty:
-            mid_slice = int(np.mean(list(struct.contours[self.view].keys())))
-            self.ui_slice.value = self.slice_to_slider(
-                mid_slice, _slider_axes[self.view])
-            self.slice[self.view] = mid_slice
+            if not struct.on_slice(self.view, self.slice[self.view]):
+                mid_slice = int(np.mean(list(struct.contours[self.view].keys())))
+                self.ui_slice.value = self.slice_to_slider(
+                    mid_slice, _slider_axes[self.view])
+                self.slice[self.view] = mid_slice
             self.centre_at_struct(struct)
         self.ui_struct_jump.value = ""
 
@@ -2361,7 +2361,8 @@ class ImageViewer():
             self.struct_filled_opacity = self.ui_struct_opacity.value
             struct_kwargs["alpha"] = self.struct_filled_opacity
         struct_plot_grouping = self.ui_struct_plot_type2.value
-
+        if struct_plot_grouping == "group others" and not self.current_struct:
+            self.current_struct = self.im.structs[0].name_unique
 
         # Check whether colorbar already drawn
         colorbar = self.colorbar
@@ -2463,7 +2464,11 @@ class ImageViewer():
             if sc.name:
                 df.iloc[i, 0] = sc.name
             else:
-                df.iloc[i, 0] = f"{sc.s1.name_unique} vs. {sc.s2.name_unique}"
+                if sc.s2.name_unique.startswith("vs."):
+                    sc_name = f"{sc.s1.name_unique} {sc.s2.name_unique}"
+                else:
+                    sc_name = f"{sc.s1.name_unique} vs. {sc.s2.name_unique}"
+                df.iloc[i, 0] = sc_name
         df.drop(to_drop, inplace=True)
 
         self.save_table(df, self.ui_table_struct_comp_name.value)
