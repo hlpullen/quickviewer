@@ -4,55 +4,51 @@ A package for interactively viewing medical image data.
 
 ## Installation
 
-1. Install using [pip](https://pip.pypa.io/en/stable/):
-   - Optionally create virtual environment, for example:
-     ```
-     mkdir test_area
-     cd test_area
-     virtualenv .
-     source bin/activate
-     ```
-   - With [gitlab access via ssh keys](https://docs.gitlab.com/ee/ssh/):
-     ```
-     pip install git+ssh://git@codeshare.phy.cam.ac.uk:/hp346/quickviewer
-     ```
+### Installing QuickViewer via pip
 
-2. Install using [git](https://git-scm.com) and [conda](https://docs.conda.io/):
-   - Clone repository:
-     - With [gitlab access via ssh keys](https://docs.gitlab.com/ee/ssh/):
-       ```
-       git clone --recurse-submodules git@codeshare.phy.cam.ac.uk:/hp346/quickviewer
-       ```
-     - With [gitlab access via token](https://docs.gitlab.com/ee/user/profile/personal_access_tokens.html):
-       ```
-       git clone --recurse-submodules https://codeshare.phy.cam.ac.uk/hp346/quickviewer
-       ```
-       Note that this may not work with older versions of git.  It has
-       been tested successfully with git version 2.21.1.
-   - From top-level directory of cloned repository, create **quickviewer**
-     environment:
-     ```
-     conda env create --file environment.yml
-     ```
-   - Activate **quickviewer** environment:
-     ```
-     conda activate quickviewer
-     ```
+The easiest way to install QuickViewer is via [pip](https://pypi.org/project/pip/):
+```
+pip install git+https://github.com/hpullen/quickviewer.git
+```
+QuickViewer is continually being developed, so make sure to check for updates often! QuickViewer can be updated with the command:
+```
+pip install --upgrade git+https://github.com/hpullen/quickviewer.git
+```
+If you wish to uninstall quickviewer, simply run:
+```
+pip uninstall quickviewer
+```
+### Setting up Jupyter notebooks
+
+QuickViewer works best inside a Jupyter notebook; see [here](https://jupyter.org/install.html) for installation instructions. Once you have Jupyter notebooks installed, you need to run the following command once to ensure that QuickViewer's widgets will work:
+```
+jupyter nbextension enable --py widgetsnbextension
+```
+Now you can launch a Jupyter server using
+```
+jupyter notebook
+```
+in which you can enjoy QuickViewer and its widgets!
+
+## How to use QuickViewer
+
+### Basic usage
+
+QuickViewer can be used to view medical images in [NIfTI](https://nifti.nimh.nih.gov/) format or [NumPy arrays](https://numpy.org/doc/stable/reference/generated/numpy.array.html). DICOM files are currently not supported, but there are various tools for converting from dicom to NIfTI such as [dcm2niix](https://www.nitrc.org/plugins/mwiki/index.php/dcm2nii:MainPage).
+
+To use QuickViewer to view a NIfTI image, first import the QuickViewer class:
+```
+from quickviewer import QuickViewer
+```
+and then create a QuickViewer instance, giving the path to your NIfTI file:
+```
+QuickViewer("my_file.nii")
+```
+This will launch a viewer with sliders:
 
 
-## Usage
 
-### In a jupyter notebook:
 
-1. Ensure you are inside an environment that has `quickviewer` installed as a package; if you followed the conda installation method, you can do this by running 
-```conda activate quickviewer```
-inside a terminal.
-2. Launch a jupyter notebook server by running 
-```jupyter notebook```
-inside the terminal where you activated the environment.
-3. Create a new notebook and import the `QuickViewer` class by running:
-```from quickviewer import QuickViewer```
-4. You can now use the QuickViewer class to create interactive plots in your notebook.
 
 ### From the command line:
 1. A script for creating a quickviewer plot from the command line can be found in `quickviewer/bin/quick_view.py`. The basic usage for viewing a NIfTI file is:
