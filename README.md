@@ -84,23 +84,67 @@ QuickViewer(["my_file.nii", "another_file.nii"], share_slider=False)
 
 #### More display settings
 
-By default, QuickViewer will show the central slice of the axial plane, with the HU range set to `-300 -- 200`. These initial settings can be changed via the arguments:
+##### Initial QuickViewer config
 
-To show scales in terms of voxel numbers rather than mm, use:
+By default, QuickViewer will show the central slice of the axial plane, with the HU range set to `-300 -- 200`. These initial settings can be changed via the arguments:
+- `init_view`: set this to `x-y`, `y-z`, or `x-z` to set initial orientation (default = `x-y`);
+- `init_pos`: initial slice position in mm (will be rounded to the nearest slice;
+- `hu`: set this to a pair of values (e.g. `hu=[-500, 500]`) to set the initial HU range.
+
+To show scales in terms of voxel numbers rather than mm, run QuickViewer with the argument `scale_in_mm=False`. The initial slice position can be set via the `init_sl` argument.
+
+##### More Housfield Unit options
 
 To define the HU range in terms of a central value and window width, rather than minimum and maximum values:
+- Set the `hu` argument to a single value, which will be taken as the window centre;
+- Optionally set the `hu_width` argument to change the initial window width (default = 500).
+Both the HU centre and HU width can be change later via widgets.
 
-To give your plot a custom title:
+The full range of available HU values can also be adjusted by changing the `hu_limits` argument (default = `[-2000, 2000]`); changing this might be useful if you're viewing an image with a much smaller range of intensities.
 
-Options for zooming and panning the image:
+##### Custom titles
 
-There are also several options for fine-tuning the appearance of the plot:
+To give your plot a custom title, set the `title` argument:
+```
+QuickViewer("my_file.nii", title="A CT scan image")
+```
+When viewing multiple images, multiple titles can be set by providing a list:
+```
+QuickViewer(["file1.nii", "file2.nii"], title=["First image", "Second image"])
+```
+
+##### Zooming, panning and downsampling
+
+If QuickViewer is run with the setting `zoom_ui=True`, extra widgets for zooming and panning will be displayed.
+
+To set the initial zoom level and image centre (regardless of whether `zoom_ui` is set), use:
+- `zoom`: set to either a single value for zoom in all directions, or to a list of 3 values for the zoom level in each orientation.
+- `zoom_centre`: centrepoint of the image, if zooming is used. This should be a list containing the x, y, and z coordinates of the desired centre.
+
+For large images, you may sometimes wish to downsample for speed. This can be done via the `downsample` parameter; similar to the `zoom` parameter, this can either be a single value setting the downsampling factor to be equal in all directions, or a list of three values for each direction.
+
+##### Other display options
+
+There are  several options for fine-tuning the appearance of the plot:
+- `figsize`: sets the figure height in inches (default = 5 inches).
+- `xlim`/`ylim`/`zlim`: set these to a pair of values to specify custom `x`, `y`, or `z` limits (i.e. to crop the plot).
+- `plots_per_row`: maximum number of images to display per row, when using multiple images; this allows images to be spread over multiple rows.
+- `major_ticks`: sets the interval between major axis tick marks.
+- `minor_ticks`: sets the number of minor tick marks to display between each pair of major tickmarks (by default, no minor ticks are shown).
+- `ticks_all_sides`: if set to True, tick marks will be shown at the top and right-hand side of plots as well as the bottom and left-hand side.
 
 #### Viewing a NumPy array
 
-
-
-
+QuickViewer can be used to view NumPy arrays as well as NIfTI images. This is done by giving the array in place of the NIfTI filepath:
+```
+import numpy
+my_array = numpy.random.rand(512, 512, 40)
+QuickViewer(my_array)
+```
+By default, QuickViewer will set the origin to `(0, 0, 0)` and the voxel sizes in all directions to 1mm. This can be changed either by providing the `voxel_sizes` and `origin` arguments (which should be lists in order `(x, y, z)`) or by giving an affine matrix via the `affine` argument, e.g.:
+```
+QuickViewer(my_array, voxel_sizes=[2.5, 2.5, 4], origin=[-200, -300, 0])
+```
 
 ### From the command line:
 1. A script for creating a quickviewer plot from the command line can be found in `quickviewer/bin/quick_view.py`. The basic usage for viewing a NIfTI file is:
