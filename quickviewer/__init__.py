@@ -945,7 +945,7 @@ class QuickViewer:
         if input_file == "":
             input_file = None
         output_file = self.translation_output.value
-        translations = {f"d{ax}": self.tsliders[ax].value 
+        translations = {f"d{ax}": - self.tsliders[ax].value 
                         * abs(self.trans_viewer.im.voxel_sizes[ax])
                         for ax in self.tsliders}
         write_translation_to_file(output_file, input_file=input_file,
