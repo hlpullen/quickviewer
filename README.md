@@ -44,7 +44,55 @@ and then create a QuickViewer instance, giving the path to your NIfTI file:
 ```
 QuickViewer("my_file.nii")
 ```
-This will launch a viewer with sliders:
+This will launch a viewer that looks something like this:
+
+<img src="images/basic.png" alt="basic quickviewer usage" height="500"/>
+
+The widgets can be used to change
+- The image orientation (x-y = axial view; y-z = sagittal view; x-z = coronal view)
+- The range of Hounsfield Units to cover;
+- The position of the slice currently being displayed.
+
+#### Saving a QuickViewer plot
+
+QuickViewer plots (minus the widgets) can be saved to an image file by providing the extra argument `save_as` when QuickViewer is called:
+```
+QuickViewer("my_file.nii", save_as="output_image.pdf")
+```
+The file `output_image.pdf` will automatically be created when this command is run. When QuickViewer is run with the `save_as` option, an extra widget will appear below the image:
+
+This can be used to overwrite the original output file after some changes have been made via the other widgets, or to save the image to a different file.
+
+#### Displaying multiple images
+
+To show multiple images side-by-side, you can give QuickViewer a list of filepaths rather than a single path:
+```
+QuickViewer(["my_file.nii", "another_file.nii"])
+```
+The result will look something like this:
+
+If the two images are in the same frame of reference, they will automatically share their HU and position sliders, so that you can scroll through both simultaneously. This behaviour can be turned off with the `share_slider` argument:
+```
+QuickViewer(["my_file.nii", "another_file.nii"], share_slider=False)
+```
+
+#### Orthogonal view
+
+#### More display settings
+
+By default, QuickViewer will show the central slice of the axial plane, with the HU range set to `-300 -- 200`. These initial settings can be changed via the arguments:
+
+To show scales in terms of voxel numbers rather than mm, use:
+
+To define the HU range in terms of a central value and window width, rather than minimum and maximum values:
+
+To give your plot a custom title:
+
+Options for zooming and panning the image:
+
+There are also several options for fine-tuning the appearance of the plot:
+
+#### Viewing a NumPy array
 
 
 
