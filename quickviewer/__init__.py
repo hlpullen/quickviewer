@@ -517,7 +517,7 @@ class QuickViewer:
             Centrepoint of zooming in order (x, y, z). If any of the values are
             None, the midpoint of the image will be used in that direction.
 
-        zoom_ui : bool, default=True
+        zoom_ui : bool, default=False
             If True, a UI for zooming will be displayed.
             
         downsample : int/tuple, default=None
@@ -1219,7 +1219,7 @@ class ImageViewer():
         zlim=None,
         zoom=None,
         zoom_centre=None,
-        zoom_ui=True,
+        zoom_ui=False,
         colorbar=False,
         mpl_kwargs=None,
         dose_opacity=0.5,
