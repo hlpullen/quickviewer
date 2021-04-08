@@ -1094,7 +1094,7 @@ class StructImage(NiftiImage):
         if name is not None:
             self.name = name.replace(" ", "_")
         else:
-            basename = os.path.basename(nii).strip(".gz").strip(".nii")
+            basename = os.path.basename(nii).replace(".gz", "").replace(".nii", "")
             self.name = re.sub(r"RTSTRUCT_[MVCT]+_\d+_\d+_\d+_", "",
                                basename).replace(" ", "_")
         self.set_label(label)
@@ -1623,6 +1623,7 @@ class MultiImage(NiftiImage):
         self.load_df(df)
 
         # Load structs
+        self.comp_type = comp_type
         self.load_structs(structs, 
                           multi_structs,
                           names=struct_names, 
@@ -1898,6 +1899,8 @@ class MultiImage(NiftiImage):
         struct_plot_type="contour",
         struct_legend=True,
         legend_loc='lower left',
+        struct_plot_grouping=None,
+        struct_to_plot=None,
         annotate_slice=None,
         major_ticks=None,
         minor_ticks=None,
@@ -2031,10 +2034,17 @@ class MultiImage(NiftiImage):
             show=False, colorbar=colorbar,
             colorbar_label="Jacobian determinant")
 
-        # Plot standalone structures
-        for s in (self.standalone_structs + self.struct_comparisons):
+        # Plot standalone structures and comparisons
+        for s in self.standalone_structs:
             s.plot(view, self.sl, ax=self.ax, mpl_kwargs=struct_kwargs, 
                    plot_type=struct_plot_type)
+        for s in self.struct_comparisons:
+            if struct_plot_grouping == "group others":
+                if s.s1.name_unique != struct_to_plot:
+                    continue
+            s.plot(view, self.sl, ax=self.ax, mpl_kwargs=struct_kwargs, 
+                   plot_type=struct_plot_type, 
+                   plot_grouping=struct_plot_grouping)
 
         # Plot deformation field
         self.df.plot(view, self.sl, ax=self.ax,
@@ -2046,7 +2056,13 @@ class MultiImage(NiftiImage):
         if struct_legend and struct_plot_type != "none":
             handles = []
             for s in self.structs:
-                if s.visible and s.on_slice(view, self.sl):
+                if struct_plot_grouping == "group others":
+                    if s.name_unique == struct_to_plot:
+                        handles.append(mpatches.Patch(color=s.color, 
+                                                      label=s.name_nice))
+                        handles.append(mpatches.Patch(color="white",
+                                                      label="Others"))
+                elif s.visible and s.on_slice(view, self.sl):
                     handles.append(mpatches.Patch(color=s.color, 
                                                   label=s.name_nice))
             if len(handles):
@@ -2388,15 +2404,18 @@ class StructComparison:
     """Class for computing comparison metrics for two structures and plotting
     the structures together."""
 
-    def __init__(self, struct1, struct2, name="", **kwargs):
+    def __init__(self, struct1, struct2, name="", comp_type=None, **kwargs):
         """Initialise from a pair of StructImages, or load new StructImages.
         """
 
         self.name = name
+        self.comp_type = comp_type
+        if self.comp_type == "others":
+            self.comp_type = "sum"
 
         # Two structures
-        if isinstance(struct2, StructImage):
-            self.two_structs = True
+        self.s2_is_list = core.is_list(struct2)
+        if not self.s2_is_list:
             for i, s in enumerate([struct1, struct2]):
                 struct = s if isinstance(s, StructImage) \
                     else StructImage(s, **kwargs)
@@ -2404,22 +2423,44 @@ class StructComparison:
 
         # List of structures
         else:
-            self.two_structs = False
             self.s1 = struct1
-            voxel_sizes = list(self.s1.voxel_sizes.values())
-            origin = list(self.s1.origin.values())
-            data = struct2[0].data
-            for s in struct2[1:]:
-                data += s.data
-            self.s2 = StructImage(data, name="others", load=True,
-                                  voxel_sizes=voxel_sizes, origin=origin)
-            self.s2.name_unique = "vs. others"
-            self.s2.color = matplotlib.colors.to_rgba("white")
+            self.s2_list = struct2
+            self.s2_voxel_sizes = list(self.s1.voxel_sizes.values())
+            self.s2_origin = list(self.s1.origin.values())
+            self.s2_name = f"{self.comp_type} of others"
+            self.update_s2_data()
 
         mean_sq_col = (
             np.array(self.s1.color) ** 2 
             + np.array(self.s2.color) ** 2) / 2
         self.color = np.sqrt(mean_sq_col)
+
+    def update_s2_data(self, comp_type=None):
+        """Update the data in struct2 using struct visibility and potential
+        new comp type."""
+
+        if not self.s2_is_list:
+            return
+
+        if comp_type:
+            self.comp_type = comp_type
+
+        structs_to_use = [s for s in self.s2_list if s.visible]
+        data = structs_to_use[0].data.copy()
+        for s in structs_to_use[1:]:
+            if self.comp_type == "sum":
+                data += s.data
+            elif self.comp_type == "overlap":
+                data *= s.data
+
+        self.s2 = StructImage(data, name=self.s2_name, 
+                              load=True, voxel_sizes=self.s2_voxel_sizes, 
+                              origin=self.s2_origin)
+        self.s2.color = matplotlib.colors.to_rgba("white")
+        self.s2.name_unique = f"vs. {self.comp_type} of others"
+
+        self.centroid_distance(force=True)
+        self.global_dice_score(force=True)
 
     def is_valid(self):
         """Check both structures are valid and in same reference frame."""
@@ -2443,7 +2484,8 @@ class StructComparison:
         plot_type="contour",
         zoom=None,
         zoom_centre=None,
-        show=False
+        show=False,
+        plot_grouping=None
     ):
         """Plot comparison structures."""
 
@@ -2452,7 +2494,7 @@ class StructComparison:
         if mpl_kwargs is None:
             mpl_kwargs = {}
 
-        if not self.two_structs:
+        if self.s2_is_list and plot_grouping != "group others":
             self.s1.plot(view=view, sl=sl, pos=pos, ax=ax, 
                          mpl_kwargs=mpl_kwargs, plot_type=plot_type, zoom=zoom, 
                          zoom_centre=zoom_centre, show=show)
@@ -2478,18 +2520,18 @@ class StructComparison:
 
         if plot_type in ["contour", "centroid"]:
             centroid = plot_type != "contour"
-            self.s1.plot_contour(view, sl, pos, ax, contour_kwargs, zoom, 
-                                 zoom_centre, centroid=centroid)
-            self.s2.plot_contour(view, sl, pos, self.s1.ax, contour_kwargs, 
+            self.s2.plot_contour(view, sl, pos, ax, contour_kwargs, 
                                  zoom, zoom_centre, centroid=centroid)
+            self.s1.plot_contour(view, sl, pos, self.s2.ax, contour_kwargs, zoom, 
+                                 zoom_centre, centroid=centroid)
         elif plot_type == "mask":
             self.plot_mask(view, sl, pos, ax, mpl_kwargs, zoom, zoom_centre)
         elif plot_type in ["filled", "filled centroid"]:
             mask_kwargs = {"alpha": mpl_kwargs.get("alpha", 0.3)}
             self.plot_mask(view, sl, pos, ax, mask_kwargs, zoom, zoom_centre)
-            self.s1.plot_contour(view, sl, pos, self.s1.ax, contour_kwargs, 
+            self.s2.plot_contour(view, sl, pos, self.s2.ax, contour_kwargs, 
                                  zoom, zoom_centre, centroid=centroid)
-            self.s2.plot_contour(view, sl, pos, self.s1.ax, contour_kwargs, 
+            self.s1.plot_contour(view, sl, pos, self.s2.ax, contour_kwargs, 
                                  zoom, zoom_centre, centroid=centroid)
 
         if show:
@@ -2499,9 +2541,9 @@ class StructComparison:
         """Plot two masks, with intersection in different colour."""
 
         # Set slice for both images
-        self.s1.set_ax(view, ax, zoom=zoom)
-        self.s1.set_slice(view, sl, pos)
+        self.s2.set_ax(view, ax, zoom=zoom)
         self.s2.set_slice(view, sl, pos)
+        self.s1.set_slice(view, sl, pos)
 
         # Get differences and overlap
         diff1 = self.s1.current_slice & ~self.s2.current_slice
@@ -2523,7 +2565,7 @@ class StructComparison:
             s_colors[im == 0, :] = (0, 0, 0, 0)
 
             # Display mask
-            self.s1.ax.imshow(
+            self.s2.ax.imshow(
                 s_colors,
                 extent=self.s1.extent[view],
                 aspect=self.s1.aspect[view],
@@ -2539,10 +2581,10 @@ class StructComparison:
             return False
         return self.s1.on_slice(view, sl) and self.s2.on_slice(view, sl)
 
-    def centroid_distance(self, units="voxels"):
+    def centroid_distance(self, units="voxels", force=False):
         """Get total centroid distance."""
 
-        if not hasattr(self, "centroid_dist"):
+        if not hasattr(self, "centroid_dist") or force:
             self.centroid_dist = {
                 units: np.linalg.norm(self.s1.get_centroid(units) 
                                       - self.s2.get_centroid(units)) 
@@ -2571,10 +2613,10 @@ class StructComparison:
         slice2 = self.s2.current_slice
         return (slice1 & slice2).sum() / np.mean([slice1.sum(), slice2.sum()])
 
-    def global_dice_score(self):
+    def global_dice_score(self, force=False):
         """Global dice score for entire structures."""
 
-        if not hasattr(self, "global_dice"):
+        if not hasattr(self, "global_dice") or force:
             self.global_dice = (self.s1.data & self.s2.data).sum() / \
                     np.mean([self.s1.data.sum(), self.s2.data.sum()])
 
@@ -2680,8 +2722,10 @@ class StructLoader:
               loaded, pairs if a list of pairs is given, or simply matched
               if only two structs are loaded.
             - "pairs": Every possible pair of loaded structs will be compared.
-            - "others": Each structure will be compared to the mean of all of the 
+            - "sum": Each structure will be compared to the sum of all of the 
             others.
+            - "overlap": Each structure will be comapred to the overlapping
+            region of all of the others.
         """
 
         # Lists for storing structures
@@ -2877,20 +2921,13 @@ class StructLoader:
         if len(self.comparisons) and self.loaded:
             return
 
-        # Match all pairs
-        if self.comp_type == "pairs":
-            for i, s1 in enumerate(self.structs):
-                for s2 in self.structs[i + 1:]:
-                    self.comparisons.append(StructComparison(s1, s2))
-            self.comparison_structs = self.structs
-            return
-
         # Match each to all others
         if self.comp_type == "others":
             for i, s in enumerate(self.structs):
                 others = [self.structs[j] for j in range(len(self.structs))
                           if j != i]
-                self.comparisons.append(StructComparison(s, others))
+                self.comparisons.append(StructComparison(
+                    s, others, comp_type=self.comp_type))
             self.comparison_structs = self.structs
             return
 
@@ -2901,18 +2938,22 @@ class StructLoader:
             return
 
         # Look for structures with matching names
-        unique_names = set([s.name for s in self.structs])
-        n_per_name = {n: len([s for s in self.structs if s.name == n])
-                      for n in unique_names}
-        if max(n_per_name.values()) > 2:
-            err_names = {n: num for n, num in n_per_name.items() if 
-                         num > 2}
-            raise RuntimeError("Structure names should not be shared by "
-                               "more than 2 structures! Names causing "
-                               f"error:\n{err_names}")
-            if max(n_per_name.values()) < 2:
-                print("Warning: no structures with matching names were found."
-                      " Structure comparison will not be run.")
+        use_pairs = False
+        n_per_name = {}
+        if self.comp_type == "auto":
+            unique_names = set([s.name for s in self.structs])
+            n_per_name = {n: len([s for s in self.structs if s.name == n])
+                          for n in unique_names}
+            if max(n_per_name.values()) != 2:
+                use_pairs = True
+
+        # Match all pairs
+        if self.comp_type == "pairs" or use_pairs:
+            for i, s1 in enumerate(self.structs):
+                for s2 in self.structs[i + 1:]:
+                    self.comparisons.append(StructComparison(s1, s2))
+            self.comparison_structs = self.structs
+            return
 
         # Make structure comparisons
         names_to_compare = [name for name in n_per_name 

@@ -731,7 +731,10 @@ class QuickViewer:
         self.ui_view = v0.ui_view
         self.view = self.ui_view.value
         self.ui_struct_plot_type = v0.ui_struct_plot_type
+        self.ui_struct_plot_type2 = v0.ui_struct_plot_type2
+        self.ui_struct_comp_type = v0.ui_struct_comp_type
         self.struct_plot_type = self.ui_struct_plot_type.value
+        self.struct_plot_type2 = self.ui_struct_plot_type2.value
 
         # Make main upper UI list (= view radio + single HU/slice slider)
         many_sliders = not share_slider and self.n > 1
@@ -784,9 +787,14 @@ class QuickViewer:
         if self.any_attr("jacobian"):
             self.extra_ui.extend([v0.ui_jac_opacity, v0.ui_jac_range])
         if self.any_attr("structs"):
-            self.extra_ui.extend([v0.ui_struct_plot_type, 
-                                  v0.ui_struct_linewidth,
-                                  v0.ui_struct_opacity])
+            to_add = [
+                v0.ui_struct_plot_type, 
+                v0.ui_struct_linewidth,
+                v0.ui_struct_opacity]
+            if any([v.im.comp_type == "others" for v in self.viewer]):
+                to_add.insert(1, v0.ui_struct_plot_type2)
+                to_add.insert(2, v0.ui_struct_comp_type)
+            self.extra_ui.extend(to_add)
 
         # Make extra UI elements
         self.make_lower_ui()
@@ -1439,6 +1447,7 @@ class ImageViewer():
             init_struct = structs_standard[standard_str(self.init_struct)]
         else:
             init_struct = ""
+        self.current_struct = structs_standard[standard_str(self.init_struct)]
         self.ui_struct_jump = ipyw.Dropdown(
             options=self.structs_for_jump.keys(),
             value=init_struct,
@@ -1633,6 +1642,17 @@ class ImageViewer():
                 description="Structure plotting",
                 style=_style,
             )
+            self.ui_struct_plot_type2 = ipyw.Dropdown(
+                options=["individual", "group others"],
+                description="Comparison plotting",
+                style=_style
+            )
+            self.ui_struct_comp_type = ipyw.Dropdown(
+                options=["sum", "overlap"],
+                description="Comparison type",
+                style=_style
+            )
+            self.struct_comp_type = self.ui_struct_comp_type.value
 
             # Opacity/linewidth sliders
             self.ui_struct_linewidth = ipyw.IntSlider(
@@ -1646,16 +1666,22 @@ class ImageViewer():
 
             # Add all structure UIs
             if self.im.has_structs:
-                self.extra_ui.extend([
+                to_add = [
                     self.ui_struct_plot_type,
                     self.ui_struct_linewidth,
                     self.ui_struct_opacity
-                ])
+                ]
+                if self.im.comp_type == "others":
+                    to_add.insert(1, self.ui_struct_plot_type2)
+                    to_add.insert(2, self.ui_struct_comp_type)
+                self.extra_ui.extend(to_add)
 
         else:
             to_share = ["ui_mask", "ui_dose", "ui_jac_opacity", "ui_jac_range",
-                        "ui_df", "ui_struct_plot_type", "ui_struct_linewidth",
-                        "ui_struct_linewidth", "ui_struct_opacity"]
+                        "ui_df", "ui_struct_plot_type", "ui_struct_plot_type2",
+                        "ui_struct_comp_type", "ui_struct_linewidth", 
+                        "ui_struct_linewidth", "ui_struct_opacity",
+                        "struct_comp_type"]
             for ts in to_share:
                 setattr(self, ts, getattr(vimage, ts))
             self.ui_mask.value += self.im.has_mask
@@ -1743,7 +1769,7 @@ class ImageViewer():
         self.struct_checkboxes = {
             s: ipyw.Checkbox(value=True, indent=False) for s in 
             self.structs_for_jump.keys() if s}
-        self.ui_struct_checkboxes = list(self.struct_checkboxes.values())
+        self.ui_struct_checkboxes.extend(list(self.struct_checkboxes.values()))
         for s in self.im.structs:
             s.checkbox = self.struct_checkboxes[s.name_unique]
             if not self.struct_info:
@@ -2298,6 +2324,7 @@ class ImageViewer():
                 jacobian_kwargs.update(jacobian_kwargs)
 
         # Structure visibility
+        update_comp_s2 = False
         for s in self.im.structs:
             s.visible = s.checkbox.value
         vis = self.get_struct_visibility()
@@ -2306,6 +2333,16 @@ class ImageViewer():
             self.ui_struct_jump.options = [""] + self.visible_structs
             if self.im.structs_as_mask:
                 self.im.set_masks()
+            update_comp_s2 = self.compare_structs and self.im.comp_type \
+                    == "others"
+
+        # Update structure comparisons if needed
+        if self.struct_comp_type != self.ui_struct_comp_type.value:
+            self.struct_comp_type = self.ui_struct_comp_type.value
+            update_comp_s2 = True
+        if update_comp_s2:
+            for sc in self.im.struct_comparisons:
+                sc.update_s2_data(self.struct_comp_type)
 
         # Get structure settings
         self.update_struct_info()
@@ -2323,6 +2360,8 @@ class ImageViewer():
         elif self.struct_plot_type in ["filled", "filled centroid"]:
             self.struct_filled_opacity = self.ui_struct_opacity.value
             struct_kwargs["alpha"] = self.struct_filled_opacity
+        struct_plot_grouping = self.ui_struct_plot_type2.value
+
 
         # Check whether colorbar already drawn
         colorbar = self.colorbar
@@ -2356,6 +2395,8 @@ class ImageViewer():
                         struct_kwargs=struct_kwargs,
                         struct_legend=self.struct_legend,
                         legend_loc=self.legend_loc,
+                        struct_plot_grouping=struct_plot_grouping,
+                        struct_to_plot=self.current_struct,
                         annotate_slice=self.annotate_slice,
                         major_ticks=self.major_ticks,
                         minor_ticks=self.minor_ticks,
