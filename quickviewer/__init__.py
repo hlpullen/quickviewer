@@ -831,10 +831,7 @@ class QuickViewer:
         """Make lower UI for structure checkboxes."""
 
         # Saving UI
-        self.lower_ui = []
-        if self.viewer[0].save_as is not None:
-            self.lower_ui.extend([self.viewer[0].save_name,
-                                  self.viewer[0].save_button])
+        self.lower_ui = [self.viewer[0].save_name, self.viewer[0].save_button]
 
         # Structure UI
         many_with_structs = sum([v.im.has_structs for v in self.viewer]) > 1
@@ -1726,13 +1723,12 @@ class ImageViewer():
 
         # Saving UI
         self.lower_ui = []
-        if self.save_as is not None:
-            self.save_name = ipyw.Text(description="Output file:",
-                                       value=self.save_as)
-            self.save_button = ipyw.Button(description="Save")
-            self.save_button.on_click(self.save_fig)
-            if self.standalone:
-                self.lower_ui.extend([self.save_name, self.save_button])
+        self.save_name = ipyw.Text(description="Output file:",
+                                   value=self.save_as)
+        self.save_button = ipyw.Button(description="Save")
+        self.save_button.on_click(self.save_fig)
+        if self.standalone:
+            self.lower_ui.extend([self.save_name, self.save_button])
 
         # Structure comparison display
         struct_comps = []
