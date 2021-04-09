@@ -315,6 +315,11 @@ class QuickViewer:
                 - "cmap": colormap (default="jet").
                 - "interpolation": interpolation method (default="antialiased")
 
+        dose_range : list, default=None
+            Min and max dose range to plot. This can also be set via the "vmin"
+            and "xmax" keys in <dose_kwargs>; <dose_range> will take precedence 
+            if set.
+
         invert_mask : bool, default=False
             If True, any masks applied will be inverted.
 
@@ -1224,6 +1229,7 @@ class ImageViewer():
         mpl_kwargs=None,
         dose_opacity=0.5,
         dose_kwargs=None,
+        dose_range=None,
         invert_mask=False,
         mask_color="black",
         jacobian_opacity=0.5,
@@ -1310,7 +1316,10 @@ class ImageViewer():
 
         # Dose settings
         self.init_dose_opacity = dose_opacity
-        self.dose_kwargs = dose_kwargs
+        self.dose_kwargs = dose_kwargs if dose_kwargs else {}
+        if dose_range:
+            self.dose_kwargs["vmin"] = dose_range[0]
+            self.dose_kwargs["vmax"] = dose_range[1]
 
         # Jacobian/deformation field settings
         self.init_jac_opacity = jacobian_opacity
