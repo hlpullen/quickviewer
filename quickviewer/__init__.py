@@ -831,7 +831,7 @@ class QuickViewer:
         """Make lower UI for structure checkboxes."""
 
         # Saving UI
-        self.lower_ui = [self.viewer[0].save_name, self.viewer[0].save_button]
+        self.lower_ui = []
 
         # Structure UI
         many_with_structs = sum([v.im.has_structs for v in self.viewer]) > 1
@@ -849,6 +849,9 @@ class QuickViewer:
             # Add to overall lower UI
             self.lower_ui.extend(v.lower_ui)
             self.ui_struct_checkboxes.extend(v.ui_struct_checkboxes)
+
+        self.lower_ui.extend([self.viewer[0].save_name, 
+                              self.viewer[0].save_button])
 
     def make_comparison_ui(self):
 
@@ -1653,7 +1656,7 @@ class ImageViewer():
                 style=_style
             )
             self.ui_struct_comp_type = ipyw.Dropdown(
-                options=["sum", "overlap"],
+                options=["majority vote", "sum", "overlap"],
                 description="Comparison type",
                 style=_style
             )
@@ -1727,8 +1730,6 @@ class ImageViewer():
                                    value=self.save_as)
         self.save_button = ipyw.Button(description="Save")
         self.save_button.on_click(self.save_fig)
-        if self.standalone:
-            self.lower_ui.extend([self.save_name, self.save_button])
 
         # Structure comparison display
         struct_comps = []
@@ -1849,6 +1850,9 @@ class ImageViewer():
 
         if self.compare_structs or self.struct_info:
             self.lower_ui.append(self.ui_table_saving)
+
+        if self.standalone:
+            self.lower_ui.extend([self.save_name, self.save_button])
 
     def get_struct_visibility(self):
         """Get list of currently visible structures from checkboxes."""

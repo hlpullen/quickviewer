@@ -2411,7 +2411,7 @@ class StructComparison:
         self.name = name
         self.comp_type = comp_type
         if self.comp_type == "others":
-            self.comp_type = "sum"
+            self.comp_type = "majority vote"
 
         # Two structures
         self.s2_is_list = core.is_list(struct2)
@@ -2447,11 +2447,17 @@ class StructComparison:
 
         structs_to_use = [s for s in self.s2_list if s.visible]
         data = structs_to_use[0].data.copy()
+        if self.comp_type == "majority vote":
+            data = data.astype(int)
         for s in structs_to_use[1:]:
             if self.comp_type == "sum":
                 data += s.data
             elif self.comp_type == "overlap":
                 data *= s.data
+            elif self.comp_type == "majority vote":
+                data += s.data.astype(int)
+        if self.comp_type == "majority vote":
+            data = data >= len(structs_to_use) / 2
 
         self.s2 = StructImage(data, name=self.s2_name, 
                               load=True, voxel_sizes=self.s2_voxel_sizes, 
@@ -2722,8 +2728,8 @@ class StructLoader:
               loaded, pairs if a list of pairs is given, or simply matched
               if only two structs are loaded.
             - "pairs": Every possible pair of loaded structs will be compared.
-            - "sum": Each structure will be compared to the sum of all of the 
-            others.
+            - "other": Each structure will be compared to the consenues of all 
+            of the others.
             - "overlap": Each structure will be comapred to the overlapping
             region of all of the others.
         """
