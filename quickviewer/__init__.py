@@ -1513,7 +1513,7 @@ class ImageViewer():
 
                 # Zoom level slider
                 self.ui_zoom = ipyw.FloatSlider(
-                    min=1, max=5, step=0.1, description="Zoom",
+                    min=1, max=8, step=0.1, description="Zoom",
                     readout_format=".1f", continuous_update=False, 
                     style=_style)
 
@@ -1683,7 +1683,6 @@ class ImageViewer():
                         "struct_comp_type"]
             for ts in to_share:
                 setattr(self, ts, getattr(vimage, ts))
-            self.ui_mask.value += self.im.has_mask
 
         # Make lower
         self.make_lower_ui()
@@ -1866,6 +1865,11 @@ class ImageViewer():
             if not (sc.s1.visible and sc.s2.visible):
                 to_drop.append(i)
                 continue
+
+            if self.ui_struct_plot_type2.value == "group others":
+                if self.current_struct != sc.s1.name_unique:
+                    to_drop.append(i)
+                    continue
 
             # Structure names
             self.df_struct_comp.at[i, ("", "comp")] = \
