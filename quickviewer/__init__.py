@@ -381,7 +381,7 @@ class QuickViewer:
             If True, the lengths and volumes of each structure will be 
             displayed below the plot.
 
-        struct_info_dp : int, default=1
+        struct_info_dp : int, default=2
             Number of decimal places to show for floats in structure info and 
             comparison tables.
 
@@ -522,8 +522,9 @@ class QuickViewer:
             Centrepoint of zooming in order (x, y, z). If any of the values are
             None, the midpoint of the image will be used in that direction.
 
-        zoom_ui : bool, default=False
-            If True, a UI for zooming will be displayed.
+        zoom_ui : bool, default=None
+            If True, a UI for zooming will be displayed. Default is False
+            unless structs are loaded, in which case default is True.
             
         downsample : int/tuple, default=None
             Factor by which to downsample an image. Can be a single value for
@@ -1224,7 +1225,7 @@ class ImageViewer():
         zlim=None,
         zoom=None,
         zoom_centre=None,
-        zoom_ui=False,
+        zoom_ui=None,
         colorbar=False,
         mpl_kwargs=None,
         dose_opacity=0.5,
@@ -1241,7 +1242,7 @@ class ImageViewer():
         struct_opacity=None,
         struct_linewidth=2,
         struct_info=False,
-        struct_info_dp=1,
+        struct_info_dp=2,
         length_units=None,
         area_units=None,
         vol_units=None,
@@ -1300,6 +1301,8 @@ class ImageViewer():
         self.zoom = zoom
         self.zoom_centre = zoom_centre
         self.zoom_ui = zoom_ui
+        if zoom_ui is None:
+            self.zoom_ui = self.im.has_structs
         self.major_ticks = major_ticks
         self.minor_ticks = minor_ticks
         self.ticks_all_sides = ticks_all_sides
@@ -1765,6 +1768,9 @@ class ImageViewer():
         self.col_names = {
             "struct": "Structure",
             "vol": f"Volume ({vol_units})",
+            "full_x": f"x length ({self.length_units})",
+            "full_y": f"y length({self.length_units})",
+            "full_z": f"z length ({self.length_units})",
             "area": f"Area ({area_units})",
             "slice": "Slice-by-slice",
             "overall": "Overall",
@@ -1779,13 +1785,17 @@ class ImageViewer():
             if not self.struct_info:
                 row = {"struct": None}
             else:
-                row = {h: None for h in ["struct", "vol", "area", "x", 
-                                         "y", "centroid_x", "centroid_y"]}
+                row = {h: None for h in ["struct", "vol", "x_full", "y_full", 
+                                         "z_full", "area", "x", "y", 
+                                         "centroid_x", "centroid_y"]}
             struct_info.append(row)
         if self.im.struct_timeseries:
-            for ts in self.im.dated_structs.values():
+            for date, ts in self.im.dated_structs.items():
                 for s in ts:
-                    s.checkbox = self.struct_checkboxes[s.name_unique]
+                    try:
+                        s.checkbox = self.struct_checkboxes[s.name_unique]
+                    except KeyError:
+                        s.checkbox = ipyw.Checkbox(value=True)
         
         self.visible_structs = self.get_struct_visibility()
         self.df_struct_info = pd.DataFrame(struct_info)
@@ -1842,9 +1852,10 @@ class ImageViewer():
             self.lower_ui.append(self.ui_struct_comp_table)
         if self.struct_info:
             self.df_struct_info.columns = pd.MultiIndex.from_tuples([
-                ("", "struct"), ("overall", "vol"), ("slice", "area"),
-                ("slice", "x"), ("slice", "y"), ("slice", "centroid_x"),
-                ("slice", "centroid_y")])
+                ("", "struct"), ("overall", "vol"), ("overall", "full_x"),
+                ("overall", "full_y"), ("overall", "full_z"), 
+                ("slice", "area"), ("slice", "x"), ("slice", "y"), 
+                ("slice", "centroid_x"), ("slice", "centroid_y")])
         self.update_struct_info()
         self.lower_ui.append(self.ui_struct_info)
 
@@ -1857,6 +1868,8 @@ class ImageViewer():
     def get_struct_visibility(self):
         """Get list of currently visible structures from checkboxes."""
 
+        if not self.im.has_structs:
+            return []
         return [name for name in self.structs_for_jump if name and 
                 self.struct_checkboxes[name].value]
 
@@ -1949,6 +1962,7 @@ class ImageViewer():
                 volume = s.get_volume(self.vol_units)
                 area = s.get_area(self.view, self.slice[self.view],
                                   self.area_units)
+                full_extents = s.get_full_extent(self.length_units)
                 extents = s.get_extents(self.view, self.slice[self.view],
                                         self.length_units)
                 centre_units = "mm" if self.im.scale_in_mm else "voxels"
@@ -1957,6 +1971,9 @@ class ImageViewer():
 
                 # Update dataframe
                 self.df_struct_info.at[i, ("overall", "vol")] = volume
+                self.df_struct_info.at[i, ("overall", "full_x")] = full_extents[0]
+                self.df_struct_info.at[i, ("overall", "full_y")] = full_extents[1]
+                self.df_struct_info.at[i, ("overall", "full_z")] = full_extents[2]
                 self.df_struct_info.at[i, ("slice", "area")] = area
                 self.df_struct_info.at[i, ("slice", "x")] = extents[0]
                 self.df_struct_info.at[i, ("slice", "y")] = extents[1]

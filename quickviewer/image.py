@@ -1477,6 +1477,31 @@ class StructImage(NiftiImage):
             area *= abs(self.voxel_sizes[x] * self.voxel_sizes[y])
         return area
 
+    def get_full_extent(self, units="voxels"):
+        """Get the full extent along x, y, z."""
+
+        self.load()
+        if self.empty:
+            return 0
+
+        if not hasattr(self, "full_extent"):
+            non_zero = np.argwhere(self.data)
+            mins = non_zero.min(0)
+            maxes = non_zero.max(0)
+            x_len = abs(maxes[1] - mins[1]) + 1
+            y_len = abs(maxes[0] - mins[0]) + 1
+            z_len = abs(maxes[2] - mins[2]) + 1
+            self.full_extent = {
+                "voxels": [x_len, y_len, z_len]
+            }
+            self.full_extent["mm"] = [
+                x_len * abs(self.voxel_sizes["x"]),
+                y_len * abs(self.voxel_sizes["y"]),
+                z_len * abs(self.voxel_sizes["z"]),
+            ]
+
+        return self.full_extent[units]
+
     def get_extents(self, view, sl, units="voxels"):
         """Get extents along the x/y axes in a given view on a given slice."""
 
@@ -1717,6 +1742,7 @@ class MultiImage(NiftiImage):
             self.dated_structs = {}
             self.dated_comparisons = {}
             self.dated_standalone_structs = {}
+            struct_colors = {}
             for date, structs in struct_dates.items():
 
                 if date not in self.dates:
@@ -1726,8 +1752,9 @@ class MultiImage(NiftiImage):
                                       comp_type=comp_type,
                                       struct_kwargs={"scale_in_mm": 
                                                      self.scale_in_mm})
+                struct_colors = loader.reassign_colors(struct_colors)
                 self.dated_structs[date] = loader.get_structs(
-                    ignore_unpaired, ignore_empty)
+                    ignore_unpaired, ignore_empty, sort=True)
 
                 if compare_structs:
                     self.dated_comparisons[date] = \
@@ -3023,12 +3050,31 @@ class StructLoader:
 
         self.loaded = True
 
-    def get_structs(self, ignore_unpaired=False, ignore_empty=False):
+    def reassign_colors(self, colors):
+        """Reassign colors such that any structures in the <colors> dict are
+        given that color, and any not in the dict are given unique colors and 
+        added to it."""
+
+        self.load_all()
+
+        for s in self.structs:
+            if s.name_unique in colors:
+                s.assign_color(colors[s.name_unique])
+            else:
+                color = standard_colors[len(colors)]
+                s.assign_color(color)
+                colors[s.name_unique] = color
+        return colors
+
+    def get_structs(self, ignore_unpaired=False, ignore_empty=False, 
+                    sort=False):
         """Get list of all structures. If <ignore_unpaired> is True, only 
         structures that are part of a comparison pair will be returned."""
 
         self.load_all()
         s_list = self.structs
+        if sort:
+            s_list = sorted(s_list)
         if ignore_unpaired:
             self.find_comparisons()
             s_list = self.comparison_structs
