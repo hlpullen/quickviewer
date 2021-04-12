@@ -5,7 +5,7 @@ with open("README.md", "r", encoding="utf-8") as fh:
 
 setuptools.setup(
     name="quickviewer",
-    version="0.0.1",
+    version="0.0.1.1",
     author="Hannah Pullen",
     author_email="hp346@cam.ac.uk",
     description="Interactive medical image viewer",
