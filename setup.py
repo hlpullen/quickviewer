@@ -21,7 +21,7 @@ setuptools.setup(
                       'nibabel',
                       'numpy',
                       'pandas',
-                      'pydicom',
+                      'pydicom>=2.1.2',
                       'scikit-image',
                      ],
     classifiers=[
