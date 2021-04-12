@@ -1593,7 +1593,7 @@ class MultiImage(NiftiImage):
             will be masked (or values above, if <invert_mask> is True).
         """
 
-        if not nii and not timeseries:
+        if nii is None and timeseries is None:
             raise TypeError("Either <nii> or <timeseries> must be set!")
 
         # Load the scan image
