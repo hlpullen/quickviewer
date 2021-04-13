@@ -1,4 +1,4 @@
-## [1.0.0] - 2021-04-13
+## [0.1.0](0.1.0) - 2021-04-13
 
 - Version of QuickViewer presented in Radiotherapy Research Group meeting.
 - Features include:
