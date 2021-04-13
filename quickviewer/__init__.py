@@ -1758,7 +1758,7 @@ class ImageViewer():
 
         # Structure checkboxes and info table
         blank = ipyw.HTML(value="&nbsp;")
-        self.ui_struct_checkboxes = [blank, blank] if self.struct_info \
+        self.ui_struct_checkboxes = [blank, blank, blank] if self.struct_info \
                 else [blank]
         struct_info = []
         vol_units = self.vol_units if self.vol_units != "mm" \
@@ -1769,7 +1769,7 @@ class ImageViewer():
             "struct": "Structure",
             "vol": f"Volume ({vol_units})",
             "full_x": f"x length ({self.length_units})",
-            "full_y": f"y length({self.length_units})",
+            "full_y": f"y length ({self.length_units})",
             "full_z": f"z length ({self.length_units})",
             "area": f"Area ({area_units})",
             "slice": "Slice-by-slice",
