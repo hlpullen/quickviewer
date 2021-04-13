@@ -6,7 +6,7 @@ A package for interactively viewing medical image data.
 
 ### Installing QuickViewer via pip
 
-To install QuickViewer is via [pip](https://pypi.org/project/pip/), run the following command from a terminal:
+To install QuickViewer via [pip](https://pypi.org/project/pip/), run the following command from a terminal:
 ```
 pip install git+https://github.com/hpullen/quickviewer.git
 ```
