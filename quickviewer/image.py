@@ -2168,7 +2168,7 @@ class OrthogonalImage(MultiImage):
              mpl_kwargs=None,
              show=True,
              colorbar=False,
-             colobar_label="HU",
+             colorbar_label="HU",
              struct_kwargs=None,
              struct_plot_type=None,
              major_ticks=None,
