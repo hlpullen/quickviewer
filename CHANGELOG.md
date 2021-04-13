@@ -1,4 +1,9 @@
-## [0.1.0](https://github.com/hlpullen/quickviewer/releases/tag/0.1.0) - 2021-04-13
+## [Unreleased](https://github.com/hlpullen/quickviewer/compare/v0.1.0...HEAD)
+
+### Added
+- Extra user settings: `cmap`, `dose_cmap`
+
+## [0.1.0](https://github.com/hlpullen/quickviewer/releases/tag/v0.1.0) - 2021-04-13
 
 ### Added
 - Version of QuickViewer presented in Radiotherapy Research Group meeting.
