@@ -291,6 +291,10 @@ class QuickViewer:
             Custom limits for the z axis. If one of the values in the tuple is 
             None, the default z limits will be used.
 
+        cmap : str, default=None
+            Matplotlib colormap to use for image plotting. Supercedes any
+            cmap included in <mpl_kwargs>.
+
         colorbar : bool, default=False
             If True, colorbars will be displayed for HU, dose and Jacobian 
             determinant.
@@ -322,6 +326,10 @@ class QuickViewer:
             Min and max dose range to plot. This can also be set via the "vmin"
             and "xmax" keys in <dose_kwargs>; <dose_range> will take precedence 
             if set.
+
+        dose_cmap : str, default="jet"
+            Matplotlib colormap to use for dose field plotting. Supercedes
+            any cmap in <dose_kwargs>
 
         invert_mask : bool, default=False
             If True, any masks applied will be inverted.
@@ -1229,12 +1237,14 @@ class ImageViewer():
         zoom=None,
         zoom_centre=None,
         zoom_ui=None,
+        cmap=None,
         colorbar=False,
         colorbar_label="HU",
         mpl_kwargs=None,
         dose_opacity=0.5,
         dose_kwargs=None,
         dose_range=None,
+        dose_cmap=None,
         invert_mask=False,
         mask_color="black",
         jacobian_opacity=0.5,
@@ -1289,7 +1299,9 @@ class ImageViewer():
         # Assign plot settings
         # General settings
         self.in_notebook = in_notebook()
-        self.mpl_kwargs = mpl_kwargs
+        self.mpl_kwargs = mpl_kwargs if mpl_kwargs else {}
+        if cmap:
+            self.mpl_kwargs["cmap"] = cmap
         self.figsize = to_inches(figsize)
         self.continuous_update = continuous_update
         self.colorbar = colorbar
@@ -1328,6 +1340,8 @@ class ImageViewer():
         if dose_range:
             self.dose_kwargs["vmin"] = dose_range[0]
             self.dose_kwargs["vmax"] = dose_range[1]
+        if dose_cmap:
+            self.dose_kwargs["cmap"] = dose_cmap
 
         # Jacobian/deformation field settings
         self.init_jac_opacity = jacobian_opacity
