@@ -299,8 +299,10 @@ class QuickViewer:
             If True, colorbars will be displayed for HU, dose and Jacobian 
             determinant.
 
-        colorbar_label : str, default=HU
-            Label for the colorbar and range slider.
+        colorbar_label : str, default=None
+            Label for the colorbar and range slider. If None, will default to
+            either "HU" if an image file is given, or "Dose (Gy)" if a dose
+            file is given without an image.
 
         mpl_kwargs : dict, default=None
             Dictionary of keyword arguments to pass to matplotlib.pyplot.imshow
@@ -1239,7 +1241,7 @@ class ImageViewer():
         zoom_ui=None,
         cmap=None,
         colorbar=False,
-        colorbar_label="HU",
+        colorbar_label=None,
         mpl_kwargs=None,
         dose_opacity=0.5,
         dose_kwargs=None,
@@ -1274,6 +1276,27 @@ class ImageViewer():
         **kwargs
     ):
 
+        # Check whether we need to use dose as image
+        if nii is None and kwargs.get("timeseries", None) is None:
+            dose = kwargs.get("dose", None)
+            if dose is None:
+                raise TypeError("Must provide either <nii>, <dose>, or "
+                                "<timeseries>!")
+            nii = dose
+            kwargs["dose"] = None
+            if hu_limits == (-2000, 2000):
+                if dose_range:
+                    hu_limits = dose_range
+                else:
+                    hu_limits = (0, 70)
+            if colorbar_label is None:
+                    colorbar_label = "Dose (Gy)"
+            if not cmap:
+                if dose_cmap:
+                    cmap = dose_cmap
+                else:
+                    cmap = "jet"
+
         self.im = self.make_image(nii, **kwargs)
         if not self.im.valid:
             return
@@ -1306,7 +1329,8 @@ class ImageViewer():
         self.continuous_update = continuous_update
         self.colorbar = colorbar
         self.colorbar_drawn = False
-        self.colorbar_label = colorbar_label
+        self.colorbar_label = colorbar_label if colorbar_label is not None \
+                else "HU"
         self.annotate_slice = annotate_slice
         if self.annotate_slice is None and not self.in_notebook:
             self.annotate_slice = True
