@@ -1914,6 +1914,7 @@ class MultiImage(NiftiImage):
         n_date=1,
         show=True,
         colorbar=False,
+        colorbar_label="HU",
         dose_kwargs=None,
         masked=False,
         invert_mask=False,
@@ -2041,9 +2042,9 @@ class MultiImage(NiftiImage):
         self.set_ax(view, ax, gs, figsize, zoom, colorbar)
         NiftiImage.plot(
             self, view, sl, pos, ax=self.ax, mpl_kwargs=mpl_kwargs,
-            show=False, colorbar=colorbar, masked=masked,
-            invert_mask=invert_mask, mask_color=mask_color, figsize=figsize,
-            major_ticks=major_ticks, minor_ticks=minor_ticks,
+            show=False, colorbar=colorbar, colorbar_label=colorbar_label,
+            masked=masked, invert_mask=invert_mask, mask_color=mask_color, 
+            figsize=figsize, major_ticks=major_ticks, minor_ticks=minor_ticks,
             ticks_all_sides=ticks_all_sides)
 
         # Plot dose field
@@ -2167,6 +2168,7 @@ class OrthogonalImage(MultiImage):
              mpl_kwargs=None,
              show=True,
              colorbar=False,
+             colobar_label="HU",
              struct_kwargs=None,
              struct_plot_type=None,
              major_ticks=None,
@@ -2180,7 +2182,8 @@ class OrthogonalImage(MultiImage):
 
         # Plot the MultiImage
         MultiImage.plot(self, view, sl=sl, pos=pos, ax=self.ax, zoom=zoom,
-                        zoom_centre=zoom_centre, colorbar=colorbar, show=False, 
+                        zoom_centre=zoom_centre, colorbar=colorbar, 
+                        show=False, colorbar_label=colorbar_label,
                         mpl_kwargs=mpl_kwargs, struct_kwargs=struct_kwargs,
                         struct_plot_type=struct_plot_type, 
                         major_ticks=major_ticks, minor_ticks=minor_ticks, 

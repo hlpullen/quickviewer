@@ -295,6 +295,9 @@ class QuickViewer:
             If True, colorbars will be displayed for HU, dose and Jacobian 
             determinant.
 
+        colorbar_label : str, default=HU
+            Label for the colorbar and range slider.
+
         mpl_kwargs : dict, default=None
             Dictionary of keyword arguments to pass to matplotlib.pyplot.imshow
             for the main image.See https://matplotlib.org/stable/api/_as_gen/matplotlib.pyplot.imshow.html 
@@ -1227,6 +1230,7 @@ class ImageViewer():
         zoom_centre=None,
         zoom_ui=None,
         colorbar=False,
+        colorbar_label="HU",
         mpl_kwargs=None,
         dose_opacity=0.5,
         dose_kwargs=None,
@@ -1290,6 +1294,7 @@ class ImageViewer():
         self.continuous_update = continuous_update
         self.colorbar = colorbar
         self.colorbar_drawn = False
+        self.colorbar_label = colorbar_label
         self.annotate_slice = annotate_slice
         if self.annotate_slice is None and not self.in_notebook:
             self.annotate_slice = True
@@ -1485,7 +1490,7 @@ class ImageViewer():
                     "min": hu_limits[0],
                     "max": hu_limits[1],
                     "value": (vmin, vmax),
-                    "description": "HU range",
+                    "description": self.colorbar_label,
                     "continuous_update": False,
                     "style": _style
                 }
@@ -2414,6 +2419,7 @@ class ImageViewer():
                         zoom=self.zoom,
                         zoom_centre=self.zoom_centre,
                         colorbar=colorbar,
+                        colorbar_label=self.colorbar_label,
                         masked=self.ui_mask.value,
                         invert_mask=self.invert_mask,
                         mask_color=self.mask_color,
