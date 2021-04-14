@@ -3,6 +3,7 @@
 ### Added
 - Extra user settings: `cmap`, `dose_cmap`
 - Ability to load a dose field via the `dose` argument without loading an image file
+- Ability to change type of comparison image with a dropdown menu
 
 ## [0.1.0](https://github.com/hlpullen/quickviewer/releases/tag/v0.1.0) - 2021-04-13
 

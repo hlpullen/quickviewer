@@ -629,7 +629,9 @@ class QuickViewer:
         self.overlay_legend = overlay_legend
         self.legend_loc = legend_loc
         self.comparison_only = comparison_only
-        if comparison_only and comparison is None:
+        if comparison_only and comparison is None and not any([show_cb,
+                                                               show_overlay,
+                                                               show_diff]):
             comparison = True
         self.load_comparison(comparison, show_cb, show_overlay, show_diff)
         self.translation = translation

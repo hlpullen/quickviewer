@@ -2278,7 +2278,7 @@ class ComparisonImage(NiftiImage):
              mpl_kwargs=None, show=True, figsize=None, zoom=None, 
              zoom_centre=None, plot_type=None, cb_splits=2,
              overlay_opacity=0.5, overlay_legend=False, 
-             overlay_legend_loc=None, colorbar=True, colorbar_label="HU"
+             overlay_legend_loc=None, colorbar=False, colorbar_label="HU"
             ):
 
         """Create a comparison plot of the two images.
@@ -2371,8 +2371,9 @@ class ComparisonImage(NiftiImage):
                                   cmap=self.cmap, **self.plot_kwargs)
 
         # Draw colorbar
-        clb = self.fig.colorbar(mesh, ax=self.ax, label=colorbar_label)
-        clb.solids.set_edgecolor("face")
+        if colorbar:
+            clb = self.fig.colorbar(mesh, ax=self.ax, label=colorbar_label)
+            clb.solids.set_edgecolor("face")
 
         # Adjust axes
         self.label_ax(self.view)
