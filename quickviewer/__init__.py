@@ -9,8 +9,8 @@ import matplotlib as mpl
 import pandas as pd
 
 from quickviewer.core import to_inches, check_settings_file
-from quickviewer.image import MultiImage, OrthogonalImage, ChequerboardImage, \
-        OverlayImage, DiffImage, standard_str
+from quickviewer.image import MultiImage, OrthogonalImage, ComparisonImage, \
+        standard_str
 from quickviewer.image import _slider_axes, _df_plot_types, _orient, \
         _struct_plot_types, _orthog, _default_figsize, _plot_axes, _axes
 
@@ -682,16 +682,22 @@ class QuickViewer:
         im2 = self.viewer[1].im
 
         if show_cb:
-            self.chequerboard = ChequerboardImage(
-                im1, im2, title="Chequerboard", scale_in_mm=self.scale_in_mm)
+            self.chequerboard = ComparisonImage(im1, im2, 
+                                                title="Chequerboard", 
+                                                plot_type="chequerboard",
+                                                scale_in_mm=self.scale_in_mm)
             self.comparison.append(self.chequerboard)
         if show_overlay:
-            self.overlay = OverlayImage(
-                im1, im2, title="Overlay", scale_in_mm=self.scale_in_mm)
+            self.overlay = ComparisonImage(im1, im2, 
+                                           title="Overlay", 
+                                           plot_type="overlay",
+                                           scale_in_mm=self.scale_in_mm)
             self.comparison.append(self.overlay)
         if show_diff:
-            self.diff = DiffImage(
-                im1, im2, title="Difference", scale_in_mm=self.scale_in_mm)
+            self.diff = ComparisonImage(im1, im2, 
+                                        title="Difference", 
+                                        plot_type="difference",
+                                        scale_in_mm=self.scale_in_mm)
             self.comparison.append(self.diff)
 
     def match_axes(self, match_axes):
@@ -871,24 +877,24 @@ class QuickViewer:
 
         self.comp_ui = []
 
+        max_splits = max([10, self.cb_splits])
+        self.ui_cb = ipyw.IntSlider(
+            min=1, max=max_splits, value=self.cb_splits, step=1,
+            continuous_update=self.viewer[0].continuous_update,
+            description="Chequerboard splits",
+            style=_style,
+        )
         if self.has_chequerboard:
-            max_splits = max([10, self.cb_splits])
-            self.ui_cb = ipyw.IntSlider(
-                min=1, max=max_splits, value=self.cb_splits, step=1,
-                continuous_update=self.viewer[0].continuous_update,
-                description="Chequerboard splits",
-                style=_style,
-            )
             self.comp_ui.append(self.ui_cb)
 
+        self.ui_overlay = ipyw.FloatSlider(
+            value=self.overlay_opacity, min=0, max=1, step=0.1,
+            description="Overlay opacity",
+            continuous_update=self.viewer[0].continuous_update,
+            readout_format=".1f",
+            style=_style,
+        )
         if self.has_overlay:
-            self.ui_overlay = ipyw.FloatSlider(
-                value=self.overlay_opacity, min=0, max=1, step=0.1,
-                description="Overlay opacity",
-                continuous_update=self.viewer[0].continuous_update,
-                readout_format=".1f",
-                style=_style,
-            )
             self.comp_ui.append(self.ui_overlay)
 
         if len(self.comparison):
@@ -1173,31 +1179,17 @@ class QuickViewer:
                 v.plot()
 
         # Plot all comparison images
-        if len(self.comparison):
+        for comp in self.comparison:
 
             invert = self.ui_invert.value
 
             # Plot chequerboard
-            if self.has_chequerboard:
-                ImageViewer.plot_image(self, self.chequerboard, invert=invert, 
-                                       n_splits=self.ui_cb.value,
-                                       zoom=self.viewer[0].zoom,
-                                       zoom_centre=self.viewer[0].zoom_centre,
-                                       mpl_kwargs=self.viewer[0].v_min_max)
-
-            # Plot overlay
-            if self.has_overlay:
-                ImageViewer.plot_image(self, self.overlay, invert=invert,
-                                       opacity=self.ui_overlay.value,
-                                       mpl_kwargs=self.viewer[0].v_min_max,
-                                       zoom=self.viewer[0].zoom,
-                                       zoom_centre=self.viewer[0].zoom_centre,
-                                       legend=self.overlay_legend,
-                                       legend_loc=self.legend_loc)
-
-            # Plot difference image
-            if self.has_diff:
-                ImageViewer.plot_image(self, self.diff, invert=invert,
+            for comp in self.comparison:
+                ImageViewer.plot_image(self, comp, invert=invert,
+                                       cb_splits=self.ui_cb.value,
+                                       overlay_opacity=self.ui_overlay.value,
+                                       overlay_legend=self.overlay_legend,
+                                       overlay_legend_loc=self.legend_loc,
                                        zoom=self.viewer[0].zoom,
                                        zoom_centre=self.viewer[0].zoom_centre,
                                        mpl_kwargs=self.viewer[0].v_min_max)

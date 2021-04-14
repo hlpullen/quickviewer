@@ -2239,10 +2239,9 @@ class OrthogonalImage(MultiImage):
 
 class ComparisonImage(NiftiImage):
     """Class for loading data from two arrays and plotting comparison images.
-    The implementation of these comparison plots is handled within inherited
-    classes."""
+    """
 
-    def __init__(self, nii1, nii2, title=None, **kwargs):
+    def __init__(self, nii1, nii2, title=None, plot_type=None, **kwargs):
         """Load data from two arrays. <nii1> and <nii2> can either be existing
         NiftiImage objects, or objects from which NiftiImages can be created.
         """
@@ -2266,6 +2265,7 @@ class ComparisonImage(NiftiImage):
         self.valid = all([im.valid for im in self.ims])
         self.title = title
         self.gs = None
+        self.plot_type = plot_type if plot_type else "chequerboard"
 
     def get_relative_width(self, view, n_colorbars=0, figsize=None):
         """Get relative width of widest of the two images."""
@@ -2276,7 +2276,11 @@ class ComparisonImage(NiftiImage):
 
     def plot(self, view=None, sl=None, invert=False, ax=None,
              mpl_kwargs=None, show=True, figsize=None, zoom=None, 
-             zoom_centre=None, **kwargs):
+             zoom_centre=None, plot_type=None, cb_splits=2,
+             overlay_opacity=0.5, overlay_legend=False, 
+             overlay_legend_loc=None
+            ):
+
         """Create a comparison plot of the two images.
 
         Parameters
@@ -2313,6 +2317,10 @@ class ComparisonImage(NiftiImage):
         if not self.valid:
             return
 
+        # Use default plot type if not provided
+        if plot_type is None:
+            plot_type = self.plot_type
+
         # Get image slices
         if view is None and sl is None:
             for im in self.ims:
@@ -2335,16 +2343,20 @@ class ComparisonImage(NiftiImage):
         self.cmap = copy.copy(matplotlib.cm.get_cmap(
             self.plot_kwargs.pop("cmap")))
         
-        # Produce the plot
-        self.plot_comparison(invert=invert, **kwargs)
+        # Produce comparison plot
+        if plot_type == "chequerboard":
+            self.plot_chequerboard(invert, cb_splits)
+        elif plot_type == "overlay":
+            self.plot_overlay(invert, overlay_opacity, overlay_legend,
+                              overlay_legend_loc)
+        elif plot_type == "difference":
+            self.plot_difference(invert)
+
+        # Adjust axes
         self.label_ax(self.view)
         self.adjust_ax(self.view, zoom, zoom_centre)
 
-
-class ChequerboardImage(ComparisonImage):
-    """Class for plotting a chequerboard comparison of two NiftiImages."""
-
-    def plot_comparison(self, invert=False, n_splits=2):
+    def plot_chequerboard(self, invert=False, n_splits=2):
         """Produce a chequerboard plot with <n_splits> squares in each
         direction."""
 
@@ -2368,11 +2380,7 @@ class ChequerboardImage(ComparisonImage):
                            aspect=self.ims[i].aspect[self.view],
                            cmap=self.cmap, **self.plot_kwargs)
 
-
-class OverlayImage(ComparisonImage):
-    """Class for plotting two NiftiImages overlaid in red and blue."""
-
-    def plot_comparison(self, invert=False, opacity=0.5, legend=False,
+    def plot_overlay(self, invert=False, opacity=0.5, legend=False,
                         legend_loc='auto'):
         """Produce an overlay plot with a given opacity."""
 
@@ -2404,11 +2412,7 @@ class OverlayImage(ComparisonImage):
             self.ax.legend(handles=handles, loc=legend_loc, facecolor="white", 
                            framealpha=1)
 
-
-class DiffImage(ComparisonImage):
-    """Class for plotting the difference between two NiftiImages."""
-
-    def plot_comparison(self, invert=False):
+    def plot_difference(self, invert=False):
         """Produce a difference plot."""
 
         diff = self.slices[1] - self.slices[0] if not invert \
