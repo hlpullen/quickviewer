@@ -2263,7 +2263,7 @@ class ComparisonImage(NiftiImage):
         self.scale_in_mm = self.ims[0].scale_in_mm
         self.ax_lims = self.ims[0].ax_lims
         self.valid = all([im.valid for im in self.ims])
-        self.title = title
+        self.override_title = title
         self.gs = None
         self.plot_type = plot_type if plot_type else "chequerboard"
 
@@ -2321,6 +2321,12 @@ class ComparisonImage(NiftiImage):
         if plot_type is None:
             plot_type = self.plot_type
 
+        # By default, use comparison type as title
+        if self.override_title is None:
+            self.title = plot_type[0].upper() + plot_type[1:]
+        else:
+            self.title = self.override_title
+
         # Get image slices
         if view is None and sl is None:
             for im in self.ims:
@@ -2351,6 +2357,18 @@ class ComparisonImage(NiftiImage):
                               overlay_legend_loc)
         elif plot_type == "difference":
             self.plot_difference(invert)
+        elif plot_type == "image 1":
+            self.title = self.ims[0].title
+            self.ax.imshow(self.slices[0], 
+                           extent=self.ims[0].extent[self.view],
+                           aspect=self.ims[0].aspect[self.view],
+                           cmap=self.cmap, **self.plot_kwargs)
+        elif plot_type == "image 2":
+            self.title = self.ims[1].title
+            self.ax.imshow(self.slices[1], 
+                           extent=self.ims[1].extent[self.view],
+                           aspect=self.ims[1].aspect[self.view],
+                           cmap=self.cmap, **self.plot_kwargs)
 
         # Adjust axes
         self.label_ax(self.view)

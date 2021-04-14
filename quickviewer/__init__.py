@@ -46,6 +46,7 @@ class QuickViewer:
         show_cb=False,
         show_overlay=False,
         show_diff=False,
+        comparison=None,
         comparison_only=False,
         cb_splits=2,
         overlay_opacity=0.5,
@@ -192,6 +193,13 @@ class QuickViewer:
             If True, a the difference between two images will be shown. This 
             option will only be applied if the number of images in <nii> 
             is 2.
+
+        comparison : bool/str/list, default=None
+            Indicator for which type(s) of comparison image(s) to show. If 
+            True or "all", a comparison image control by a dropdown menu with all 
+            comparison options will be loaded. Can also be a single string or 
+            list containing any combination of "all", "chequerboard", 
+            "overlay", and "difference" to plot those images in the desired order.
 
         comparison_only : bool, False
             If True, only comparison images (overlay/chequerboard/difference)
@@ -616,7 +624,7 @@ class QuickViewer:
         self.overlay_opacity = overlay_opacity
         self.overlay_legend = overlay_legend
         self.legend_loc = legend_loc
-        self.load_comparison(show_cb, show_overlay, show_diff)
+        self.load_comparison(comparison, show_cb, show_overlay, show_diff)
         self.comparison_only = comparison_only
         self.translation = translation
         self.tfile = translation_file_to_overwrite
@@ -667,38 +675,45 @@ class QuickViewer:
 
         return any([getattr(v.im, "has_" + attr) for v in self.viewer])
 
-    def load_comparison(self, show_cb, show_overlay, show_diff):
+    def load_comparison(self, comparison, show_cb, show_overlay, show_diff):
         """Create any comparison images."""
 
-        self.comparison = []
-        self.has_chequerboard = show_cb
-        self.has_overlay = show_overlay
-        self.has_diff = show_diff
-        if not (show_cb or show_overlay or show_diff):
+        # Work out which comparison images to show
+        self.comparison = {}
+        comp_opts = []
+        self.has_multicomp = False
+        if isinstance(comparison, str):
+            comparison = [comparison]   
+        if isinstance(comparison, bool):
+            self.has_multicomp = comparison
+            if self.has_multicomp:
+                comp_opts = ["all"]
+        elif core.is_list(comparison):
+            self.has_multicomp = "all" in comparison
+            comp_opts = comparison
+        for name, flag in zip(["chequerboard", "overlay", "difference"], 
+                              [show_cb, show_overlay, show_diff]):
+            if flag and name not in comp_opts:
+                comp_opts.append(name)
+            setattr(self, f"has_{name}", name in comp_opts)
+
+        # Case with no comparison images
+        if not self.has_multicomp and not len(comp_opts):
             return
 
+        # Use first two images
         assert self.n > 1
         im1 = self.viewer[0].im
         im2 = self.viewer[1].im
 
-        if show_cb:
-            self.chequerboard = ComparisonImage(im1, im2, 
-                                                title="Chequerboard", 
-                                                plot_type="chequerboard",
-                                                scale_in_mm=self.scale_in_mm)
-            self.comparison.append(self.chequerboard)
-        if show_overlay:
-            self.overlay = ComparisonImage(im1, im2, 
-                                           title="Overlay", 
-                                           plot_type="overlay",
-                                           scale_in_mm=self.scale_in_mm)
-            self.comparison.append(self.overlay)
-        if show_diff:
-            self.diff = ComparisonImage(im1, im2, 
-                                        title="Difference", 
-                                        plot_type="difference",
-                                        scale_in_mm=self.scale_in_mm)
-            self.comparison.append(self.diff)
+        # Make individual comparisons
+        for comp in comp_opts:
+            name = "multicomp" if comp == "all" else comp
+            plot_type = None if comp == "all" else comp
+            comp_im = ComparisonImage(im1, im2, plot_type=plot_type,
+                                      scale_in_mm=self.scale_in_mm)
+            setattr(self, name, comp_im)
+            self.comparison[name] = comp_im
 
     def match_axes(self, match_axes):
         """Adjust axes of plots to match if the match_axes option is set."""
@@ -734,7 +749,7 @@ class QuickViewer:
 
             # Set these limits for all plots
             all_ims = [v.im for v in self.viewer] \
-                    + [c for c in self.comparison]
+                    + [c for c in self.comparison.values()]
             for im in all_ims:
                 if match_axes != "y":
                     im.ax_lims[view][0] = ax_lims[0]
@@ -877,16 +892,28 @@ class QuickViewer:
 
         self.comp_ui = []
 
-        max_splits = max([10, self.cb_splits])
+        # Multicomparison dropdown
+        comp_opts = ["chequerboard", "overlay", "difference"]
+        if self.comparison_only:
+            comp_opts.extend(["image 1", "image 2"])
+        self.ui_multicomp = ipyw.Dropdown(
+            options=comp_opts, description="Comparison"
+        )
+        if self.has_multicomp:
+            self.comp_ui.append(self.ui_multicomp)
+
+        # Chequerboard slider
+        max_splits = max([15, self.cb_splits])
         self.ui_cb = ipyw.IntSlider(
-            min=1, max=max_splits, value=self.cb_splits, step=1,
+            min=2, max=max_splits, value=self.cb_splits, step=1,
             continuous_update=self.viewer[0].continuous_update,
             description="Chequerboard splits",
             style=_style,
         )
-        if self.has_chequerboard:
+        if self.has_chequerboard or self.has_multicomp:
             self.comp_ui.append(self.ui_cb)
 
+        # Overlay slider
         self.ui_overlay = ipyw.FloatSlider(
             value=self.overlay_opacity, min=0, max=1, step=0.1,
             description="Overlay opacity",
@@ -894,9 +921,10 @@ class QuickViewer:
             readout_format=".1f",
             style=_style,
         )
-        if self.has_overlay:
+        if self.has_overlay or self.has_multicomp:
             self.comp_ui.append(self.ui_overlay)
 
+        # Inversion checkbox
         if len(self.comparison):
             self.ui_invert = ipyw.Checkbox(value=False,
                                            description="Invert comparison")
@@ -1025,7 +1053,7 @@ class QuickViewer:
                                                 self.colorbar)
                         for v in self.viewer]
         width_ratios.extend([c.get_relative_width(self.view, self.zoom) for
-                             c in self.comparison])
+                             c in self.comparison.values()])
 
         # Get rows and columns
         n_plots = (not self.comparison_only) * self.n \
@@ -1063,7 +1091,7 @@ class QuickViewer:
             for v in self.viewer:
                 v.gs = gs[i]
                 i += 1
-        for c in self.comparison:
+        for c in self.comparison.values():
             c.gs = gs[i]
             i += 1
 
@@ -1178,21 +1206,25 @@ class QuickViewer:
             else:
                 v.plot()
 
-        # Plot all comparison images
-        for comp in self.comparison:
+        # Adjust comparison UI
+        multicomp_plot_type = self.ui_multicomp.value
+        if self.has_multicomp and len(self.comparison) == 1:
+            self.ui_cb.disabled = not multicomp_plot_type == "chequerboard"
+            self.ui_overlay.disabled = not multicomp_plot_type == "overlay"
 
-            invert = self.ui_invert.value
-
-            # Plot chequerboard
-            for comp in self.comparison:
-                ImageViewer.plot_image(self, comp, invert=invert,
-                                       cb_splits=self.ui_cb.value,
-                                       overlay_opacity=self.ui_overlay.value,
-                                       overlay_legend=self.overlay_legend,
-                                       overlay_legend_loc=self.legend_loc,
-                                       zoom=self.viewer[0].zoom,
-                                       zoom_centre=self.viewer[0].zoom_centre,
-                                       mpl_kwargs=self.viewer[0].v_min_max)
+        # Plot comparison images
+        invert = self.ui_invert.value
+        for name, comp in self.comparison.items():
+            plot_type = None if name != "multicomp" else multicomp_plot_type
+            ImageViewer.plot_image(self, comp, invert=invert,
+                                   plot_type=plot_type,
+                                   cb_splits=self.ui_cb.value,
+                                   overlay_opacity=self.ui_overlay.value,
+                                   overlay_legend=self.overlay_legend,
+                                   overlay_legend_loc=self.legend_loc,
+                                   zoom=self.viewer[0].zoom,
+                                   zoom_centre=self.viewer[0].zoom_centre,
+                                   mpl_kwargs=self.viewer[0].v_min_max)
 
         if self.suptitle is not None:
             self.fig.suptitle(self.suptitle)
