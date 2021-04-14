@@ -283,6 +283,10 @@ class QuickViewer:
             Full range to use for the HU slider. Can also set to "auto" to
             detect min and max HU in the image.
 
+        hu_step : float, default=None
+            Step size to use for the HU slider. Defaults to 1 if the maximum
+            HU is > 1, otherwise 0.1.
+
         figsize : float, default=5
             Height of the displayed figure in inches. If None, the value in
             _default_figsize is used.
@@ -624,14 +628,17 @@ class QuickViewer:
         self.overlay_opacity = overlay_opacity
         self.overlay_legend = overlay_legend
         self.legend_loc = legend_loc
-        self.load_comparison(comparison, show_cb, show_overlay, show_diff)
         self.comparison_only = comparison_only
+        if comparison_only and comparison is None:
+            comparison = True
+        self.load_comparison(comparison, show_cb, show_overlay, show_diff)
         self.translation = translation
         self.tfile = translation_file_to_overwrite
 
         # Settings needed for plotting
         self.figsize = to_inches(kwargs.get("figsize", _default_figsize))
         self.colorbar = kwargs.get("colorbar", False)
+        self.comp_colorbar = self.colorbar and self.comparison_only
         self.zoom = kwargs.get("zoom", None)
         self.plots_per_row = plots_per_row
         self.suptitle = suptitle
@@ -925,9 +932,9 @@ class QuickViewer:
             self.comp_ui.append(self.ui_overlay)
 
         # Inversion checkbox
+        self.ui_invert = ipyw.Checkbox(value=False,
+                                       description="Invert comparison")
         if len(self.comparison):
-            self.ui_invert = ipyw.Checkbox(value=False,
-                                           description="Invert comparison")
             self.comp_ui.append(self.ui_invert)
 
     def make_translation_ui(self):
@@ -1052,8 +1059,10 @@ class QuickViewer:
         width_ratios = [v.im.get_relative_width(self.view, self.zoom, 
                                                 self.colorbar)
                         for v in self.viewer]
-        width_ratios.extend([c.get_relative_width(self.view, self.zoom) for
-                             c in self.comparison.values()])
+        width_ratios.extend([c.get_relative_width(self.view, 
+                                                  self.comp_colorbar,
+                                                  self.figsize) 
+                             for c in self.comparison.values()])
 
         # Get rows and columns
         n_plots = (not self.comparison_only) * self.n \
@@ -1212,19 +1221,33 @@ class QuickViewer:
             self.ui_cb.disabled = not multicomp_plot_type == "chequerboard"
             self.ui_overlay.disabled = not multicomp_plot_type == "overlay"
 
-        # Plot comparison images
-        invert = self.ui_invert.value
-        for name, comp in self.comparison.items():
-            plot_type = None if name != "multicomp" else multicomp_plot_type
-            ImageViewer.plot_image(self, comp, invert=invert,
-                                   plot_type=plot_type,
-                                   cb_splits=self.ui_cb.value,
-                                   overlay_opacity=self.ui_overlay.value,
-                                   overlay_legend=self.overlay_legend,
-                                   overlay_legend_loc=self.legend_loc,
-                                   zoom=self.viewer[0].zoom,
-                                   zoom_centre=self.viewer[0].zoom_centre,
-                                   mpl_kwargs=self.viewer[0].v_min_max)
+        # Deal with comparisons
+        if len(self.comparison):
+
+            # Get settings
+            invert = self.ui_invert.value
+            plot_kwargs = self.viewer[0].v_min_max
+            if self.viewer[0].mpl_kwargs is not None:
+                plot_kwargs.update(self.viewer[0].mpl_kwargs)
+
+            # Plot all comparisons
+            for name, comp in self.comparison.items():
+                plot_type = None if name != "multicomp" else multicomp_plot_type
+                ImageViewer.plot_image(
+                    self, 
+                    comp, 
+                    invert=invert,
+                    plot_type=plot_type,
+                    cb_splits=self.ui_cb.value,
+                    overlay_opacity=self.ui_overlay.value,
+                    overlay_legend=self.overlay_legend,
+                    overlay_legend_loc=self.legend_loc,
+                    zoom=self.viewer[0].zoom,
+                    zoom_centre=self.viewer[0].zoom_centre,
+                    mpl_kwargs=self.viewer[0].v_min_max,
+                    colorbar=self.comp_colorbar, 
+                    colorbar_label=self.viewer[0].colorbar_label
+                )
 
         if self.suptitle is not None:
             self.fig.suptitle(self.suptitle)
@@ -1256,6 +1279,7 @@ class ImageViewer():
         hu=(-300, 200),
         hu_width=500,
         hu_limits=(-2000, 2000),
+        hu_step=None,
         figsize=_default_figsize,
         xlim=None,
         ylim=None,
@@ -1376,6 +1400,7 @@ class ImageViewer():
         self.hu = hu
         self.hu_width = hu_width
         self.hu_limits = hu_limits
+        self.hu_step = hu_step
         self.hu_from_width = isinstance(hu, float) or isinstance(hu, int)
 
         # Mask settings
@@ -1556,7 +1581,10 @@ class ImageViewer():
                     "continuous_update": False,
                     "style": _style
                 }
-                if abs(hu_limits[1] - hu_limits[0]) < 1.01:
+                if self.hu_step is not None:
+                    ui_hu_kwargs["step"] = self.hu_step
+                    self.ui_hu = ipyw.FloatRangeSlider(**ui_hu_kwargs)
+                elif abs(hu_limits[1] - hu_limits[0]) < 1.01:
                     ui_hu_kwargs.update({"step": 0.1, "readout_format": ".1f"})
                     self.ui_hu = ipyw.FloatRangeSlider(**ui_hu_kwargs)
                 else:

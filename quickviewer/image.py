@@ -2267,18 +2267,18 @@ class ComparisonImage(NiftiImage):
         self.gs = None
         self.plot_type = plot_type if plot_type else "chequerboard"
 
-    def get_relative_width(self, view, n_colorbars=0, figsize=None):
-        """Get relative width of widest of the two images."""
-        
-        height = max([im.get_lengths(view)[1] for im in self.ims])
-        width = max([im.get_lengths(view)[0] for im in self.ims])
-        return width / height
+    def get_relative_width(self, view, colorbar=False, figsize=None):
+        """Get relative width first image."""
+
+        return NiftiImage.get_relative_width(self.ims[0], view, 
+                                             n_colorbars=colorbar,
+                                             figsize=figsize)
 
     def plot(self, view=None, sl=None, invert=False, ax=None,
              mpl_kwargs=None, show=True, figsize=None, zoom=None, 
              zoom_centre=None, plot_type=None, cb_splits=2,
              overlay_opacity=0.5, overlay_legend=False, 
-             overlay_legend_loc=None
+             overlay_legend_loc=None, colorbar=True, colorbar_label="HU"
             ):
 
         """Create a comparison plot of the two images.
@@ -2351,24 +2351,28 @@ class ComparisonImage(NiftiImage):
         
         # Produce comparison plot
         if plot_type == "chequerboard":
-            self.plot_chequerboard(invert, cb_splits)
+            mesh = self.plot_chequerboard(invert, cb_splits)
         elif plot_type == "overlay":
-            self.plot_overlay(invert, overlay_opacity, overlay_legend,
-                              overlay_legend_loc)
+            mesh = self.plot_overlay(invert, overlay_opacity, overlay_legend,
+                                     overlay_legend_loc)
         elif plot_type == "difference":
-            self.plot_difference(invert)
+            mesh = self.plot_difference(invert)
         elif plot_type == "image 1":
             self.title = self.ims[0].title
-            self.ax.imshow(self.slices[0], 
-                           extent=self.ims[0].extent[self.view],
-                           aspect=self.ims[0].aspect[self.view],
-                           cmap=self.cmap, **self.plot_kwargs)
+            mesh = self.ax.imshow(self.slices[0], 
+                                  extent=self.ims[0].extent[self.view],
+                                  aspect=self.ims[0].aspect[self.view],
+                                  cmap=self.cmap, **self.plot_kwargs)
         elif plot_type == "image 2":
             self.title = self.ims[1].title
-            self.ax.imshow(self.slices[1], 
-                           extent=self.ims[1].extent[self.view],
-                           aspect=self.ims[1].aspect[self.view],
-                           cmap=self.cmap, **self.plot_kwargs)
+            mesh = self.ax.imshow(self.slices[1], 
+                                  extent=self.ims[1].extent[self.view],
+                                  aspect=self.ims[1].aspect[self.view],
+                                  cmap=self.cmap, **self.plot_kwargs)
+
+        # Draw colorbar
+        clb = self.fig.colorbar(mesh, ax=self.ax, label=colorbar_label)
+        clb.solids.set_edgecolor("face")
 
         # Adjust axes
         self.label_ax(self.view)
@@ -2393,10 +2397,11 @@ class ComparisonImage(NiftiImage):
 
         # Plot
         for i in [i1, i2]:
-            self.ax.imshow(to_show[i],
-                           extent=self.ims[i].extent[self.view],
-                           aspect=self.ims[i].aspect[self.view],
-                           cmap=self.cmap, **self.plot_kwargs)
+            mesh = self.ax.imshow(to_show[i],
+                                  extent=self.ims[i].extent[self.view],
+                                  aspect=self.ims[i].aspect[self.view],
+                                  cmap=self.cmap, **self.plot_kwargs)
+        return mesh
 
     def plot_overlay(self, invert=False, opacity=0.5, legend=False,
                         legend_loc='auto'):
@@ -2410,12 +2415,12 @@ class ComparisonImage(NiftiImage):
         for n, i in enumerate(order):
 
             # Show image
-            self.ax.imshow(self.slices[i],
-                           extent=self.ims[i].extent[self.view],
-                           aspect=self.ims[i].aspect[self.view],
-                           cmap=cmaps[n],
-                           alpha=alphas[n],
-                           **self.plot_kwargs)
+            mesh = self.ax.imshow(self.slices[i],
+                                  extent=self.ims[i].extent[self.view],
+                                  aspect=self.ims[i].aspect[self.view],
+                                  cmap=cmaps[n],
+                                  alpha=alphas[n],
+                                  **self.plot_kwargs)
 
             # Make handle for legend
             if legend:
@@ -2429,17 +2434,18 @@ class ComparisonImage(NiftiImage):
         if legend:
             self.ax.legend(handles=handles, loc=legend_loc, facecolor="white", 
                            framealpha=1)
+        return mesh
 
     def plot_difference(self, invert=False):
         """Produce a difference plot."""
 
         diff = self.slices[1] - self.slices[0] if not invert \
                 else self.slices[0] - self.slices[1]
-        self.ax.imshow(diff,
-                       extent=self.ims[0].extent[self.view],
-                       aspect=self.ims[0].aspect[self.view],
-                       cmap=self.cmap, 
-                       **self.plot_kwargs)
+        return self.ax.imshow(diff,
+                              extent=self.ims[0].extent[self.view],
+                              aspect=self.ims[0].aspect[self.view],
+                              cmap=self.cmap, 
+                              **self.plot_kwargs)
 
 
 def standard_str(string):
