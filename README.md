@@ -1,3 +1,5 @@
+<<img src="images/Radnet Cambridge.png" alt="RadNet logo" height="100"/>
+
 # QuickViewer package
 
 A package for interactively viewing medical image data.
