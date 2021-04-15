@@ -1618,14 +1618,24 @@ class MultiImage(NiftiImage):
             will be masked (or values above, if <invert_mask> is True).
         """
 
-        if nii is None and timeseries is None:
-            raise TypeError("Either <nii> or <timeseries> must be set!")
+        # Flags for image type
+        self.dose_as_im = False
+        self.dose_comp = False
+        self.timeseries = False
 
         # Load the scan image
-        if nii:
+        if nii is not None:
             NiftiImage.__init__(self, nii, **kwargs)
             self.timeseries = False
-        else:
+
+        # Load a dose field only
+        elif dose is not None and timeseries is None:
+            self.dose_as_im = True
+            NiftiImage.__init__(self, dose, **kwargs)
+            dose = None
+
+        # Load a timeseries of images
+        elif timeseries is not None:
             self.timeseries = True
             dates = self.get_date_dict(timeseries)
             self.dates = list(dates.keys())
@@ -1638,6 +1648,9 @@ class MultiImage(NiftiImage):
             NiftiImage.__init__(self, dates[self.dates[0]], 
                                 title=self.dates[0], **kwargs)
             self.date = self.dates[0]
+        else:
+            raise TypeError("Must provide either <nii>, <dose>, or "
+                            "<timeseries!>")
         if not self.valid:
             return
 

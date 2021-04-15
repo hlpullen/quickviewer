@@ -279,13 +279,13 @@ class QuickViewer:
             Initial width of the HU window. Only used if <hu> is a single 
             value.
 
-        hu_limits : tuple, default=(-2000, 2000)
+        hu_limits : tuple, default=None
             Full range to use for the HU slider. Can also set to "auto" to
-            detect min and max HU in the image.
+            detect min and max HU in the image. Defaults to (-2000, 2000).
 
         hu_step : float, default=None
             Step size to use for the HU slider. Defaults to 1 if the maximum
-            HU is > 1, otherwise 0.1.
+            HU is >= 10, otherwise 0.1.
 
         figsize : float, default=5
             Height of the displayed figure in inches. If None, the value in
@@ -1280,7 +1280,7 @@ class ImageViewer():
         init_pos=None,
         hu=(-300, 200),
         hu_width=500,
-        hu_limits=(-2000, 2000),
+        hu_limits=None,
         hu_step=None,
         figsize=_default_figsize,
         xlim=None,
@@ -1326,27 +1326,7 @@ class ImageViewer():
         **kwargs
     ):
 
-        # Check whether we need to use dose as image
-        if nii is None and kwargs.get("timeseries", None) is None:
-            dose = kwargs.get("dose", None)
-            if dose is None:
-                raise TypeError("Must provide either <nii>, <dose>, or "
-                                "<timeseries>!")
-            nii = dose
-            kwargs["dose"] = None
-            if hu_limits == (-2000, 2000):
-                if dose_range:
-                    hu_limits = dose_range
-                else:
-                    hu_limits = (0, 70)
-            if colorbar_label is None:
-                    colorbar_label = "Dose (Gy)"
-            if not cmap:
-                if dose_cmap:
-                    cmap = dose_cmap
-                else:
-                    cmap = "jet"
-
+        # Make MultiImage
         self.im = self.make_image(nii, **kwargs)
         if not self.im.valid:
             return
@@ -1370,11 +1350,29 @@ class ImageViewer():
             self.set_slice(init_view, init_sl)
 
         # Assign plot settings
-        # General settings
+        # HU range settings
+        self.hu = hu
+        self.hu_width = hu_width
+        self.hu_limits = hu_limits
+        self.hu_step = hu_step
+        self.hu_from_width = isinstance(hu, float) or isinstance(hu, int)
+        if hu_limits is None:
+            if self.im.dose_as_im:
+                if dose_range:
+                    self.hu_limits = dose_range
+                else:
+                    self.hu_limits = (self.im.data.min(), self.im.data.max())
+            else:
+                self.hu_limits = (-2000, 2000)
+        elif hu_limits == "auto":
+            self.hu_limits = (self.im.data.min(), self.im.data.max())
+        if hu_step is None:
+            self.hu_step = 1 if abs(self.hu_limits[1] 
+                                    - self.hu_limits[0]) >= 10 else 0.1
+
+        # Other settings
         self.in_notebook = in_notebook()
         self.mpl_kwargs = mpl_kwargs if mpl_kwargs else {}
-        if cmap:
-            self.mpl_kwargs["cmap"] = cmap
         self.figsize = to_inches(figsize)
         self.continuous_update = continuous_update
         self.colorbar = colorbar
@@ -1398,12 +1396,11 @@ class ImageViewer():
         self.minor_ticks = minor_ticks
         self.ticks_all_sides = ticks_all_sides
 
-        # HU range settings
-        self.hu = hu
-        self.hu_width = hu_width
-        self.hu_limits = hu_limits
-        self.hu_step = hu_step
-        self.hu_from_width = isinstance(hu, float) or isinstance(hu, int)
+        # Colormap
+        if cmap:
+            self.mpl_kwargs["cmap"] = cmap
+        elif self.im.dose_as_im:
+            self.mpl_kwargs["cmap"] = dose_cmap if dose_cmap else "jet"
 
         # Mask settings
         self.invert_mask = invert_mask
@@ -1581,16 +1578,12 @@ class ImageViewer():
                     "value": (vmin, vmax),
                     "description": self.colorbar_label,
                     "continuous_update": False,
-                    "style": _style
+                    "style": _style,
+                    "step": self.hu_step
                 }
-                if self.hu_step is not None:
-                    ui_hu_kwargs["step"] = self.hu_step
-                    self.ui_hu = ipyw.FloatRangeSlider(**ui_hu_kwargs)
-                elif abs(hu_limits[1] - hu_limits[0]) < 1.01:
-                    ui_hu_kwargs.update({"step": 0.1, "readout_format": ".1f"})
-                    self.ui_hu = ipyw.FloatRangeSlider(**ui_hu_kwargs)
-                else:
-                    self.ui_hu = ipyw.IntRangeSlider(**ui_hu_kwargs)
+                slider_kind = ipyw.FloatRangeSlider if self.hu_step < 1 else \
+                        ipyw.IntRangeSlider
+                self.ui_hu = slider_kind(**ui_hu_kwargs)
                 self.main_ui.append(self.ui_hu)
 
             # Centre and window sliders
