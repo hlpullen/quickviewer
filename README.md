@@ -236,7 +236,7 @@ QuickViewer(["image1.nii", "image2.nii"], dose=[None, "dose2.nii"])
 
 TBC
 
-### 5. Masks
+### 4. Masks
 
 QuickViewer can apply a mask in a NIfTI file or array to an image. To do this, pass the NIfTI path or NumPy array to the `mask` argument, e.g.
 ```
@@ -252,7 +252,7 @@ Some additional options for masks are:
 - `invert_mask`: mask out voxels below the threshold rather than above it.
 - Multiple masks for multiple images are loaded in the same way as multiple dose fields ([see above](#dose-fields-on-multiple-images))
 
-### 6. Structures
+### 5. Structures
 
 Loading structures
 How to provide:
@@ -291,7 +291,7 @@ Plotting: group others
 
 Masking out dose field
 
-### 7. Image registration tools
+### 6. Image registration tools
 
 QuickViewer provides several useful functionalities related to displaying the results of an image registration. 
 
@@ -348,7 +348,7 @@ gives the following output:
 
 The three translation sliders can be used to translate the second image by an integer number of voxels in each direction. The translation sizes in mm can then be written to a file.
 
-### 8. Time series
+### 7. Time series
 
 QuickViewer can load a series of scans of the same shape taken at different points in time. You can then scroll through these images with a time slider.
 
@@ -360,7 +360,7 @@ Example
 Including structures
 Including doses
 
-### 9. Usage outside Jupyter
+### 8. Usage outside Jupyter
 
 #### From the command line:
 1. A script for creating a quickviewer plot from the command line can be found in `quickviewer/bin/quick_view.py`. The basic usage for viewing a NIfTI file is:
