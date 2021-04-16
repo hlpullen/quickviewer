@@ -4,7 +4,29 @@
 
 A package for interactively viewing medical image data.
 
-## Installation
+### Table of contents
+
+I) [Installation](#installation)
+
+II) [How to use QuickViewer](#how-to-use-quickviewer)
+
+1) [Basic usage](#basic-usage)
+
+2) [Image comparisons](#image-comparisons)
+
+3) [Dose fields](#dose-fields)
+
+4) [Masks](#masks)
+
+5) [Structures](#structures)
+
+6) [Image registration tools](#image-registration-tools)
+
+7) [Time series](#time-series)
+
+8) [Usage outside Jupyter](#usage-outside-jupyter)
+
+## I) Installation
 
 ### Installing QuickViewer via pip
 
@@ -32,9 +54,9 @@ jupyter notebook
 ```
 in which you can enjoy QuickViewer and its widgets!
 
-## How to use QuickViewer
+## II) How to use QuickViewer
 
-### Basic usage
+### 1. Basic usage
 
 QuickViewer can be used to view medical images in [NIfTI](https://nifti.nimh.nih.gov/) format or [NumPy arrays](https://numpy.org/doc/stable/reference/generated/numpy.array.html). DICOM files are currently not supported, but there are various tools for converting from dicom to NIfTI such as [dcm2niix](https://www.nitrc.org/plugins/mwiki/index.php/dcm2nii:MainPage).
 
@@ -157,7 +179,188 @@ By default, QuickViewer will set the origin to `(0, 0, 0)` and the voxel sizes i
 QuickViewer(my_array, voxel_sizes=[2.5, 2.5, 4], origin=[-200, -300, 0])
 ```
 
-### From the command line:
+### 2. Image comparisons
+
+If two images are loaded into QuickViewer they can be compared in an additional plot. To do this, set the `comparison` argument to `True`, e.g.:
+```
+QuickViewer(["image1.nii", "image2.nii"], comparison=True)
+```
+This will give the following output:
+
+The "comparison" dropdown menu allows you to switch the comparison type between:
+- Chequerboard image
+- Red/blue overlay
+- Difference image
+
+The initial number of panes in the chequerboard image can be set via the `cb_splits` argument, and can later be changed via the slider. Similarly, the initial overlay opacity can be set via the `overlay_opacity` and later change via a slider. 
+The order of the images to be compared can be changed by checking the "invert" box.
+
+To display only the comparison image, set `comparison_only` to `True`.
+
+To display individual comparison types side-by-side, a list of the desired types (any from "chequerboard", "overlay", "difference", and "all") in the desired order should be passed to the `comparison` argument.
+
+For example, to plot all three comparison images without plotting the separate images themselves, run:
+```
+QuickViewer(["image1.nii", "image2.nii"], comparison=["chequerboard", "overlay", "difference"], comparison_only=True)
+```
+to give the following output:
+
+### 3. Dose fields
+
+Dose fields can be overlaid on top of images by setting the `dose` parameter to the path to a NIfTI file or array the same shape as the image, e.g.
+```
+QuickViewer("image.nii", dose="dose.nii", colorbar=True)
+```
+will give
+
+Note that setting the `colorbar=True` option will draw a colorbar for the dose field as well as the intensity of the underlying image.
+
+The initial opacity of the dose field can be specified via the `dose_opacity` argument or adjusted later via the slider.
+
+By default, the range of the dose colorscheme will be set automatically based on the contents of each slice. To fix it to a set range, use the `dose_range` parameter, e.g.
+```
+QuickViewer("image.nii", dose="dose.nii", dose_range=[0, 60], colorbar=True)
+```
+will fix the colorbar to go from 0 -- 60 on every slice.
+
+#### Dose fields on multiple images
+
+When multiple images are loaded but only one dose path is given, the dose field will only be overlaid on the first. Dose fields can be set for multiple images by giving setting `dose` parameter to a list the same length as the list of images, containing the desired dose field for each. To skip an image, put `None` in this list.
+
+For example, to load two images and overlay a dose field on the second only:
+```
+QuickViewer(["image1.nii", "image2.nii"], dose=[None, "dose2.nii"])
+```
+
+#### Dose comparisons
+
+TBC
+
+### 5. Masks
+
+QuickViewer can apply a mask in a NIfTI file or array to an image. To do this, pass the NIfTI path or NumPy array to the `mask` argument, e.g.
+```
+QuickViewer("image.nii", mask="mask.nii")
+```
+which would give:
+
+The mask can be turned on or off using the "apply mask" checkbox.
+
+Some additional options for masks are:
+- `mask_color`: sets the color of masked regions.
+- `mask_threshold`: sets the threshold of voxels in the mask array which should be masked out.
+- `invert_mask`: mask out voxels below the threshold rather than above it.
+- Multiple masks for multiple images are loaded in the same way as multiple dose fields ([see above](#dose-fields-on-multiple-images))
+
+### 6. Structures
+
+Loading structures
+How to provide:
+wildcard for files, wildcard for folders, single folder, single file, list of files
+Multiple images (nest dictionary)
+
+Name inferred from filename
+
+Plot settings and turning structures on and off
+
+Customising names and colors
+
+Labelling groups of structures
+
+#### Viewing structure information
+
+To display a table containing some geometric information about each structure, set `struct_info=True`.
+
+Saving the table to csv or tex
+
+#### Structure comparisons
+
+Comparison metrics
+
+Ways of matching structures:
+- Matching by name (ignore_unpaired)
+- Pairwise (default if no name matches, or set "pairs")
+- Compare to consensus of all others
+
+Structure comparison table
+Saved in same way as above
+
+Extras for consensus:
+Note that turning off one removes it from the group 
+Plotting: group others
+
+### 7. Image registration tools
+
+QuickViewer provides several useful functionalities related to displaying the results of an image registration. 
+
+#### Jacobian determinant
+
+Set the `jacobian` parameter to a path to a jacobian determinant file, or, if multiple images are loaded, to a list matching the length of the number of images loaded. E.g.:
+```
+QuickViewer("image.nii", jacobian=True, colorbar=True)
+```
+would produce:
+
+Note that if `colorbar=True` is set, an extra colorbar will be drawn for the Jacobian determinant field. The initial opacity can be set via `jacobian_opacity` and changed via a slider. The range (default 0.8 -- 1.2) can also be adjusted via a slider.
+
+#### Deformation field
+
+Deformation fields can be loaded via the `df` argument and plotted as a "quiver" or "grid" plot. E.g.
+```
+QuickViewer("image.nii", df="deformationField.nii")
+```
+
+Initial plot type can be set via `df_plot_type`, and changed later via the dropdown menu.
+
+Matplotlib settings can be adjusted via `df_kwargs`, e.g. to change the color and linewidth of a grid plot:
+```
+QuickViewer("image.nii", df="deformationField.nii", df_plot_type="grid", df_kwargs={"linewidth": 3, "linecolor": "red"})
+```
+
+#### Visualising deformation with a grid
+
+The deformation of the moving image when it is transformed can be visualised by creating a regular grid the same shape as the moving image, and then deforming it to match the shape of the transformed image.
+
+A script to create the initial regular grid images is found in . Usage:
+
+This will make three files, one in each orientation. These should then be transformed using your preferred image transformation software.
+
+The transformed grids can be visualised on top of the transformed image in QuickViewer by setting them as masks. The `mask` parameter can be a dictionary, where the keys are the three orientations ("x-y", "y-z and "x-z") and the values are the paths to the transformed masks for each orientation. The `invert_mask` option should be set, so that voxels containining gridlines are masked.
+
+E.g. if your transformed grid images were in the files "final_grid_x-y.nii" etc, you should run:
+```
+mask_dict = {"x-y": "final_grid_x-y.nii",               
+             "y-z": "final_grid_y-z.nii",              
+             "x-z": "final_grid_x-z.nii"}
+QuickViewer("final_image.nii", mask=mask_dict, invert_mask=True, mask_color="green")
+```
+which would look like this:
+
+#### Applying manual translations
+
+When two images are loaded in QuickViewer, you can turn on the ability to apply a manual translation to the second image. This is useful in combination with a comparison image, in particular the "overlay" option. E.g.:
+```
+QuickViewer(["image1.nii", "image2.nii"], translation=True, comparison="overlay")
+```
+gives the following output:
+
+The three translation sliders can be used to translate the second image by an integer number of voxels in each direction. The translation sizes in mm can then be written to a file.
+
+### 8. Time series
+
+QuickViewer can load a series of scans of the same shape taken at different points in time. You can then scroll through these images with a time slider.
+
+- Infer via filenames
+- Give via dictionary
+
+Example
+
+Including structures
+Including doses
+
+### 9. Usage outside Jupyter
+
+#### From the command line:
 1. A script for creating a quickviewer plot from the command line can be found in `quickviewer/bin/quick_view.py`. The basic usage for viewing a NIfTI file is:
 ```quick_view.py <filename>```.
 2. To see the available input options for this script, run:
@@ -174,7 +377,7 @@ QuickViewer(my_array, voxel_sizes=[2.5, 2.5, 4], origin=[-200, -300, 0])
     - **i**: invert any comparison images
     - **o**: change the opacity of overlay comparison image
 
-### Inside a python script:
+#### Inside a python script:
 The `QuickViewer` class can be imported into a python script by adding
 ```from quickviewer import QuickViewer```
 to the script. Creating a `QuickViewer` object inside the code will cause a window containing the plot to be opened when the code is run.
