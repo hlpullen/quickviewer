@@ -6,25 +6,25 @@ A package for interactively viewing medical image data.
 
 ### Table of contents
 
-I) [Installation](#installation)
+I) [Installation](#i-installation)
 
-II) [How to use QuickViewer](#how-to-use-quickviewer)
+II) [How to use QuickViewer](#ii-how-to-use-quickviewer)
 
-1) [Basic usage](#basic-usage)
+1) [Basic usage](#1-basic-usage)
 
-2) [Image comparisons](#image-comparisons)
+2) [Image comparisons](#2-image-comparisons)
 
-3) [Dose fields](#dose-fields)
+3) [Dose fields](#3-dose-fields)
 
-4) [Masks](#masks)
+4) [Masks](#4-masks)
 
-5) [Structures](#structures)
+5) [Structures](#5-structures)
 
-6) [Image registration tools](#image-registration-tools)
+6) [Image registration tools](#6-image-registration-tools)
 
-7) [Time series](#time-series)
+7) [Time series](#7-time-series)
 
-8) [Usage outside Jupyter](#usage-outside-jupyter)
+8) [Usage outside Jupyter](#8-usage-outside-jupyter)
 
 ## I) Installation
 
@@ -288,6 +288,8 @@ Saved in same way as above
 Extras for consensus:
 Note that turning off one removes it from the group 
 Plotting: group others
+
+Masking out dose field
 
 ### 7. Image registration tools
 
