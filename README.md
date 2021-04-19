@@ -262,12 +262,56 @@ Some additional options for masks are:
 
 ### 5. Structures
 
-Loading structures
-How to provide:
-wildcard for files, wildcard for folders, single folder, single file, list of files
-Multiple images (nest dictionary)
+Structures can be loaded from NIfTI files and overlaid on the image. The path to the structure file(s) is set via the `structs` argument. This can either be:
+- The path to a single NIfTI file;
+- The path to a directory containing multiple NIfTI files;
+- A wildcard path matching one or more NIfTI files;
+- A wildcard path to one or more directories containing NIfTI files.
 
-Name inferred from filename
+To load structures for multiple images, these options should be nested inside a list the same length as the list of images.
+
+For example, to load all of the structures in a directory called `structures`, you could run:
+```
+QuickViewer("image.nii", structs="structures", struct_legend=True)
+```
+which gives the following output:
+
+<img src="images/structs.png" alt="structures overlaid on image" height="500"/>
+
+The names of structures are inferred from their filenames, and different colors are automatically assigned to each.
+
+Note that by default, the extra zooming widgets are loaded when structures are used; to turn this behaviour off, set `zoom_ui=False`. The legend drawn on the plot can also be turned off by omitting the `struct_legend=True` argument.
+
+An extra widget will appear below the plot, listing all loaded structures and their colors, and allowing the user to remove structures from the plot by unchecking the corresponding checkbox:
+
+<img src="images/struct_checkboxes.png" alt="list of structures and checkboxes" height="300"/>
+
+To quickly navigate between structures within the image, the "jump to" dropdown menu can be used to jump to the central slice of any of the loaded structures:
+
+<img src="images/struct_jumping.png" alt="axial and sagittal views" height="150"/>
+
+If you have zoomed in using the zoom slider, the image will also be centred on the selected structure.
+
+The "Structure plotting" dropdown menu can be used to change the structure plotting method. The options are:
+- "contour" (default): plot a contour around the edge of the structure. Its linewidth can be adjusted via a slider.
+- "mask": fill all voxels inside the structure. Its opacity can be adjusted via a slider.
+- "filled": plot a semi-transparent mask with an opaque contour on top; both linewidth and opacity can be adjusted.
+- "centroid": plot a contour and a cross at the centre-of-mass of the contour on the current slice.
+- "filled centroid": the same as "filled", plus a cross at the centre-of-mass of the contour on the current slice.
+- "none": turn off all structure plotting.
+
+Some additional structure plotting arguments are:
+- `struct_plot_type`: set the initial structure plotting type to any of the options listed above.
+- `struct_opacity`: set the initial opacity of structure masks.
+- `struct_linewidth`: set the inital linewidth of structure contours.
+- `ignore_empty_structs`: if `True`, any loaded NIfTI files that contain an empty array will be ignored and the corresponding structures will not be listed in the UI. Otherwise, these structures will be loaded but will be displayed with "(empty)" next to their names.
+
+#### Customising structure names and colors
+
+
+#### Loading multiple sets of structures with the same names
+
+#### Loading multiple structure masks from one file
 
 Plot settings and turning structures on and off
 
