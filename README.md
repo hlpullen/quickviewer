@@ -12,21 +12,42 @@ I) [Installation](#i-installation)
 
 II) [How to use QuickViewer](#ii-how-to-use-quickviewer)
 
-1) [Basic usage](#1-basic-usage)
+  1) [Basic usage](#1-basic-usage)
+  
+      - [Saving a QuickViewer plot](#saving-a-quickviewer-plot)
+      - [Displaying multiple images](#displaying-multiple-images)
+      - [Orthogonal view](#orthogonal-view)
+      - [More display settings](#more-display-settings)
+      - [Viewing a NumPy array](#viewing-a-numpy-array)
 
-2) [Image comparisons](#2-image-comparisons)
+  2) [Image comparisons](#2-image-comparisons)
 
-3) [Dose fields](#3-dose-fields)
+  3) [Dose fields](#3-dose-fields)
 
-4) [Masks](#4-masks)
+  4) [Masks](#4-masks)
 
-5) [Structures](#5-structures)
+  5) [Structures](#5-structures)
 
-6) [Image registration tools](#6-image-registration-tools)
+      - [Customising structure names and colours](#customising-structure-names-and-colours)
+      - [Loading multiple sets of structures with the same names](#loading-multiple-sets-of-structures-with-the-same-names)
+      - [Loading multiple structures from one file](#loading-multiple-structures-from-one-file)
+      - [Viewing geometric information](#viewing-geometric-information)
+      - [Structure comparisons](#structure-comparisons)
+      - [Masking out dose field](#masking-out-dose-field)
 
-7) [Time series](#7-time-series)
+  6) [Image registration tools](#6-image-registration-tools)
 
-8) [Usage outside Jupyter](#8-usage-outside-jupyter)
+      - [Jacobian determinant](#jacobian-determinant)
+      - [Deformation field](#deformation-field)
+      - [Visualising deformation with a grid](#visualising-deformation-with-a-grid)
+      - [Applying manual translations](#applying-manual-translations)
+
+  7) [Time series](#7-time-series)
+
+  8) [Usage outside Jupyter](#8-usage-outside-jupyter)
+
+      - [From the command line](#from-the-command-line)
+      - [Inside a python script](#inside-a-python-script)
 
 ## I) Installation
 
@@ -308,7 +329,7 @@ Some additional structure plotting arguments are:
 - `struct_linewidth`: set the inital linewidth of structure contours.
 - `ignore_empty_structs`: if `True`, any loaded NIfTI files that contain an empty array will be ignored and the corresponding structures will not be listed in the UI. Otherwise, these structures will be loaded but will be displayed with "(empty)" next to their names.
 
-#### Customising structure names and colors
+#### Customising structure names and colours
 
 The default structure naming and coloring behaviours of QuickViewer can be overridden using the `struct_names` and `struct_colors` arguments.
 
@@ -386,7 +407,7 @@ or
 struct_names={1: "left parotid", 2: "right parotid", 3: "spinal cord"}
 ```
 
-#### Viewing structure information
+#### Viewing geometric information
 
 To display a table containing geometric information about each structure, set `struct_info=True`. The table will be displayed below the plot:
 
@@ -562,7 +583,7 @@ The "Time point" slider can be used to scroll between the images, in order of da
 
 ### 8. Usage outside Jupyter
 
-#### From the command line:
+#### From the command line
 1. A script for creating a quickviewer plot from the command line can be found in `quickviewer/bin/quick_view.py`. The basic usage for viewing a NIfTI file is:
 ```quick_view.py <filename>```.
 2. To see the available input options for this script, run:
@@ -579,7 +600,9 @@ The "Time point" slider can be used to scroll between the images, in order of da
     - **i**: invert any comparison images
     - **o**: change the opacity of overlay comparison image
 
-#### Inside a python script:
+#### Inside a python script
 The `QuickViewer` class can be imported into a python script by adding
 ```from quickviewer import QuickViewer```
 to the script. Creating a `QuickViewer` object inside the code will cause a window containing the plot to be opened when the code is run.
+
+If you just want to save the plot without interactively displaying it, you can set the `save_as` argument to the output file name, and set `show=False` to suppress the interactive version.
