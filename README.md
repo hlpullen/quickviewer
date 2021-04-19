@@ -538,19 +538,25 @@ QuickViewer(["image1.nii", "image2.nii"], translation=True, comparison="overlay"
 ```
 gives the following output:
 
+<img src="images/manual_translation.png" alt="deformed grid" height="500"/>
+
 The three translation sliders can be used to translate the second image by an integer number of voxels in each direction. The translation sizes in mm can then be written to a file.
 
 ### 7. Time series
 
-QuickViewer can load a series of scans of the same shape taken at different points in time. You can then scroll through these images with a time slider.
+QuickViewer can load a series of scans of the same shape taken at different points in time. You can then scroll through these images with a time slider. A timeseries of images can be specified to the `timeseries` argument in two ways:
+- A wildcard pointing to multiple directories containing the images, where the directory names contain a string that can be interpreted as a date;
+- A dictionary with keys that are strings that can be interpreted as dates, and values that are paths to images for those dates.
 
-- Infer via filenames
-- Give via dictionary
+Dated structures can also be provided in the same way.
 
-Example
+For example, if we have a directory "scans" containing a subdirectory with an image file inside for each date, and another directory "structures" containing a subdirectory with structures inside for each date, we could run:
+```
+QuickViewer(timeseries="scans/*", structs="structs/*")
+```
+to get:
 
-Including structures
-Including doses
+<img src="images/timeseries.png" alt="deformed grid" height="500"/>
 
 ### 8. Usage outside Jupyter
 
