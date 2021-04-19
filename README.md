@@ -358,22 +358,55 @@ struct_names = {"Clinician 1": {"rectum": "cyan"}, "Clinian 2": {"rectum": "purp
 QuickViewer("prostate.nii", structs=my_structure_sets, struct_legend=True, struct_colors=struct_colors)
 ```
 
-
 #### Loading multiple structure masks from one file
 
-Plot settings and turning structures on and off
+As well as loading a single structure from a single NIfTI file, QuickViewer can load a NIfTI file containing multiple structure masks, each labelled with a different number. There are two ways to tell QuickViewer to load a structure file in this way:
+- Provide the structure filepath via the `multi_structs` argument;
+- Add the string `"multi:"` in front of the filepath.
 
-Customising names and colors
+E.g. to load multiple structures from a file `many_struct_masks.nii`, you could either run:
+```
+QuickViewer("image.nii", multi_structs="many_struct_masks.nii")
+```
+or
+```
+QuickViewer("image.nii", structs="multi:many_struct_masks.nii")
+```
 
-Files containing multiple structure masks
+By default, these will be labelled according to their numerical order in the file (Structure1, Structure2, etc). Custom names can be set by providing the `struct_names` argument as either a list, containing the desired names in the numerical order they appear in the file, or a dictionary where the keys are the structure labels in the file and the values are the desired names.
 
-Labelling groups of structures
+For example, let's say the file `many_struct_masks.nii` contains the left parotid gland, right parotid gland and spinal cord, with voxels labelled `1`, `2` and `3`, respectively. The `struct_names` parameter should be set to either:
+```
+struct_names=["left parotid", "right parotid", "spinal cord"]
+```
+or 
+```
+struct_names={1: "left parotid", 2: "right parotid", 3: "spinal cord"}
+```
 
 #### Viewing structure information
 
-To display a table containing some geometric information about each structure, set `struct_info=True`.
+To display a table containing geometric information about each structure, set `struct_info=True`. The table will be displayed below the plot:
 
-Saving the table to csv or tex
+<img src="images/struct_info.png" alt="structure information table" height="350"/>
+
+This contains the following information:
+- Overall information:
+  - Total structure volume
+  - Total structure extent in each direction
+- Slice-by-slice information:
+  - Structure area on current slice
+  - Extent along the two plotted axes on the current slice
+
+The slice-by-slice information will be updated whenever the slice slider or orientation is changed. The slice-by-slice cells will be blank if the structure does not appear on the current slice.
+
+The structure information table can be saved to either a `.csv` or a `.tex` file using the widgets below the table. The "Metrics to save" dropdown menu allows you to choose whether to save all of the information, only the overally structure information, or only the information for the current slice.
+
+The table can be customised with the following settings:
+- `vol_units`: set the units for the volume (`"mm3"`, `"ml"` or `"voxels"`)
+- `area_units`: set the units for the area (`"mm2"` or `"voxels"`)
+- `length_units`: set the units for the extents (`"mm"` or `"voxels"`)
+- `struct_info_dp`: set the number of decimal places to use in the table (default = 2)
 
 #### Structure comparisons
 
