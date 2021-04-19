@@ -4,6 +4,8 @@
 
 A package for interactively viewing medical image data.
 
+This work was supported by Cancer Research UK RadNet Cambridge [C17918/A28870].
+
 ### Table of contents
 
 I) [Installation](#i-installation)
