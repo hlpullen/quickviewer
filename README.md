@@ -505,9 +505,17 @@ QuickViewer("image.nii", df="deformationField.nii", df_plot_type="grid", df_kwar
 
 The deformation of the moving image when it is transformed can be visualised by creating a regular grid the same shape as the moving image, and then deforming it to match the shape of the transformed image.
 
-A script to create the initial regular grid images is found in . Usage:
+A script to create the initial regular grid images can be found in `bin/make_grids.py`. This can be run using:
+```
+python make_grids.py moving_image.nii grids -t 3 --nx 10
+```
+This would produce three NIfTi files in the directory "grids", one for each orientation. The arguments for this script are:
+- `"moving_image.nii"` is the path to the moving image file (used to determine the shape and size of the grid images).
+- `"grids"`: the path to the output directory in which to put the grid files.
+- `"-t 3"`: set the thickness of gridlines in voxels.
+- `"--nx 10`: the number of squares to make in the grid in the x direction (other directions will be set from this, such that the boxes of the grid have the same sidelengths).
 
-This will make three files, one in each orientation. These should then be transformed using your preferred image transformation software.
+The three regular grid files should then be transformed using your preferred image transformation software.
 
 The transformed grids can be visualised on top of the transformed image in QuickViewer by setting them as masks. The `mask` parameter can be a dictionary, where the keys are the three orientations ("x-y", "y-z and "x-z") and the values are the paths to the transformed masks for each orientation. The `invert_mask` option should be set, so that voxels containining gridlines are masked.
 
@@ -519,6 +527,8 @@ mask_dict = {"x-y": "final_grid_x-y.nii",
 QuickViewer("final_image.nii", mask=mask_dict, invert_mask=True, mask_color="green")
 ```
 which would look like this:
+
+<img src="images/deformed_grid.png" alt="deformed grid" height="500"/>
 
 #### Applying manual translations
 
