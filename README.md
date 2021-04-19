@@ -390,7 +390,7 @@ struct_names={1: "left parotid", 2: "right parotid", 3: "spinal cord"}
 
 To display a table containing geometric information about each structure, set `struct_info=True`. The table will be displayed below the plot:
 
-<img src="images/struct_info.png" alt="structure information table" height="350"/>
+<img src="images/struct_info.png" alt="structure information table" height="200"/>
 
 This contains the following information:
 - Overall information:
@@ -557,6 +557,8 @@ QuickViewer(timeseries="scans/*", structs="structs/*")
 to get:
 
 <img src="images/timeseries.png" alt="deformed grid" height="500"/>
+
+The "Time point" slider can be used to scroll between the images, in order of date. The dates are displayed as the titles of the images.
 
 ### 8. Usage outside Jupyter
 
