@@ -400,7 +400,7 @@ This contains the following information:
 
 The slice-by-slice information will be updated whenever the slice slider or orientation is changed. The slice-by-slice cells will be blank if the structure does not appear on the current slice.
 
-The structure information table can be saved to either a `.csv` or a `.tex` file using the widgets below the table. The "Metrics to save" dropdown menu allows you to choose whether to save all of the information, only the overally structure information, or only the information for the current slice.
+The structure information table can be saved to either a `.csv` or a `.tex` file using the widgets below the table. The "Metrics to save" dropdown menu allows you to choose whether to save all of the information, only the overally structure information, or only the information for the current slice. The `.tex` file can be compiled in LaTeX as long as the `booktabs` package is imported into the LaTeX document.
 
 The table can be customised with the following settings:
 - `vol_units`: set the units for the volume (`"mm3"`, `"ml"` or `"voxels"`)
@@ -410,21 +410,60 @@ The table can be customised with the following settings:
 
 #### Structure comparisons
 
-Comparison metrics
+QuickViewer can compute and display metrics for comparing structures. This behviour is turned on by setting `compare_structs=True`. Structures can be grouped for comparison in three ways:
+1. **Pairwise comparison**: every structure will be compared to every other structure. This is the default behaviour when QuickViewer loads multiple structures each with different names. This mode can also be forced by setting `comp_type="pairs"`. Note that this option is best used with a small number of structures to avoid lag.
+2. **Comparison by name**: When QuickViewer finds pairs of structures with the same name, it will automatically pair them up for comparison. This can be useful when loading multiple structure sets (as described [here](#loading-multiple-sets-of-structures-with-the-same-names). You can also ignore any structures without a matching pair by setting `ignore_unpaired_structs=True`.
+3. **Comparison to consensus of others**: To compare large numbers of structures, it can be best to compare each one to the consensus of all of the others. This behaviour is turned on by setting `comp_type="others"`.
 
-Ways of matching structures:
-- Matching by name (ignore_unpaired)
-- Pairwise (default if no name matches, or set "pairs")
-- Compare to consensus of all others
+For example, a pairwise structure comparison table could be loaded via
+```
+my_structs = ["structure_1.nii", "structure_2.nii", "structure_3.nii"]
+QuickViewer("image.nii", structs=my_structs, compare_structs=True)
+```
+and would give an output that looks like this:
 
-Structure comparison table
-Saved in same way as above
+<img src="images/struct_comparison.png" alt="structure comparison" height="500"/>
 
-Extras for consensus:
-Note that turning off one removes it from the group 
-Plotting: group others
+This table containts the following comparison metrics:
+- Overall:
+  - Dice score of the 3D structures;
+  - Relative volume difference;
+  - Absolute distance between centroids in 3D;
+- Slice-by-slice:
+  - Dice score of the 2D structures on the current slice;
+  - Relative area difference on the current slice;
+  - Distance between centroid along the two axes displayed on the current slice.
 
-Masking out dose field
+The structure comparison table can be saved to a `.csv` or `.tex` file in the same way as the structure info table.
+
+When the `comp_type="others"` option is set (to compare each structure to the consensus of all others), some extra widgets will appear:
+```
+QuickViewer("image.nii", structs=my_structs, compare_structs=True, comp_type="others")
+```
+
+<img src="images/struct_comp_others.png" alt="structures compared to consensus of others" height="500"/>
+
+Two extra dropdown menus control the comparison type and plotting method:
+- "Comparison plotting": change the plotting type. The options are:
+    -  "individual": plot each structure separately.
+    -  "group others": plot the consensus of other contours as a single, white contour. When this options is selected, the coloured structure can be changed by selecting a different structure from the "Jump to" menu. Setting this option will also limit the structure comparison table to just show the selected structure vs. the consensus.
+-  "Comparison type": change the way in which the consensus is computed. The options are:
+    -  "majority vote": take voxels which fall within at least half of the contours.
+    -  "sum": add together the contours.
+    -  "overlap": take the region contained within all contours.
+
+Individual structures can be removed from the consensus by unchecking them with the checkboxes below the structure comparison table.
+
+#### Masking out dose field
+
+When both a structure set and a dose field are overlaid on the same image, the argument `structs_as_mask=True` can be set; this allows you to mask out the dose field outside the structures, allowing you to examine the dose distribution inside structures. For example:
+```
+QuickViewer("image.nii", structs="tumour.nii", dose="dose.nii", structs_as_mask=true, dose_opacity=1)
+```
+
+The masking can be turned on and off with the "Apply mask" checkbox. Note that the color range of the dose field is recomputed to cover only the range of doses inside the structure when the mask is applied. It can instead be set to a fixed range via the `dose_range` argument.
+
+<img src="images/structs_as_mask.png" alt=Dose field masked by structures" height="500"/>
 
 ### 6. Image registration tools
 
