@@ -187,6 +187,8 @@ QuickViewer(["image1.nii", "image2.nii"], comparison=True)
 ```
 This will give the following output:
 
+<img src="images/comparison.png" alt="two images and comparison" height="500"/>
+
 The "comparison" dropdown menu allows you to switch the comparison type between:
 - Chequerboard image
 - Red/blue overlay
@@ -205,13 +207,17 @@ QuickViewer(["image1.nii", "image2.nii"], comparison=["chequerboard", "overlay",
 ```
 to give the following output:
 
+<img src="images/comparison_only.png" alt="chequerboard, overlay and difference images" height="500"/>
+
 ### 3. Dose fields
 
 Dose fields can be overlaid on top of images by setting the `dose` parameter to the path to a NIfTI file or array the same shape as the image, e.g.
 ```
 QuickViewer("image.nii", dose="dose.nii", colorbar=True)
 ```
-will give
+will give:
+
+<img src="images/dose.png" alt="dose field overlaid on image" height="500"/>
 
 Note that setting the `colorbar=True` option will draw a colorbar for the dose field as well as the intensity of the underlying image.
 
