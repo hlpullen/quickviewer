@@ -1,4 +1,4 @@
-<<img src="images/Radnet Cambridge.png" alt="RadNet logo" height="100"/>
+<img src="images/Radnet Cambridge.png" alt="RadNet logo" height="150"/>
 
 # QuickViewer package
 
