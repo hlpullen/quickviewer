@@ -463,7 +463,7 @@ QuickViewer("image.nii", structs="tumour.nii", dose="dose.nii", structs_as_mask=
 
 The masking can be turned on and off with the "Apply mask" checkbox. Note that the color range of the dose field is recomputed to cover only the range of doses inside the structure when the mask is applied. It can instead be set to a fixed range via the `dose_range` argument.
 
-<img src="images/structs_as_mask.png" alt=Dose field masked by structures" height="500"/>
+<img src="images/structs_as_mask.png" alt="Dose field masked by structures" height="500"/>
 
 ### 6. Image registration tools
 
@@ -471,27 +471,33 @@ QuickViewer provides several useful functionalities related to displaying the re
 
 #### Jacobian determinant
 
-Set the `jacobian` parameter to a path to a jacobian determinant file, or, if multiple images are loaded, to a list matching the length of the number of images loaded. E.g.:
+A Jacobian determinant file output by image registration software can be overlaid on an image. The path to this file can be set via the `jacobian` parameter:
 ```
-QuickViewer("image.nii", jacobian=True, colorbar=True)
+QuickViewer("image.nii", jacobian="jacobianDeterminant.nii", colorbar=True)
 ```
-would produce:
 
-Note that if `colorbar=True` is set, an extra colorbar will be drawn for the Jacobian determinant field. The initial opacity can be set via `jacobian_opacity` and changed via a slider. The range (default 0.8 -- 1.2) can also be adjusted via a slider.
+<img src="images/jacobian.png" alt="Image with jacobian determinant overlaid" height="500"/>
+
+Note that if `colorbar=True` is set, an extra colorbar will be drawn for the Jacobian determinant field. The initial opacity can be set via `jacobian_opacity` and changed via a slider. The colorbar range (default 0.8 -- 1.2) can also be adjusted via a slider.
 
 #### Deformation field
 
-Deformation fields can be loaded via the `df` argument and plotted as a "quiver" or "grid" plot. E.g.
+Deformation fields output by image registration software can be loaded via the `df` argument and plotted as a "quiver" or "grid" plot. E.g.
 ```
-QuickViewer("image.nii", df="deformationField.nii")
+QuickViewer("image.nii", df="deformationField.nii", df_plot_type="quiver)
 ```
 
-Initial plot type can be set via `df_plot_type`, and changed later via the dropdown menu.
+<img src="images/quiver.png" alt="Deformation field quiver plot" height="500"/>
 
-Matplotlib settings can be adjusted via `df_kwargs`, e.g. to change the color and linewidth of a grid plot:
+Additional settings for deformation field plotting:
+- The initial plot type (`"grid"` or `"quiver"`) can be set via `df_plot_type` or changed via the dropdown menu.
+- The spacing between gridpoints (in mm) can be set via the `df_spacing` argument; this can be either a single value, or a list of three values, one for each of the (x, y, z) directions.
+- Custom plot settings can be adjusted via `df_kwargs`; this should be a dictionary of valid `matplotlib` arguments for the chosen plot type ([quiver](https://matplotlib.org/stable/api/_as_gen/matplotlib.pyplot.quiver.html) or [grid](https://matplotlib.org/stable/api/_as_gen/matplotlib.pyplot.plot.html)). For example, to change the color and linewidth of the lines on a grid plot:
 ```
-QuickViewer("image.nii", df="deformationField.nii", df_plot_type="grid", df_kwargs={"linewidth": 3, "linecolor": "red"})
+QuickViewer("image.nii", df="deformationField.nii", df_plot_type="grid", df_kwargs={"linewidth": 3, "color": "red"})
 ```
+
+<img src="images/grid.png" alt="Deformation field grid plot" height="500"/>
 
 #### Visualising deformation with a grid
 
