@@ -308,6 +308,23 @@ Some additional structure plotting arguments are:
 
 #### Customising structure names and colors
 
+The default structure naming and coloring behaviours of QuickViewer can be overridden using the `struct_names` and `struct_colors` arguments.
+
+Structure names are set using a dictionary, where the keys are the desired names and the values are potential filepaths for which you wish that name to be assigned; this can be a single filepath, a wildcard, or a list of multiple filepaths or wildcards. For example, to ensure that structures from any file whose name contains the strings "spinal", "spine", or "cord" are named "spinal cord" in QuickViewer:
+```
+my_struct_names = {
+  "spinal cord": ["*spine*", "*spinal*", "*cord*"]
+}
+QuickViewer("image.nii", structs="structures", struct_names=my_struct_names)  
+```
+Any loaded structures that do not match the filepaths in the `struct_names` dictionary will be assigned names using the default behaviour.
+
+Structure colours can be set using a dictionary whose keys are structure names or wildcards matching structure names and whose values are any valid `matplotlib` colour. For example, to set any structures with "left" in their names to green, and any with "right" in their names to red:
+```
+QuickViewer("image.nii", structs="structures", struct_colors={"left*": "green", "right*": "red"})
+```
+
+Any loaded structures whose names do not match the dictionary keys will be assigned colours from the default colour sequence.
 
 #### Loading multiple sets of structures with the same names
 
