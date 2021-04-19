@@ -328,6 +328,37 @@ Any loaded structures whose names do not match the dictionary keys will be assig
 
 #### Loading multiple sets of structures with the same names
 
+You may wish to loaded multiple structures with the same names; for example, to plot the same structures drawn by two different observers. When QuickViewer loads structures with duplicate names, it will attempt to label them according to the differences in their filepaths, e.g. with their parent directory. For example, if the directory `structure` contained two subdirectories, `observer1` and `observer2`, each containing the same structures, both sets could be loaded using:
+```
+QuickViewer("rectum.nii", structs="structures/*", struct_legend=True)
+```
+The output would look like this:
+
+<img src="images/structs_same_name.png" alt="loading two structures with the same name" height="150"/>
+
+QuickViewer has appended the directory names to the structures listed in the user interface, so that you can distinguish between them. However, these extra labels do not appear in the structure legend by default.
+
+To gain more control over the labelled of identically-named structures, and to include these labels in the legend, the `structs` argument can instead be a dictionary containing the desired labels and paths of the sets of structures. For example:
+```
+my_structure_sets = {
+    "Clinician 1": "structs/observer1",
+    "Clinician 2": "structs/observer2"
+}
+QuickViewer("prostate.nii", structs=my_structure_sets, struct_legend=True)
+```
+would give:
+
+<img src="images/labelled_structs.png" alt="labelled structure sets" height="150"/>
+
+The user-defined labels are now appended to each structure name in both the user interface and the plot legend. 
+
+The `struct_names` and `struct_colors` parameters can also be dictionaries containing options for each structure set label, allowing you to fine-tune the settings for each structure set. E.g. to set custom colours for the structure sets loaded above, you could use:
+```
+struct_names = {"Clinician 1": {"rectum": "cyan"}, "Clinian 2": {"rectum": "purple"}}
+QuickViewer("prostate.nii", structs=my_structure_sets, struct_legend=True, struct_colors=struct_colors)
+```
+
+
 #### Loading multiple structure masks from one file
 
 Plot settings and turning structures on and off
