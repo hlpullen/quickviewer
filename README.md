@@ -238,11 +238,13 @@ TBC
 
 ### 4. Masks
 
-QuickViewer can apply a mask in a NIfTI file or array to an image. To do this, pass the NIfTI path or NumPy array to the `mask` argument, e.g.
+QuickViewer can apply a mask in a NIfTI file or array to an image. To do this, pass the NIfTI path or NumPy array to the `mask` argument; for example, if the file `mask.nii` contained an array with zeroes at the upper and lower ends of the z axis, we could run the following command:
 ```
-QuickViewer("image.nii", mask="mask.nii")
+QuickViewer("image.nii", mask="mask.nii", init_view="y-z", mask_color="blue)
 ```
 which would give:
+
+<img src="images/masked.png" alt="masked image" height="500"/>
 
 The mask can be turned on or off using the "apply mask" checkbox.
 
@@ -264,6 +266,8 @@ Name inferred from filename
 Plot settings and turning structures on and off
 
 Customising names and colors
+
+Files containing multiple structure masks
 
 Labelling groups of structures
 
