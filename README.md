@@ -20,6 +20,8 @@ II) [How to use QuickViewer](#ii-how-to-use-quickviewer)
       - [More display settings](#more-display-settings)
       - [Viewing a NumPy array](#viewing-a-numpy-array)
 
+
+
   2) [Image comparisons](#2-image-comparisons)
 
   3) [Dose fields](#3-dose-fields)
@@ -30,10 +32,12 @@ II) [How to use QuickViewer](#ii-how-to-use-quickviewer)
 
       - [Customising structure names and colours](#customising-structure-names-and-colours)
       - [Loading multiple sets of structures with the same names](#loading-multiple-sets-of-structures-with-the-same-names)
-      - [Loading multiple structures from one file](#loading-multiple-structures-from-one-file)
+      - [Loading multiple structure masks from one file](#loading-multiple-structure-masks-from-one-file)
       - [Viewing geometric information](#viewing-geometric-information)
       - [Structure comparisons](#structure-comparisons)
       - [Masking out dose field](#masking-out-dose-field)
+
+
 
   6) [Image registration tools](#6-image-registration-tools)
 
@@ -41,6 +45,8 @@ II) [How to use QuickViewer](#ii-how-to-use-quickviewer)
       - [Deformation field](#deformation-field)
       - [Visualising deformation with a grid](#visualising-deformation-with-a-grid)
       - [Applying manual translations](#applying-manual-translations)
+
+
 
   7) [Time series](#7-time-series)
 
