@@ -334,7 +334,7 @@ QuickViewer("rectum.nii", structs="structures/*", struct_legend=True)
 ```
 The output would look like this:
 
-<img src="images/structs_same_name.png" alt="loading two structures with the same name" height="150"/>
+<img src="images/structs_same_name.png" alt="loading two structures with the same name" height="500"/>
 
 QuickViewer has appended the directory names to the structures listed in the user interface, so that you can distinguish between them. However, these extra labels do not appear in the structure legend by default.
 
@@ -348,7 +348,7 @@ QuickViewer("prostate.nii", structs=my_structure_sets, struct_legend=True)
 ```
 would give:
 
-<img src="images/labelled_structs.png" alt="labelled structure sets" height="150"/>
+<img src="images/structs_labelled.png" alt="labelled structure sets" height="500"/>
 
 The user-defined labels are now appended to each structure name in both the user interface and the plot legend. 
 
