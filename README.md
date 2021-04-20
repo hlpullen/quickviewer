@@ -236,7 +236,9 @@ This will give the following output:
 The "comparison" dropdown menu allows you to switch the comparison type between:
 - Chequerboard image
 - Red/blue overlay
-- Difference image
+- Difference image (relative or absolute)
+- Distance-to-agreement
+- Gamma index
 
 The initial number of panes in the chequerboard image can be set via the `cb_splits` argument, and can later be changed via the slider. Similarly, the initial overlay opacity can be set via the `overlay_opacity` and later change via a slider. 
 The order of the images to be compared can be changed by checking the "invert" box.
@@ -252,6 +254,25 @@ QuickViewer(["image1.nii", "image2.nii"], comparison=["chequerboard", "overlay",
 to give the following output:
 
 <img src="images/comparison_only.png" alt="chequerboard, overlay and difference images" height="500"/>
+
+#### Distance-to-agreement, gamma index, and mean-squared error
+
+The distance-to-agreement and gamma index comparison images are computed on a slice-by-slice basis. This can be slow for slices with high resolutions, therefore these options are best used in combination with [downsampling](#zooming-panning-and-downsampling). 
+
+For example, to downsample an image by a factor of 8 and view the distance-to-agreement, you could run:
+```
+QuickViewer(["image1.nii", "image2.nii"], comparison=True, comparison_only, downsample=8)
+```
+and then select "distance to agreement" from the comparison dropdown menu:
+
+<img src="images/dta.png" alt="distance to agreement plot" height="500"/>
+
+Values used in the calculation of the distance-to-agreement and gamma index can be set via the following arguments when launching a QuickViewer instance:
+- `dta_tolerance`: tolerance used in distance-to-agreement calculation.
+- `dta_crit`: critical distance-to-agreement used in gamma index calculation.
+- `diff_crit`: critical difference used in gamma index calculation.
+
+To print the mean squared error on the comparison plot, set the `show_mse` parameter. This can either be set to `True`, in which case the default font colour (white) will be used, or to any valid `matplotlib` colour to set a custom font colour.
 
 ### 3. Dose fields
 
