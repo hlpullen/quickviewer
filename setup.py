@@ -23,6 +23,7 @@ setuptools.setup(
                       'pandas',
                       'pydicom>=2.1.2',
                       'scikit-image',
+                      'shapely'
                      ],
     classifiers=[
         'Development Status :: 1 - Planning',

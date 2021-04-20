@@ -17,8 +17,9 @@ from timeit import default_timer as timer
 import matplotlib as mpl
 from matplotlib.ticker import MultipleLocator, AutoMinorLocator, \
         FormatStrFormatter
+from shapely import geometry
 
-from quickviewer import core
+from quickviewer import core, dicom
 
 
 # Shared parameters
@@ -374,8 +375,6 @@ class NiftiImage:
     def idx_to_pos(self, idx, ax):
         """Convert an index to a position in mm along a given axis."""
 
-        #  if ax == "y":
-            #  idx = self.n_voxels[ax] - 1 - idx
         if ax != "z":
             return self.origin[ax] \
                     + (self.n_voxels[ax] - 1 - idx) * self.voxel_sizes[ax]
@@ -391,24 +390,17 @@ class NiftiImage:
         else:
             idx = round((pos - self.origin[ax]) / self.voxel_sizes[ax])
 
-        #  if ax == "y":
-            #  idx = self.n_voxels[ax] - 1 - idx
-
         if idx < 0 or idx >= self.n_voxels[ax]:
             if idx < 0:
                 idx = 0
             if idx >= self.n_voxels[ax]:
                 idx = self.n_voxels[ax] - 1
-            #  print(f"Warning: position {pos} outside valid range. Will "
-                  #  f"plot slice at {self.idx_to_pos(idx, ax):.1f}")
 
         return idx
 
     def idx_to_slice(self, idx, ax):
         """Convert an index to a slice number along a given axis."""
 
-        #  if ax == "y":
-            #  idx = self.n_voxels[ax] - 1 - idx
         if ax == "x":
             return idx + 1
         else:
@@ -422,16 +414,11 @@ class NiftiImage:
         else:
             idx = self.n_voxels[ax] - sl
 
-        #  if ax == "y":
-            #  idx = self.n_voxels[ax] - 1 - idx
-
         if idx < 0 or idx >= self.n_voxels[ax]:
             if idx < 0:
                 idx = 0
             if idx >= self.n_voxels[ax]:
                 idx = self.n_voxels[ax] -1
-            #  print(f"Warning: slice {sl} outside valid range. Will "
-                  #  f"plot slice {self.idx_to_slice(idx, ax)}.")
 
         return idx
 
@@ -1060,7 +1047,8 @@ class DeformationImage(NiftiImage):
 class StructImage(NiftiImage):
     """Class to load and plot a structure mask."""
 
-    def __init__(self, nii, name=None, color=None, label="", load=True, 
+    def __init__(self, nii=None, name=None, color=None, label="", load=True, 
+                 contours=None, shape=None, origin=None, voxel_sizes=None,
                  **kwargs):
         """Load structure mask.
 
@@ -1085,10 +1073,18 @@ class StructImage(NiftiImage):
         """
 
         # Assign variables
+        if nii is None and contours is None:
+            raise TypeError("Must provide either <nii> or <contours> to "
+                            "StructImage!")
         self.nii = nii
-        self.nii_kwargs = kwargs
+        self.nii_kwargs = kwargs if kwargs is not None else {}
+        self.nii_kwargs.update({"voxel_sizes": voxel_sizes, "origin": origin})
         self.visible = True
         self.path = nii if isinstance(nii, str) else None
+        self.contours = contours
+        self.origin = origin
+        self.shape = shape
+        self.voxel_sizes = voxel_sizes
 
         # Set name
         if name is not None:
@@ -1124,14 +1120,15 @@ class StructImage(NiftiImage):
             self.name_nice += f" ({self.label})"
 
     def load(self):
-        """Load struct data and create contours."""
+        """Load struct data and create contours in all orientations."""
 
         if self.loaded:
             return
 
-        # Try loading from DICOM
+        # Create mask from initial set of contours if needed
+        if self.nii is None:
+            self.nii = dicom.contours_to_mask(self.contours, self.shape)
 
-        # Load structure masks from any other format
         NiftiImage.__init__(self, self.nii, **self.nii_kwargs)
         if not self.valid:
             return
@@ -1140,7 +1137,8 @@ class StructImage(NiftiImage):
         self.set_contours()
 
         # Convert to boolean mask
-        self.data = self.data > 0.5
+        if not self.data.dtype == "bool":
+            self.data = self.data > 0.5
 
         # Check whether structure is empty
         self.empty = not sum([len(contours) for contours in 
@@ -1279,12 +1277,45 @@ class StructImage(NiftiImage):
                             "interpolation": "none"}
         self.contour_kwargs = {"linewidth": 2}
 
+    def convert_xy_contours(self, contours):
+        """Convert index number to position or slice number for a set of 
+        contours in the x-y plane."""
+
+        contours_converted = {}
+
+        for z, conts in contours.items():
+
+            # Convert z key to slice number
+            z_sl = self.idx_to_slice(z, "z")
+            contours_converted[z_sl] = []
+
+            # Convert x/y to either position or slice number
+            for c in conts:
+                points = []
+                for p in c:
+                    x, y = p[0], p[1]
+                    conv = self.idx_to_pos if self.scale_in_mm \
+                            else self.idx_to_slice
+                    x = conv(x, "x")
+                    y = conv(y, "y")
+                    points.append((x, y))
+                contours_converted[z_sl].append(points)
+
+        # Set as x-y contours
+        self.contours = {"x-y": contours_converted}
+
     def set_contours(self):
         """Compute positions of contours on each slice in each orientation.
         """
 
-        self.contours = {}
+        if self.contours is None:
+            self.contours = {}
+        else:
+            self.convert_xy_contours(self.contours)
+
         for view, z in _slider_axes.items():
+            if view in self.contours:
+                continue
             self.contours[view] = {}
             for sl in range(1, self.n_voxels[z] + 1):
                 contour = self.get_contour_slice(view, sl)
@@ -1457,6 +1488,8 @@ class StructImage(NiftiImage):
         for points in self.contours[view][sl]:
             points_x = [p[0] for p in points]
             points_y = [p[1] for p in points]
+            points_x.append(points_x[0])
+            points_y.append(points_y[1])
             self.ax.plot(points_x, points_y, **kwargs)
 
         if centroid:
@@ -1748,7 +1781,8 @@ class MultiImage(NiftiImage):
             loader = StructLoader(structs, multi_structs, names, colors,
                                   comp_type=comp_type,
                                   struct_kwargs={"scale_in_mm": 
-                                                 self.scale_in_mm})
+                                                 self.scale_in_mm},
+                                  image=self)
             self.structs = loader.get_structs(ignore_unpaired, ignore_empty)
 
             if compare_structs:
@@ -1775,7 +1809,8 @@ class MultiImage(NiftiImage):
                 loader = StructLoader(structs, names=names, colors=colors,
                                       comp_type=comp_type,
                                       struct_kwargs={"scale_in_mm": 
-                                                     self.scale_in_mm})
+                                                     self.scale_in_mm},
+                                      image=self)
                 struct_colors = loader.reassign_colors(struct_colors)
                 self.dated_structs[date] = loader.get_structs(
                     ignore_unpaired, ignore_empty, sort=True)
@@ -2755,7 +2790,8 @@ class StructLoader:
     """Class for loading and storing multiple StructImages."""
 
     def __init__(self, structs=None, multi_structs=None, names=None, 
-                 colors=None, comp_type="auto", struct_kwargs=None):
+                 colors=None, comp_type="auto", struct_kwargs=None,
+                 image=None):
         """Load structures. 
 
         Parameters
@@ -2827,6 +2863,7 @@ class StructLoader:
             else {}
         if not (structs or multi_structs):
             return
+        self.image = image
 
         # Format colors and names
         names = self.load_settings(names)
@@ -2903,10 +2940,12 @@ class StructLoader:
         files."""
 
         # Get files
+        print("paths:", paths)
         if isinstance(paths, str):
-            files = core.find_files(paths, ext=".nii*")
+            files = core.find_files(paths)
         else:
             files = paths
+        print("files:", files)
 
         # Get colors and names dicts
         if core.is_nested(colors):
@@ -2916,23 +2955,25 @@ class StructLoader:
 
         # Load each file
         for f in files:
-            self.add_struct(f, label, names, colors, multi)
+            self.add_struct_file(f, label, names, colors, multi)
 
     def find_name_match(self, names, path):
         """Assign a name to a structure based on its path."""
 
         # Infer name from filepath
-        basename = os.path.basename(path).replace(".gz", "").replace(".nii", "")
-        name = re.sub(r"RTSTRUCT_[MVCT]+_\d+_\d+_\d+_", "",
-                           basename).replace(" ", "_")
+        name = None
+        if isinstance(path, str):
+            basename = os.path.basename(path).replace(".gz", "").replace(".nii", "")
+            name = re.sub(r"RTSTRUCT_[MVCT]+_\d+_\d+_\d+_", "",
+                               basename).replace(" ", "_")
 
-        # See if we can convert this name based on names list
-        for name2, matches in names.items():
-            if not core.is_list(matches):
-                matches = [matches]
-            for match in matches:
-                if fnmatch.fnmatch(standard_str(name), standard_str(match)):
-                    return name2
+            # See if we can convert this name based on names list
+            for name2, matches in names.items():
+                if not core.is_list(matches):
+                    matches = [matches]
+                for match in matches:
+                    if fnmatch.fnmatch(standard_str(name), standard_str(match)):
+                        return name2
 
         # See if we can get name from filepath
         for name2, matches in names.items():
@@ -2952,10 +2993,16 @@ class StructLoader:
             if fnmatch.fnmatch(standard_str(name), standard_str(comp_name)):
                 return color
 
-    def add_struct(self, path, label, names, colors, multi=False):
-        """Create StructImage object and add to list."""
+    def add_struct_file(self, path, label, names, colors, multi=False):
+        """Create StructImage object(s) from file and add to list."""
 
         self.loaded = False
+
+        # Try loading from a DICOM file
+        if self.load_structs_from_dicom(path, label, names, colors):
+            return
+
+        # Get custom name
         if isinstance(path, str):
             name = self.find_name_match(names, path)
         else:
@@ -3017,6 +3064,47 @@ class StructLoader:
             self.structs.extend(s_pair)
             self.comparison_structs.extend(s_pair)
             self.comparisons.append(StructComparison(*s_pair))
+
+    def load_structs_from_dicom(self, path, label, names, colors):
+        """Attempt to load structures from a DICOM file."""
+
+        try:
+            structs = dicom.load_structs(path)
+        except TypeError:
+            return
+
+        if not self.image:
+            raise RuntimeError("Must provide the <image> argument to "
+                               "StructLoader in order to load from DICOM!")
+
+        # Load each structure
+        for struct in structs.values():
+
+            # Get settings for this structure
+            name = self.find_name_match(names, struct["name"])
+            color = self.find_color_match(colors, name)
+            if color is None:
+                color = struct["color"]
+            contours = struct["contours"]
+
+            # Convert all contour positions to indices
+            origin = list(self.image.origin.values())
+            voxel_sizes = list(self.image.voxel_sizes.values())
+            contours_idx = dicom.contours_to_indices(
+                contours, origin=origin, voxel_sizes=voxel_sizes, 
+                shape=self.image.data.shape
+            )
+
+            # Create structure
+            struct = StructImage(contours=contours_idx, label=label, name=name, 
+                                 load=False, color=color, 
+                                 shape=self.image.data.shape,
+                                 origin=origin,
+                                 voxel_sizes=voxel_sizes,
+                                 **self.struct_kwargs)
+            self.structs.append(struct)
+
+        return True
 
     def find_comparisons(self):
         """Find structures suitable for comparison and make a list of 

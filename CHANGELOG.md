@@ -1,7 +1,7 @@
 ## [Unreleased](https://github.com/hlpullen/quickviewer/compare/v0.1.0...HEAD)
 
 ### Added
-- DICOM support for images and dose fields
+- DICOM support for images, dose fields, and structures
 - Extra user settings: `cmap`, `dose_cmap`
 - Ability to load a dose field via the `dose` argument without loading an image file
 - Ability to change type of comparison image with a dropdown menu

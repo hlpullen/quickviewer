@@ -3,6 +3,7 @@
 import pydicom
 import numpy as np
 import os
+from shapely import geometry
 
 def load_image(path):
     """Load a DICOM image array and affine matrix from a path."""
@@ -41,15 +42,6 @@ def load_image(path):
 def load_image_single_file(ds):
     """Load DICOM image from a single DICOM object."""
 
-    vx, vy = ds.PixelSpacing
-    vz = ds.SliceThickness
-    px, py, pz = ds.ImagePositionPatient
-    affine = np.array([
-        [vx, 0, 0, px],
-        [0, vy, 0, py],
-        [0, 0, vz, pz],
-        [0, 0, 0, 1]
-    ])
     data = ds.pixel_array
     if data.ndim == 3:
         data = data.transpose(2, 1, 0)[:, ::-1, ::-1]
@@ -59,6 +51,17 @@ def load_image_single_file(ds):
     # Rescale data values
     if hasattr(ds, "RescaleSlope"):
         data = data * float(ds.RescaleSlope) + float(ds.RescaleIntercept)
+
+    # Get affine matrix
+    vx, vy = ds.PixelSpacing
+    vz = ds.SliceThickness
+    px, py, pz = ds.ImagePositionPatient
+    affine = np.array([
+        [vx, 0, 0, px],
+        [0, vy, 0, py],
+        [0, 0, vz, pz],
+        [0, 0, 0, 1]
+    ])
 
     # Adjust for consistency with dcm2nii
     affine[0, 0] *= -1
@@ -128,7 +131,7 @@ def load_structs(path):
 
         # Get colour
         if "ROIDisplayColor" in roi:
-            data["color"] = roi.ROIDisplayColor 
+            data["color"] = [int(c) / 255 for c in list(roi.ROIDisplayColor)]
         else:
             data["color"] = None
 
@@ -138,13 +141,13 @@ def load_structs(path):
             contour_data = {}
             for c in contour_seq:
                 plane_data = [
-                    (c.ContourData[i * 3], c.ContourData[i * 3 + 1])
+                    [float(p) for p in c.ContourData[i * 3: i * 3 + 3]]
                     for i in range(c.NumberOfContourPoints)
                 ]
-                z = c.ContourData[2]
+                z = float(c.ContourData[2])
                 if z not in data["contours"]:
                     data["contours"][z] = []
-                data["contours"][z].append(plane_data)
+                data["contours"][z].append(np.array(plane_data))
 
         structs[number].update(data)
 
@@ -162,3 +165,63 @@ def get_dicom_sequence(ds=None, basename=""):
             break
 
     return sequence
+
+
+def contours_to_indices(contours, origin, voxel_sizes, shape):
+    """Convert contours from positions in mm to array indices."""
+
+    converted = {}
+    for z, conts in contours.items():
+
+        # Convert z position
+        zi = (z - origin[2]) / voxel_sizes[2]
+        converted[zi] = []
+
+        # Convert points on each contour
+        for points in conts:
+            pi = np.zeros(points.shape)
+            pi[:, 0] = shape[0] - (points[:, 0] - origin[0]) / voxel_sizes[0]
+            pi[:, 1] = shape[1] - (points[:, 1] - origin[1]) / voxel_sizes[1]
+            pi[:, 2] = zi
+            converted[zi].append(pi)
+
+    return converted
+
+
+def contours_to_mask(contours, shape):
+    """Convert contours to mask."""
+
+    mask = np.zeros(shape)
+
+    # Loop over slices
+    for iz, conts in contours.items():
+
+        # Loop over contours on each slice
+        for c in conts:
+
+            # Make polygon from (x, y) points
+            polygon = geometry.Polygon(c[:, 0:2])
+
+            # Get the polygon's bounding box
+            ix1, iy1, ix2, iy2 = [int(xy) for xy in polygon.bounds]
+            ix1 = max(0, ix1)
+            ix2 = min(ix2 + 1, shape[0])
+            iy1 = max(0, iy1)
+            iy2 = min(iy2 + 1, shape[1])
+
+            # Loop over pixels
+            for ix in range(ix1, ix2):
+                for iy in range(iy1, iy2):
+
+                    # Make polygon of current pixel
+                    pixel = geometry.Polygon([
+                        [ix - 0.5, iy - 0.5], [ix - 0.5, iy + 0.5],
+                        [ix + 0.5, iy + 0.5], [ix + 0.5, iy - 0.5]
+                    ])
+                    
+                    # Compute overlap
+                    overlap = polygon.intersection(pixel).area
+                    mask[ix, iy, int(iz)] += overlap
+
+    # Convert mask to boolean
+    return mask > 0.5

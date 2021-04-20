@@ -23,7 +23,7 @@ def load_image(im, affine=None, voxel_sizes=None, origin=None):
         (a) a numpy array;
         (b) an nibabel nifti object;
         (c) a file containing a numpy array;
-        (d) a nifti file.
+        (d) a nifti or dicom file.
 
     Returns image data, tuple of voxel sizes, tuple of origin points, 
     and path to image file (None if image was not from a file)."""
@@ -97,7 +97,8 @@ def find_files(paths, ext=""):
                 elif os.path.isfile(m):
                     files.append(m)
 
-    return files
+
+    return [f for f in files if not os.path.isdir(f)]
 
 
 def to_inches(size):
