@@ -257,7 +257,7 @@ to give the following output:
 
 #### Distance-to-agreement, gamma index, and mean-squared error
 
-The distance-to-agreement and gamma index comparison images are computed on a slice-by-slice basis. This can be slow for slices with high resolutions, therefore these options are best used in combination with [downsampling](#zoooming-panning-and-downsampling). 
+The distance-to-agreement and gamma index comparison images are computed on a slice-by-slice basis. This can be slow for slices with high resolutions, therefore these options are best used in combination with [downsampling](#zooming-panning-and-downsampling). 
 
 For example, to downsample an image by a factor of 8 and view the distance-to-agreement, you could run:
 ```
