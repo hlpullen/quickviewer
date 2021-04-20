@@ -8,7 +8,7 @@ import numpy as np
 import nibabel
 import logging
 
-from quickviewer.image import NiftiImage, _axes
+from quickviewer.image import Image, _axes
 from quickviewer.core import make_three
 
 
@@ -55,8 +55,8 @@ class GeometricNifti():
         ])
         self.data = self.make_data(noise_range)
 
-        # Mak NiftiImage object
-        self.im = NiftiImage(self.data, self.affine)
+        # Make Image object
+        self.im = Image(self.data, self.affine)
 
         # Write to file if a filename is given
         if filename is not None:

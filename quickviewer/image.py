@@ -47,12 +47,12 @@ for d in to_del:
     del standard_colors[d]
 
 
-class NiftiImage:
+class Image:
     """Load and plot image arrays from NIfTI files or NumPy objects."""
 
     def __init__(
         self,
-        nii,
+        image,
         affine=None,
         voxel_sizes=(1, 1, 1),
         origin=(0, 0, 0),
@@ -65,7 +65,7 @@ class NiftiImage:
 
         Parameters
         ----------
-        nii : str/array/nifti
+        image : str/array/nifti
             Source of the image data to load. This can be either:
                 (a) The path to a NIfTI file;
                 (b) A nibabel.nifti1.Nifti1Image object;
@@ -73,18 +73,18 @@ class NiftiImage:
                 (d) A NumPy array.
 
         affine : 4x4 array, default=None
-            Affine matrix to be used if <nii> is a NumPy array. If <nii> is a
+            Affine matrix to be used if <image> is a NumPy array. If <image> is a
             file path or a nibabel object, this parameter is ignored. If None,
             the arguments <voxel_sizes> and <origin> will be used to set the
             affine matrix.
 
         voxel_sizes : tuple, default=(1, 1, 1)
             Voxel sizes in mm, given in the order (y, x, z). Only used if
-            <nii> is a numpy array and <affine> is None.
+            <image> is a numpy array and <affine> is None.
 
         origin : tuple, default=(0, 0, 0)
             Origin position in mm, given in the order (y, x, z). Only used if
-            <nii> is a numpy array and <affine> is None.
+            <image> is a numpy array and <affine> is None.
 
         title : str, default=None
             Title to use when plotting. If None and the image was loaded from 
@@ -96,20 +96,20 @@ class NiftiImage:
 
         orientation : str, default="x-y"
             String specifying the orientation of the image if a 2D array is 
-            given for <nii>. Must be "x-y", "y-z", or "x-z".
+            given for <image>. Must be "x-y", "y-z", or "x-z".
         """
 
         # Assign settings
         self.title = title
         self.scale_in_mm = scale_in_mm
         self.data_mask = None
-        if nii is None:
+        if image is None:
             self.valid = False
             return
 
         # Load image
         self.data, voxel_sizes, origin, self.path = core.load_image(
-            nii, affine, voxel_sizes, origin)
+            image, affine, voxel_sizes, origin)
         if self.data is None:
             self.valid = False
             return
@@ -238,7 +238,7 @@ class NiftiImage:
 
     def same_frame(self, im):
         """Check whether this image is in the same frame of reference as 
-        another NiftiImage <im> (i.e. same origin and shape)."""
+        another Image <im> (i.e. same origin and shape)."""
 
         same = self.shape == im.shape
         same *= list(self.origin.values()) == list(im.origin.values())
@@ -461,8 +461,8 @@ class NiftiImage:
         elif isinstance(mask, np.ndarray):
             self.data_mask = self.process_mask(mask, threshold)
 
-        # Apply mask from NiftiImage
-        elif isinstance(mask, NiftiImage):
+        # Apply mask from Image
+        elif isinstance(mask, Image):
             if not mask.valid:
                 self.data_mask = None
                 return
@@ -479,7 +479,7 @@ class NiftiImage:
                     self.data_mask[view] = None
             return
         else:
-            raise TypeError("Mask must be a numpy array or a NiftiImage.")
+            raise TypeError("Mask must be a numpy array or a Image.")
 
     def process_mask(self, mask, threshold=0.5):
         """Convert a mask to boolean and downsample if needed."""
@@ -849,16 +849,16 @@ class NiftiImage:
                           ::round(self.downsample["z"])]
 
 
-class DeformationImage(NiftiImage):
+class DeformationImage(Image):
     """Class for loading a plotting a deformation field."""
 
-    def __init__(self, nii, spacing=_default_spacing, plot_type="grid", 
+    def __init__(self, image, spacing=_default_spacing, plot_type="grid", 
                  **kwargs):
         """Load deformation field.
 
         Parameters
         ----------
-        nii : str/array/nifti
+        image : str/array/nifti
             Source of the image data to load. This can be either:
                 (a) The path to a NIfTI file;
                 (b) A nibabel.nifti1.Nifti1Image object;
@@ -866,11 +866,11 @@ class DeformationImage(NiftiImage):
                 (d) A NumPy array.
         """
 
-        NiftiImage.__init__(self, nii, **kwargs)
+        Image.__init__(self, image, **kwargs)
         if not self.valid:
             return
         if self.data.ndim != 5:
-            raise RuntimeError(f"Deformation field in {nii} must contain a "
+            raise RuntimeError(f"Deformation field in {image} must contain a "
                                "five-dimensional array!")
         self.data = self.data[:, :, :, 0, :]
         self.set_spacing(spacing)
@@ -1057,16 +1057,16 @@ class DeformationImage(NiftiImage):
         self.adjust_ax(view, zoom, zoom_centre)
 
 
-class StructImage(NiftiImage):
+class StructImage(Image):
     """Class to load and plot a structure mask."""
 
-    def __init__(self, nii, name=None, color=None, label="", load=True, 
+    def __init__(self, image, name=None, color=None, label="", load=True, 
                  **kwargs):
         """Load structure mask.
 
         Parameters
         ----------
-        nii : str/array/nifti
+        image : str/array/nifti
             Source of the image data to load. This can be either:
                 (a) The path to a NIfTI file;
                 (b) A nibabel.nifti1.Nifti1Image object;
@@ -1085,16 +1085,16 @@ class StructImage(NiftiImage):
         """
 
         # Assign variables
-        self.nii = nii
-        self.nii_kwargs = kwargs
+        self.image = image
+        self.image_kwargs = kwargs
         self.visible = True
-        self.path = nii if isinstance(nii, str) else None
+        self.path = image if isinstance(image, str) else None
 
         # Set name
         if name is not None:
             self.name = name.replace(" ", "_")
         else:
-            basename = os.path.basename(nii).replace(".gz", "").replace(".nii", "")
+            basename = os.path.basename(image).replace(".gz", "").replace(".image", "")
             self.name = re.sub(r"RTSTRUCT_[MVCT]+_\d+_\d+_\d+_", "",
                                basename).replace(" ", "_")
         self.set_label(label)
@@ -1128,7 +1128,7 @@ class StructImage(NiftiImage):
             return
 
         # Load the mask
-        NiftiImage.__init__(self, self.nii, **self.nii_kwargs)
+        Image.__init__(self, self.image, **self.image_kwargs)
         if not self.valid:
             return
 
@@ -1544,13 +1544,13 @@ class StructImage(NiftiImage):
             return [0, 0]
 
 
-class MultiImage(NiftiImage):
+class MultiImage(Image):
     """Class for loading and plotting an image along with an optional mask,
     dose field, structures, jacobian determinant, and deformation field."""
 
     def __init__(
         self,
-        nii=None,
+        image=None,
         dose=None,
         mask=None,
         jacobian=None,
@@ -1572,11 +1572,11 @@ class MultiImage(NiftiImage):
 
         Parameters
         ----------
-        nii : str/nifti/array
-            Path to a .nii/.npy file, or an nibabel nifti object/numpy array.
+        image : str/nifti/array
+            Path to a .image/.npy file, or an nibabel nifti object/numpy array.
 
         title : str, default=None
-            Title for this image when plotted. If None and <nii> is loaded from
+            Title for this image when plotted. If None and <image> is loaded from
             a file, the filename will be used.
 
         dose : str/nifti/array, default=None
@@ -1624,14 +1624,14 @@ class MultiImage(NiftiImage):
         self.timeseries = False
 
         # Load the scan image
-        if nii is not None:
-            NiftiImage.__init__(self, nii, **kwargs)
+        if image is not None:
+            Image.__init__(self, image, **kwargs)
             self.timeseries = False
 
         # Load a dose field only
         elif dose is not None and timeseries is None:
             self.dose_as_im = True
-            NiftiImage.__init__(self, dose, **kwargs)
+            Image.__init__(self, dose, **kwargs)
             dose = None
 
         # Load a timeseries of images
@@ -1642,14 +1642,14 @@ class MultiImage(NiftiImage):
             if "title" in kwargs:
                 kwargs.pop("title")
             self.ims = {
-                date: NiftiImage(file, title=date, **kwargs) for date, file in 
+                date: Image(file, title=date, **kwargs) for date, file in 
                 dates.items()
             }
-            NiftiImage.__init__(self, dates[self.dates[0]], 
+            Image.__init__(self, dates[self.dates[0]], 
                                 title=self.dates[0], **kwargs)
             self.date = self.dates[0]
         else:
-            raise TypeError("Must provide either <nii>, <dose>, or "
+            raise TypeError("Must provide either <image>, <dose>, or "
                             "<timeseries!>")
         if not self.valid:
             return
@@ -1678,16 +1678,16 @@ class MultiImage(NiftiImage):
         self.mask_threshold = mask_threshold
         self.set_masks()
 
-    def load_to(self, nii, attr, kwargs):
+    def load_to(self, image, attr, kwargs):
         """Load image data into a class attribute."""
 
         # Load single image
-        if not isinstance(nii, dict):
-            data = NiftiImage(nii, **kwargs)
+        if not isinstance(image, dict):
+            data = Image(image, **kwargs)
             setattr(self, attr, data)
             valid = data.valid
         else:
-            data = {view: NiftiImage(nii[view], **kwargs) for view in nii}
+            data = {view: Image(image[view], **kwargs) for view in image}
             for view in _orient:
                 if view not in data or not data[view].valid:
                     data[view] = None
@@ -1695,7 +1695,7 @@ class MultiImage(NiftiImage):
 
         setattr(self, attr, data)
         setattr(self, f"has_{attr}", valid)
-        setattr(self, f"{attr}_dict", isinstance(nii, dict))
+        setattr(self, f"{attr}_dict", isinstance(image, dict))
 
     def load_df(self, df):
         """Load deformation field data from a path."""
@@ -1845,7 +1845,7 @@ class MultiImage(NiftiImage):
         """Set default matplotlib plotting options for main image, dose field,
         and jacobian determinant."""
 
-        NiftiImage.set_plotting_defaults(self)
+        Image.set_plotting_defaults(self)
         self.dose_kwargs = {
             "cmap": "jet",
             "alpha": 0.5,
@@ -1881,7 +1881,7 @@ class MultiImage(NiftiImage):
                 for view in _orient:
                     mask = self.mask.get(view, None)
                     if mask is not None:
-                        if isinstance(mask, NiftiImage):
+                        if isinstance(mask, Image):
                             view_masks[view] = mask_array \
                                     + (self.mask[view].data > 
                                        self.mask_threshold)
@@ -1910,7 +1910,7 @@ class MultiImage(NiftiImage):
                            figsize=None):
         """Get the relative width for this plot, including all colorbars."""
 
-        return NiftiImage.get_relative_width(
+        return Image.get_relative_width(
             self, view, zoom, self.get_n_colorbars(colorbar), figsize)
 
     def plot(
@@ -2053,7 +2053,7 @@ class MultiImage(NiftiImage):
 
         # Plot image
         self.set_ax(view, ax, gs, figsize, zoom, colorbar)
-        NiftiImage.plot(
+        Image.plot(
             self, view, sl, pos, ax=self.ax, mpl_kwargs=mpl_kwargs,
             show=False, colorbar=colorbar, colorbar_label=colorbar_label,
             masked=masked, invert_mask=invert_mask, mask_color=mask_color, 
@@ -2206,7 +2206,7 @@ class OrthogonalImage(MultiImage):
         # Plot orthogonal view
         orthog_view = _orthog[view]
         orthog_sl = self.orthog_slices[_slider_axes[orthog_view]]
-        NiftiImage.plot(self,
+        Image.plot(self,
                         orthog_view,
                         sl=orthog_sl,
                         ax=self.orthog_ax,
@@ -2250,28 +2250,28 @@ class OrthogonalImage(MultiImage):
             plt.show()
 
 
-class ComparisonImage(NiftiImage):
+class ComparisonImage(Image):
     """Class for loading data from two arrays and plotting comparison images.
     """
 
-    def __init__(self, nii1, nii2, title=None, plot_type=None, **kwargs):
-        """Load data from two arrays. <nii1> and <nii2> can either be existing
-        NiftiImage objects, or objects from which NiftiImages can be created.
+    def __init__(self, image1, image2, title=None, plot_type=None, **kwargs):
+        """Load data from two arrays. <image1> and <image2> can either be existing
+        Image objects, or objects from which Images can be created.
         """
 
-        # Load NiftiImages
+        # Load Images
         self.ims = []
         self.standalone = True
-        for nii in [nii1, nii2]:
+        for image in [image1, image2]:
 
-            # Load existing NiftiImage
-            if issubclass(type(nii), NiftiImage):
-                self.ims.append(nii)
+            # Load existing Image
+            if issubclass(type(image), Image):
+                self.ims.append(image)
 
-            # Create new NiftiImage
+            # Create new Image
             else:
                 self.standalone = False
-                self.ims.append(NiftiImage(nii, **kwargs))
+                self.ims.append(Image(image, **kwargs))
 
         self.scale_in_mm = self.ims[0].scale_in_mm
         self.ax_lims = self.ims[0].ax_lims
@@ -2283,7 +2283,7 @@ class ComparisonImage(NiftiImage):
     def get_relative_width(self, view, colorbar=False, figsize=None):
         """Get relative width first image."""
 
-        return NiftiImage.get_relative_width(self.ims[0], view, 
+        return Image.get_relative_width(self.ims[0], view, 
                                              n_colorbars=colorbar,
                                              figsize=figsize)
 
@@ -2754,7 +2754,7 @@ class StructLoader:
             Sources of structures files to load structures from. Can be:
                 (a) A string containing a filepath, directory path, or wildcard
                 to a file or directory path. If a directory is given, all 
-                .nii and .nii.gz files within that directory will be loaded.
+                .image and .image.gz files within that directory will be loaded.
                 (b) A list of strings as described in (a). All 
                 files/directories in the list will be loaded.
                 (c) A dictionary, where keys are labels and values are strings

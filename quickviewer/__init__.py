@@ -30,7 +30,7 @@ class QuickViewer:
 
     def __init__(
         self,
-        nii=None,
+        image=None,
         title=None,
         mask=None,
         dose=None,
@@ -64,10 +64,10 @@ class QuickViewer:
         Parameters
         ----------
 
-        nii : string/nifti/array/list, default=None
+        image : string/nifti/array/list, default=None
             Source of image data for each plot. If multiple plots are to be
             shown, this must be a list. Image sources can be any of:
-            (a) The path to a NIfTI file;
+            (a) The path to a NIfTI or DICOM file;
             (b) A nibabel.nifti1.Nifti1Image object;
             (c) The path to a file containing a NumPy array;
             (d) A NumPy array.
@@ -80,11 +80,11 @@ class QuickViewer:
 
         mask : string/nifti/array/list, default=None
             Source(s) of array(s) to with which to mask each plot (see valid
-            image sources for <nii>).
+            image sources for <image>).
 
         dose : string/nifti/array/list, default=None
             Source(s) of dose field array(s) to overlay on each plot (see valid
-            image sources for <nii>).
+            image sources for <image>).
 
         structs : str/list/dict, default=None
             Locations of files from which to load structures masks. This
@@ -144,11 +144,11 @@ class QuickViewer:
 
         jacobian : string/nifti/array/list, default=None
             Source(s) of jacobian determinant array(s) to overlay on each plot 
-            (see valid image sources for <nii>).
+            (see valid image sources for <image>).
 
         df : string/nifti/array/list, default=None
             Source(s) of deformation field(s) to overlay on each plot 
-            (see valid image sources for <nii>).
+            (see valid image sources for <image>).
 
         share_slider : bool, default=True
             If True and all displayed images are in the same frame of 
@@ -182,16 +182,16 @@ class QuickViewer:
 
         show_cb : bool, default=False
             If True, a chequerboard image will be displayed. This option will 
-            only be applied if the number of images in <nii> is 2.
+            only be applied if the number of images in <image> is 2.
 
         show_overlay : bool, default=False
             If True, a blue/red transparent overlaid image will be displayed.
             This option will only be applied if the number of images in 
-            <nii> is 2.
+            <image> is 2.
 
         show_diff : bool, default=False
             If True, a the difference between two images will be shown. This 
-            option will only be applied if the number of images in <nii> 
+            option will only be applied if the number of images in <image> 
             is 2.
 
         comparison : bool/str/list, default=None
@@ -587,11 +587,11 @@ class QuickViewer:
         """
 
         # Get image file inputs
-        if not isinstance(nii, list) or isinstance(nii, tuple):
-            self.nii = [nii]
+        if not isinstance(image, list) or isinstance(image, tuple):
+            self.image = [image]
         else:
-            self.nii = nii
-        self.n = len(self.nii)
+            self.image = image
+        self.n = len(self.image)
 
         # Process other inputs
         self.title = self.get_input_list(title)
@@ -611,7 +611,7 @@ class QuickViewer:
                   kwargs.items()}
         for i in range(self.n):
             viewer = viewer_type(
-                self.nii[i], title=self.title[i], dose=self.dose[i],
+                self.image[i], title=self.title[i], dose=self.dose[i],
                 mask=self.mask[i], structs=self.structs[i],
                 multi_structs=self.multi_structs[i], jacobian=self.jacobian[i], 
                 df=self.df[i], standalone=False, scale_in_mm=scale_in_mm, 
@@ -1274,7 +1274,7 @@ class ImageViewer():
 
     def __init__(
         self,
-        nii=None,
+        image=None,
         init_view="x-y",
         init_sl=None,
         init_pos=None,
@@ -1327,7 +1327,7 @@ class ImageViewer():
     ):
 
         # Make MultiImage
-        self.im = self.make_image(nii, **kwargs)
+        self.im = self.make_image(image, **kwargs)
         if not self.im.valid:
             return
         self.gs = None  # Gridspec in which to place plot axes
@@ -2538,7 +2538,7 @@ class ImageViewer():
             self.im.fig.canvas.flush_events()
 
     def plot_image(self, im, **kwargs):
-        """Plot a NiftiImage, reusing existing axes if outside a Jupyter 
+        """Plot an image, reusing existing axes if outside a Jupyter 
         notebook."""
 
         # Get axes

@@ -12,6 +12,9 @@ import shutil
 import configparser
 
 
+from quickviewer import dicom
+
+
 user_settings_dir = os.path.expanduser("~/.quickviewer")
 user_settings = os.path.join(user_settings_dir, "settings.ini")
 
@@ -21,7 +24,8 @@ def load_image(im, affine=None, voxel_sizes=None, origin=None):
         (a) a numpy array;
         (b) an nibabel nifti object;
         (c) a file containing a numpy array;
-        (d) a nifti file.
+        (d) a nifti file;
+        (e) a dicom file.
 
     Returns image data, tuple of voxel sizes, tuple of origin points, 
     and path to image file (None if image was not from a file)."""
@@ -46,11 +50,19 @@ def load_image(im, affine=None, voxel_sizes=None, origin=None):
                 return None, None, None, None
 
             except nibabel.filebasedimages.ImageFileError:
+
+                # Try loading dicom
                 try:
-                    data = np.load(path)
-                except (IOError, ValueError):
-                    raise RuntimeError("Input file <nii> must be a valid "
-                                       ".nii or .npy file.")
+                    data, affine = dicom.load_image(path)
+
+                except TypeError:
+
+                    # Try loading NumPy
+                    try:
+                        data = np.load(path)
+                    except (IOError, ValueError):
+                        raise TypeError("Input file <image> must be a valid "
+                                        "NIfTI, DICOM, or NumPy file.")
 
         # Load nibabel object
         elif isinstance(im, nibabel.nifti1.Nifti1Image):
