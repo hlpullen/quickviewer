@@ -60,7 +60,8 @@ class NiftiImage:
         title=None,
         scale_in_mm=True, 
         downsample=None,
-        orientation="x-y"
+        orientation="x-y",
+        rescale=True
     ):
         """Initialise from a NIfTI file, NIfTI object, or numpy array.
 
@@ -110,7 +111,7 @@ class NiftiImage:
 
         # Load image
         self.data, voxel_sizes, origin, self.path = core.load_image(
-            nii, affine, voxel_sizes, origin)
+            nii, affine, voxel_sizes, origin, rescale)
         if self.data is None:
             self.valid = False
             return
@@ -242,9 +243,12 @@ class NiftiImage:
         another NiftiImage <im> (i.e. same origin and shape)."""
 
         same = self.shape == im.shape
-        same *= list(self.origin.values()) == list(im.origin.values())
-        same *= list(self.voxel_sizes.values()) \
-            == list(im.voxel_sizes.values())
+        origin1 = [f"{x:.2f}" for x in self.origin.values()]
+        origin2 = [f"{x:.2f}" for x in im.origin.values()]
+        same *= origin1 == origin2
+        vx1 = [f"{x:.2f}" for x in self.voxel_sizes.values()]
+        vx2 = [f"{x:.2f}" for x in im.voxel_sizes.values()]
+        same *= vx1 == vx2
         return same
 
     def set_plotting_defaults(self):
@@ -1726,12 +1730,14 @@ class MultiImage(NiftiImage):
         """Load image data into a class attribute."""
 
         # Load single image
+        rescale = "dose" if attr == "dose" else True
         if not isinstance(nii, dict):
-            data = NiftiImage(nii, **kwargs)
+            data = NiftiImage(nii, rescale=rescale, **kwargs)
             setattr(self, attr, data)
             valid = data.valid
         else:
-            data = {view: NiftiImage(nii[view], **kwargs) for view in nii}
+            data = {view: NiftiImage(nii[view], rescale=rescale, **kwargs) 
+                    for view in nii}
             for view in _orient:
                 if view not in data or not data[view].valid:
                     data[view] = None
@@ -2940,12 +2946,10 @@ class StructLoader:
         files."""
 
         # Get files
-        print("paths:", paths)
         if isinstance(paths, str):
             files = core.find_files(paths)
         else:
             files = paths
-        print("files:", files)
 
         # Get colors and names dicts
         if core.is_nested(colors):

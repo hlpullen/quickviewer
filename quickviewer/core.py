@@ -18,7 +18,7 @@ user_settings_dir = os.path.expanduser("~/.quickviewer")
 user_settings = os.path.join(user_settings_dir, "settings.ini")
 
 
-def load_image(im, affine=None, voxel_sizes=None, origin=None):
+def load_image(im, affine=None, voxel_sizes=None, origin=None, rescale=True):
     """Load image from either:
         (a) a numpy array;
         (b) an nibabel nifti object;
@@ -50,7 +50,7 @@ def load_image(im, affine=None, voxel_sizes=None, origin=None):
             except nibabel.filebasedimages.ImageFileError:
 
                 try:
-                    data, affine = dicom.load_image(path)
+                    data, affine = dicom.load_image(path, rescale)
                 except TypeError:
                     try:
                         data = np.load(path)

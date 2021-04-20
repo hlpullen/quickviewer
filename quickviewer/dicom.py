@@ -5,7 +5,7 @@ import numpy as np
 import os
 from shapely import geometry
 
-def load_image(path):
+def load_image(path, rescale=True):
     """Load a DICOM image array and affine matrix from a path."""
 
     # Single file
@@ -14,7 +14,7 @@ def load_image(path):
         try:
             ds = pydicom.read_file(path)
             if int(ds.ImagesInAcquisition) == 1:
-                data, affine = load_image_single_file(ds)
+                data, affine = load_image_single_file(ds, rescale=rescale)
             
             # Look for other files from same image
             else:
@@ -22,7 +22,8 @@ def load_image(path):
                 dirname = os.path.dirname(path)
                 paths = [os.path.join(dirname, p) for p in os.listdir(dirname) 
                          if not os.path.isdir(os.path.join(dirname, p))]
-                data, affine = load_image_multiple_files(paths, uid=uid)
+                data, affine = load_image_multiple_files(paths, uid=uid, 
+                                                         rescale=rescale)
 
         except pydicom.errors.InvalidDicomError:
             raise TypeError("Not a valid dicom file!")
@@ -31,7 +32,7 @@ def load_image(path):
     elif os.path.isdir(path):
         paths = [os.path.join(path, p) for p in 
                  os.listdir(path) if not os.path.isdir(os.path.join(path, p))]
-        data, affine = load_image_multiple_files(paths)
+        data, affine = load_image_multiple_files(paths, rescale=rescale)
 
     else:
         raise TypeError("Must provide a valid path to a file or directory!")
@@ -39,7 +40,7 @@ def load_image(path):
     return data, affine
 
 
-def load_image_single_file(ds):
+def load_image_single_file(ds, rescale=True):
     """Load DICOM image from a single DICOM object."""
 
     data = ds.pixel_array
@@ -49,8 +50,12 @@ def load_image_single_file(ds):
         data = data.transpose(1, 0)[:, ::-1]
 
     # Rescale data values
-    if hasattr(ds, "RescaleSlope"):
-        data = data * float(ds.RescaleSlope) + float(ds.RescaleIntercept)
+    rescale_intercept = float(ds.RescaleIntercept) if \
+            hasattr(ds, "RescaleIntercept") else 0
+    if rescale == True and hasattr(ds, "RescaleSlope"):
+        data = data * float(ds.RescaleSlope) + rescale_intercept
+    elif rescale == "dose" and hasattr(ds, "DoseGridScaling"):
+        data = data * float(ds.DoseGridScaling) + rescale_intercept
 
     # Get affine matrix
     vx, vy = ds.PixelSpacing
@@ -73,7 +78,7 @@ def load_image_single_file(ds):
     return data, affine
 
 
-def load_image_multiple_files(paths, uid=None):
+def load_image_multiple_files(paths, uid=None, rescale=True):
     """Load a single dicom image from multiple files."""
 
 
@@ -84,7 +89,7 @@ def load_image_multiple_files(paths, uid=None):
             if uid is not None and ds.SeriesInstanceUID != uid:
                 continue
             slice_num = ds.SliceLocation
-            data, affine = load_image_single_file(ds)
+            data, affine = load_image_single_file(ds, rescale=rescale)
             data_slices[float(slice_num)] = data
 
         except pydicom.errors.InvalidDicomError:
