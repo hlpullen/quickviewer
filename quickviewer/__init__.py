@@ -67,7 +67,7 @@ class QuickViewer:
         nii : string/nifti/array/list, default=None
             Source of image data for each plot. If multiple plots are to be
             shown, this must be a list. Image sources can be any of:
-            (a) The path to a NIfTI file;
+            (a) The path to a NIfTI or DICOM file;
             (b) A nibabel.nifti1.Nifti1Image object;
             (c) The path to a file containing a NumPy array;
             (d) A NumPy array.

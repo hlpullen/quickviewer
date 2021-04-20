@@ -67,7 +67,7 @@ class NiftiImage:
         ----------
         nii : str/array/nifti
             Source of the image data to load. This can be either:
-                (a) The path to a NIfTI file;
+                (a) The path to a NIfTI or DICOM file;
                 (b) A nibabel.nifti1.Nifti1Image object;
                 (c) The path to a file containing a NumPy array;
                 (d) A NumPy array.

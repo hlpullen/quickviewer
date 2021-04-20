@@ -11,6 +11,8 @@ import matplotlib as mpl
 import shutil
 import configparser
 
+from quickviewer import dicom
+
 
 user_settings_dir = os.path.expanduser("~/.quickviewer")
 user_settings = os.path.join(user_settings_dir, "settings.ini")
@@ -46,11 +48,15 @@ def load_image(im, affine=None, voxel_sizes=None, origin=None):
                 return None, None, None, None
 
             except nibabel.filebasedimages.ImageFileError:
+
                 try:
-                    data = np.load(path)
-                except (IOError, ValueError):
-                    raise RuntimeError("Input file <nii> must be a valid "
-                                       ".nii or .npy file.")
+                    data, affine = dicom.load_image(path)
+                except TypeError:
+                    try:
+                        data = np.load(path)
+                    except (IOError, ValueError):
+                        raise RuntimeError("Input file <nii> must be a valid "
+                                           "NIfTI, DICOM, or NumPy file.")
 
         # Load nibabel object
         elif isinstance(im, nibabel.nifti1.Nifti1Image):
