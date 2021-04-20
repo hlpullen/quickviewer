@@ -2343,7 +2343,8 @@ class ComparisonImage(NiftiImage):
              mpl_kwargs=None, show=True, figsize=None, zoom=None, 
              zoom_centre=None, plot_type=None, cb_splits=2,
              overlay_opacity=0.5, overlay_legend=False, 
-             overlay_legend_loc=None, colorbar=False, colorbar_label="HU"
+             overlay_legend_loc=None, colorbar=False, colorbar_label="HU",
+             dta_tolerance=None, dta_crit=None, diff_crit=None
             ):
 
         """Create a comparison plot of the two images.
@@ -2422,6 +2423,12 @@ class ComparisonImage(NiftiImage):
                                      overlay_legend_loc)
         elif plot_type == "difference":
             mesh = self.plot_difference(invert)
+        elif plot_type == "absolute difference":
+            mesh = self.plot_difference(invert, ab=True)
+        elif plot_type == "distance to agreement":
+            mesh = self.plot_dta(dta_tolerance)
+        elif plot_type == "gamma index":
+            mesh = self.plot_gamma(invert, dta_crit, diff_crit)
         elif plot_type == "image 1":
             self.title = self.ims[0].title
             mesh = self.ax.imshow(self.slices[0], 
@@ -2437,7 +2444,15 @@ class ComparisonImage(NiftiImage):
 
         # Draw colorbar
         if colorbar:
-            clb = self.fig.colorbar(mesh, ax=self.ax, label=colorbar_label)
+            clb_label = colorbar_label
+            if plot_type in ["difference", "absolute difference"]:
+                clb_label += " difference"
+            elif plot_type == "distance to agreement":
+                clb_label = "Distance (mm)"
+            elif plot_type == "gamma index":
+                clb_label = "Gamma index"
+
+            clb = self.fig.colorbar(mesh, ax=self.ax, label=clb_label)
             clb.solids.set_edgecolor("face")
 
         # Adjust axes
@@ -2502,16 +2517,79 @@ class ComparisonImage(NiftiImage):
                            framealpha=1)
         return mesh
 
-    def plot_difference(self, invert=False):
+    def plot_difference(self, invert=False, ab=False):
         """Produce a difference plot."""
 
         diff = self.slices[1] - self.slices[0] if not invert \
                 else self.slices[0] - self.slices[1]
+        if ab:
+            diff = np.absolute(diff)
         return self.ax.imshow(diff,
                               extent=self.ims[0].extent[self.view],
                               aspect=self.ims[0].aspect[self.view],
                               cmap=self.cmap, 
                               **self.plot_kwargs)
+
+    def plot_dta(self, tolerance=5):
+        """Produce a distance-to-agreement plot."""
+
+        dta = self.get_dta(tolerance)
+        return self.ax.imshow(dta,
+                              extent=self.ims[0].extent[self.view],
+                              aspect=self.ims[0].aspect[self.view],
+                              cmap="viridis", interpolation=None,
+                              **self.plot_kwargs)
+
+    def plot_gamma(self, invert=False, dta_crit=None, diff_crit=None):
+        """Produce a distance-to-agreement plot."""
+
+        gamma = self.get_gamma(invert, dta_crit, diff_crit)
+        return self.ax.imshow(gamma,
+                              extent=self.ims[0].extent[self.view],
+                              aspect=self.ims[0].aspect[self.view],
+                              cmap="viridis", interpolation=None,
+                              **self.plot_kwargs)
+
+    def get_dta(self, tolerance=None):
+        """Compute distance to agreement array on current slice."""
+
+        sl = self.ims[0].sl
+        if not hasattr(self, "dta"):
+            self.dta = {}
+
+        if sl not in self.dta:
+
+            im1, im2 = self.slices
+            if tolerance is None:
+                tolerance = 5
+            abs_diff = np.absolute(im2 - im1)
+            agree = np.transpose(np.where(abs_diff <= tolerance))
+            disagree = np.transpose(np.where(abs_diff > tolerance))
+            dta = np.zeros(abs_diff.shape)
+            for coords in disagree:
+                dta_vec = agree - coords
+                dta_val = np.sqrt(dta_vec[:, 0] ** 2 + dta_vec[:, 1] ** 2).min()
+                dta[coords[0], coords[1]] = dta_val
+
+            self.dta[sl] = dta
+
+        return self.dta[sl]
+
+    def get_gamma(self, invert=False, dta_crit=None, diff_crit=None):
+        """Get gamma index on current slice."""
+
+        im1, im2 = self.slices
+        if invert:
+            im1, im2 = im2, im1
+
+        if dta_crit is None:
+            dta_crit = 1
+        if diff_crit is None:
+            diff_crit = 15
+
+        diff = im2 - im1
+        dta = self.get_dta()
+        return np.sqrt((dta / dta_crit) ** 2 + (diff / diff_crit) ** 2)
 
 
 def standard_str(string):

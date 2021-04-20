@@ -54,6 +54,9 @@ class QuickViewer:
         legend_loc="lower left",
         translation=False,
         translation_file_to_overwrite=None,
+        dta_tolerance=5,
+        dta_crit=1,
+        diff_crit=15,
         suptitle=None,
         show=True,
         **kwargs
@@ -230,6 +233,16 @@ class QuickViewer:
             If not None and the <translation> option is used, this parameter
             will be used to populate the "Original" and "Output" file fields in 
             the translation user interface.
+
+        dta_tolerance : float, default=5
+            Tolerance to use when computing distance-to-agreement.
+
+        dta_crit : float, default=1
+            Critical value of distance-to-agreement to use when computing
+            gamma index.
+
+        diff_crit : float, default=15
+            Critical value of difference to use when computing gamma index.
 
         suptitle : string, default=None
             Global title for all subplots. If None, no suptitle will be added.
@@ -636,6 +649,9 @@ class QuickViewer:
         self.load_comparison(comparison, show_cb, show_overlay, show_diff)
         self.translation = translation
         self.tfile = translation_file_to_overwrite
+        self.dta_tolerance = dta_tolerance
+        self.dta_crit = dta_crit
+        self.diff_crit = diff_crit
 
         # Settings needed for plotting
         self.figsize = to_inches(kwargs.get("figsize", _default_figsize))
@@ -902,7 +918,9 @@ class QuickViewer:
         self.comp_ui = []
 
         # Multicomparison dropdown
-        comp_opts = ["chequerboard", "overlay", "difference"]
+        comp_opts = ["chequerboard", "overlay", "difference", 
+                     "absolute difference", "distance to agreement",
+                     "gamma index"]
         if self.comparison_only:
             comp_opts.extend(["image 1", "image 2"])
         self.ui_multicomp = ipyw.Dropdown(
@@ -1248,7 +1266,10 @@ class QuickViewer:
                     zoom_centre=self.viewer[0].zoom_centre,
                     mpl_kwargs=self.viewer[0].v_min_max,
                     colorbar=self.comp_colorbar, 
-                    colorbar_label=self.viewer[0].colorbar_label
+                    colorbar_label=self.viewer[0].colorbar_label,
+                    dta_tolerance=self.dta_tolerance,
+                    dta_crit=self.dta_crit,
+                    diff_crit=self.diff_crit
                 )
 
         if self.suptitle is not None:
