@@ -1,4 +1,11 @@
-## [Unreleased](https://github.com/hlpullen/quickviewer/compare/v0.1.0...HEAD)
+## [Unreleased](https://github.com/hlpullen/quickviewer/compare/v0.2.0...HEAD)
+
+### Added
+- Computation and plotting of distance-to-agreement and gamma index comparison images
+- Ability to print mean squared error on comparison plot
+
+
+## [0.2.0](https://github.com/hlpullen/quickviewer/releases/tag/v0.2.0) - 2021-04-20
 
 ### Added
 - DICOM support for images, dose fields, and structures

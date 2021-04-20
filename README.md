@@ -194,6 +194,11 @@ To set the initial zoom level and image centre (regardless of whether `zoom_ui` 
 
 For large images, you may sometimes wish to downsample for speed. This can be done via the `downsample` parameter; similar to the `zoom` parameter, this can either be a single value setting the downsampling factor to be equal in all directions, or a list of three values for each direction.
 
+E.g. to downsample the x and y directions each by a factor of 3, while leaving z the same:
+```
+QuickViewer("image.nii", downsample=[3, 3, None])
+```
+
 ##### Other display options
 
 There are  several options for fine-tuning the appearance of the plot:
