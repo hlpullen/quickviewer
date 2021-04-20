@@ -87,13 +87,13 @@ in which you can enjoy QuickViewer and its widgets!
 
 ### 1. Basic usage
 
-QuickViewer can be used to view medical images in [NIfTI](https://nifti.nimh.nih.gov/) format or [NumPy arrays](https://numpy.org/doc/stable/reference/generated/numpy.array.html). DICOM files are currently not supported, but there are various tools for converting from dicom to NIfTI such as [dcm2niix](https://www.nitrc.org/plugins/mwiki/index.php/dcm2nii:MainPage).
+QuickViewer can be used to view medical images in [DICOM](https://www.dicomstandard.org/) or [NIfTI](https://nifti.nimh.nih.gov/) format, or [NumPy arrays](https://numpy.org/doc/stable/reference/generated/numpy.array.html).
 
-To use QuickViewer to view a NIfTI image, first import the QuickViewer class:
+To use QuickViewer, first import the QuickViewer class:
 ```
 from quickviewer import QuickViewer
 ```
-and then create a QuickViewer instance, giving the path to your NIfTI file:
+and then create a QuickViewer instance, giving the path to your file. For example, to view a NIfTI file:
 ```
 QuickViewer("my_file.nii")
 ```
@@ -105,6 +105,16 @@ The widgets can be used to change
 - The image orientation (x-y = axial view; y-z = sagittal view; x-z = coronal view)
 - The range of Hounsfield Units to cover;
 - The position of the slice currently being displayed.
+
+DICOM files can be loaded in a similar way. In cases where there are multiple DICOM files per image, you can either give:
+- The path to the directory containing these files; all DICOM files in the directory will be loaded.
+- The path to any of the DICOM files in the image series; all files in the same directory that have the same series UID will be loaded.
+
+For example, if there are multiple DICOM files in a directory, one of which is called `1.dcm`, you could run:
+```
+QuickViewer("1.dcm")
+```
+to display all of the slices in that series.
 
 #### Saving a QuickViewer plot
 
@@ -240,7 +250,7 @@ to give the following output:
 
 ### 3. Dose fields
 
-Dose fields can be overlaid on top of images by setting the `dose` parameter to the path to a NIfTI file or array the same shape as the image, e.g.
+Dose fields can be overlaid on top of images by setting the `dose` parameter to the path to a DICOM/NIfTI file or array the same shape as the image, e.g.
 ```
 QuickViewer("image.nii", dose="dose.nii", colorbar=True)
 ```
@@ -291,8 +301,9 @@ Some additional options for masks are:
 
 ### 5. Structures
 
-Structures can be loaded from NIfTI files and overlaid on the image. The path to the structure file(s) is set via the `structs` argument. This can either be:
-- The path to a single NIfTI file;
+Structures can be loaded from DICOM or NIfTI files and overlaid on the image. The path to the structure file(s) is set via the `structs` argument. This can either be:
+- The path to a single DICOM structure set file;
+- The path to a single NIfTI structure mask file;
 - The path to a directory containing multiple NIfTI files;
 - A wildcard path matching one or more NIfTI files;
 - A wildcard path to one or more directories containing NIfTI files.
@@ -307,9 +318,13 @@ which gives the following output:
 
 <img src="images/structs.png" alt="structures overlaid on image" height="500"/>
 
-The names of structures are inferred from their filenames, and different colors are automatically assigned to each.
+The names of structures are inferred from:
+- Their names within the structure set, if using a DICOM structure file;
+- Their filenames, if using NIfTI structure mask files. 
 
-Note that by default, the extra zooming widgets are loaded when structures are used; to turn this behaviour off, set `zoom_ui=False`. The legend drawn on the plot can also be turned off by omitting the `struct_legend=True` argument.
+Colours are automatically assigned to each, either from the DICOM structure set (if applicable) or from a default sequence of colours if no structure set colours are available.
+
+By default, the extra zooming widgets are loaded when structures are used; to turn this behaviour off, set `zoom_ui=False`. The legend drawn on the plot can also be turned off by omitting the `struct_legend=True` argument.
 
 An extra widget will appear below the plot, listing all loaded structures and their colors, and allowing the user to remove structures from the plot by unchecking the corresponding checkbox:
 
@@ -339,23 +354,23 @@ Some additional structure plotting arguments are:
 
 The default structure naming and coloring behaviours of QuickViewer can be overridden using the `struct_names` and `struct_colors` arguments.
 
-Structure names are set using a dictionary, where the keys are the desired names and the values are potential structures for which you wish that name to be assigned; this can be a single structure name, a wildcard, or a list of multiple structure names or wildcards. These structure names will be checked for matches first with the structure names that are automatically inferred from filenames (e.g. for a file called "parotid.nii", the structure name would be "parotid"), and will then be compared to the structure filepaths if no name match was found.
+Structure names are set using a dictionary, where the keys are the desired names and the values are potential structures for which you wish that name to be assigned; this can be a single structure name, a wildcard, or a list of multiple structure names or wildcards. These structure names will be checked for matches first with the structure names that are automatically inferred from the DICOM structure sets or NIfTI filename (e.g. for a file called "parotid.nii", the structure name would be "parotid"), and are then compared to the path of the structure file if no name match is found.
 
-For example, to ensure that structures from any file whose name contains the strings "spinal", "spine", or "cord" are named "spinal cord" in QuickViewer:
+For example, to ensure that structures whose names contain any of the strings "spinal", "spine", or "cord" are named "spinal cord" in QuickViewer:
 ```
 my_struct_names = {
   "spinal cord": ["*spine*", "*spinal*", "*cord*"]
 }
 QuickViewer("image.nii", structs="structures", struct_names=my_struct_names)  
 ```
-Any loaded structures that do not match the filepaths in the `struct_names` dictionary will be assigned names using the default behaviour.
+Any loaded structures that do not match any of the values in the `struct_names` dictionary will keep their default assigned names.
 
 Structure colours can be set using a dictionary whose keys are structure names or wildcards matching structure names and whose values are any valid `matplotlib` colour. For example, to set any structures with "left" in their names to green, and any with "right" in their names to red:
 ```
 QuickViewer("image.nii", structs="structures", struct_colors={"left*": "green", "right*": "red"})
 ```
 
-Any loaded structures whose names do not match the dictionary keys will be assigned colours from the default colour sequence.
+Any loaded structures whose names do not match the dictionary keys will keep their default assigned colours.
 
 #### Loading multiple sets of structures with the same names
 
