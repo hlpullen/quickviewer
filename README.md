@@ -261,7 +261,7 @@ The distance-to-agreement and gamma index comparison images are computed on a sl
 
 For example, to downsample an image by a factor of 8 and view the distance-to-agreement, you could run:
 ```
-QuickViewer(["image1.nii", "image2.nii"], comparison=True, comparison_only, downsample=8)
+QuickViewer(["image1.nii", "image2.nii"], comparison=True, comparison_only, downsample=8, hu=[0, 50])
 ```
 and then select "distance to agreement" from the comparison dropdown menu:
 
