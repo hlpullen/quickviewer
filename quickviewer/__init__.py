@@ -54,6 +54,7 @@ class QuickViewer:
         legend_loc="lower left",
         translation=False,
         translation_file_to_overwrite=None,
+        show_mse=False,
         dta_tolerance=5,
         dta_crit=1,
         diff_crit=15,
@@ -233,6 +234,11 @@ class QuickViewer:
             If not None and the <translation> option is used, this parameter
             will be used to populate the "Original" and "Output" file fields in 
             the translation user interface.
+
+        show_mse : str, default=None
+            Color for annotation of mean-squared-error if using comparison
+            images. If None, no annotation will be added. Can be set to "True" 
+            to use default colour (white).
 
         dta_tolerance : float, default=5
             Tolerance to use when computing distance-to-agreement.
@@ -542,7 +548,8 @@ class QuickViewer:
             they are adjusted. Can cause lag.
 
         annotate_slice : str, default=None
-            Color for annotation of slice number. If None, no annotation will 
+            Color for annotation of slice number. Can be set to "True" to use
+            default colour (white).  If None, no annotation will 
             be added unless viewing outside jupyter, in which case the 
             annotation will be white by default.
 
@@ -649,6 +656,7 @@ class QuickViewer:
         self.load_comparison(comparison, show_cb, show_overlay, show_diff)
         self.translation = translation
         self.tfile = translation_file_to_overwrite
+        self.show_mse = show_mse
         self.dta_tolerance = dta_tolerance
         self.dta_crit = dta_crit
         self.diff_crit = diff_crit
@@ -1267,6 +1275,7 @@ class QuickViewer:
                     mpl_kwargs=self.viewer[0].v_min_max,
                     colorbar=self.comp_colorbar, 
                     colorbar_label=self.viewer[0].colorbar_label,
+                    show_mse=self.show_mse,
                     dta_tolerance=self.dta_tolerance,
                     dta_crit=self.dta_crit,
                     diff_crit=self.diff_crit

@@ -763,7 +763,7 @@ class NiftiImage:
             else:
                 col = "white"
             self.ax.annotate(z_str, xy=(0.05, 0.93), xycoords='axes fraction',
-                             color=col)
+                             color=col, fontsize="large")
 
     def adjust_ax(self, view, zoom=None, zoom_centre=None):
         """Adjust axis limits."""
@@ -2344,7 +2344,7 @@ class ComparisonImage(NiftiImage):
              zoom_centre=None, plot_type=None, cb_splits=2,
              overlay_opacity=0.5, overlay_legend=False, 
              overlay_legend_loc=None, colorbar=False, colorbar_label="HU",
-             dta_tolerance=None, dta_crit=None, diff_crit=None
+             show_mse=False, dta_tolerance=None, dta_crit=None, diff_crit=None
             ):
 
         """Create a comparison plot of the two images.
@@ -2459,6 +2459,18 @@ class ComparisonImage(NiftiImage):
         self.label_ax(self.view)
         self.adjust_ax(self.view, zoom, zoom_centre)
 
+        # Annotate with mean squared error
+        if show_mse:
+            mse = np.sqrt(((self.slices[1] - self.slices[0]) ** 2).mean())
+            mse_str = f"Mean sq. error = {mse:.2f}"
+            if matplotlib.colors.is_color_like(show_mse):
+                col = show_mse
+            else:
+                col = "white"
+            self.ax.annotate(mse_str, xy=(0.05, 0.93), 
+                             xycoords='axes fraction', 
+                             color=col, fontsize="large")
+
     def plot_chequerboard(self, invert=False, n_splits=2):
         """Produce a chequerboard plot with <n_splits> squares in each
         direction."""
@@ -2554,10 +2566,17 @@ class ComparisonImage(NiftiImage):
         """Compute distance to agreement array on current slice."""
 
         sl = self.ims[0].sl
+        view = self.ims[0].view
         if not hasattr(self, "dta"):
             self.dta = {}
+        if view not in self.dta:
+            self.dta[view] = {}
 
-        if sl not in self.dta:
+        if sl not in self.dta[view]:
+
+            x_ax, y_ax = _plot_axes[self.ims[0].view]
+            vx = abs(self.ims[0].voxel_sizes[x_ax])
+            vy = abs(self.ims[0].voxel_sizes[y_ax])
 
             im1, im2 = self.slices
             if tolerance is None:
@@ -2568,12 +2587,13 @@ class ComparisonImage(NiftiImage):
             dta = np.zeros(abs_diff.shape)
             for coords in disagree:
                 dta_vec = agree - coords
-                dta_val = np.sqrt(dta_vec[:, 0] ** 2 + dta_vec[:, 1] ** 2).min()
+                dta_val = np.sqrt(vy * dta_vec[:, 0] ** 2 
+                                  + vx * dta_vec[:, 1] ** 2).min()
                 dta[coords[0], coords[1]] = dta_val
 
-            self.dta[sl] = dta
+            self.dta[view][sl] = dta
 
-        return self.dta[sl]
+        return self.dta[view][sl]
 
     def get_gamma(self, invert=False, dta_crit=None, diff_crit=None):
         """Get gamma index on current slice."""
