@@ -339,7 +339,9 @@ Some additional structure plotting arguments are:
 
 The default structure naming and coloring behaviours of QuickViewer can be overridden using the `struct_names` and `struct_colors` arguments.
 
-Structure names are set using a dictionary, where the keys are the desired names and the values are potential filepaths for which you wish that name to be assigned; this can be a single filepath, a wildcard, or a list of multiple filepaths or wildcards. For example, to ensure that structures from any file whose name contains the strings "spinal", "spine", or "cord" are named "spinal cord" in QuickViewer:
+Structure names are set using a dictionary, where the keys are the desired names and the values are potential structures for which you wish that name to be assigned; this can be a single structure name, a wildcard, or a list of multiple structure names or wildcards. These structure names will be checked for matches first with the structure names that are automatically inferred from filenames (e.g. for a file called "parotid.nii", the structure name would be "parotid"), and will then be compared to the structure filepaths if no name match was found.
+
+For example, to ensure that structures from any file whose name contains the strings "spinal", "spine", or "cord" are named "spinal cord" in QuickViewer:
 ```
 my_struct_names = {
   "spinal cord": ["*spine*", "*spinal*", "*cord*"]

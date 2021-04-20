@@ -1091,12 +1091,7 @@ class StructImage(NiftiImage):
         self.path = nii if isinstance(nii, str) else None
 
         # Set name
-        if name is not None:
-            self.name = name.replace(" ", "_")
-        else:
-            basename = os.path.basename(nii).replace(".gz", "").replace(".nii", "")
-            self.name = re.sub(r"RTSTRUCT_[MVCT]+_\d+_\d+_\d+_", "",
-                               basename).replace(" ", "_")
+        self.name = name
         self.set_label(label)
 
         # Assign a random color
@@ -2908,15 +2903,30 @@ class StructLoader:
             self.add_struct(f, label, names, colors, multi)
 
     def find_name_match(self, names, path):
-        """Find the first name in a names dictionary that matches a given 
-        filepath."""
+        """Assign a name to a structure based on its path."""
 
-        for name, paths in names.items():
-            if not core.is_list(paths):
-                paths = [paths]
-            for comp_path in paths:
-                if fnmatch.fnmatch(str(path), str(comp_path)):
-                    return name
+        # Infer name from filepath
+        basename = os.path.basename(path).replace(".gz", "").replace(".nii", "")
+        name = re.sub(r"RTSTRUCT_[MVCT]+_\d+_\d+_\d+_", "",
+                           basename).replace(" ", "_")
+
+        # See if we can convert this name based on names list
+        for name2, matches in names.items():
+            if not core.is_list(matches):
+                matches = [matches]
+            for match in matches:
+                if fnmatch.fnmatch(standard_str(name), standard_str(match)):
+                    return name2
+
+        # See if we can get name from filepath
+        for name2, matches in names.items():
+            if not core.is_list(matches):
+                matches = [matches]
+            for match in matches:
+                if fnmatch.fnmatch(standard_str(path), standard_str(match)):
+                    return name2
+
+        return name
 
     def find_color_match(self, colors, name):
         """Find the first color in a color dictionary that matches a given
@@ -2933,7 +2943,7 @@ class StructLoader:
         if isinstance(path, str):
             name = self.find_name_match(names, path)
         else:
-            name = "Structure {len(self.structs) + 1}"
+            name = f"Structure {len(self.structs) + 1}"
 
         # Only one structure per file
         if not multi:

@@ -444,9 +444,9 @@ class QuickViewer:
             Custom names for structures. 
 
             If only one structure is to be loaded per file, this should be a 
-            dictionary where the keys are filepaths or wildcards matching
-            a filepath, and the values are the custom names to give the 
-            structure loaded from that file.
+            dictionary where the keys are structure names, filepaths or 
+            wildcards matching a structure name or filepath, and the values are 
+            the custom names to give the structure loaded from that file.
 
             If multiple structures are to be loaded from files (i.e. 
             <many_structs_per_file> is True), the <struct_names> parameter 
