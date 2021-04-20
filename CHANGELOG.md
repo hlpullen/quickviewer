@@ -3,6 +3,7 @@
 
 ## [0.2.0](https://github.com/hlpullen/quickviewer/releases/tag/v0.2.0) - 2021-04-20
 
+### Added
 - DICOM support for images, dose fields, and structures
 - Extra user settings: `cmap`, `dose_cmap`
 - Ability to load a dose field via the `dose` argument without loading an image file
