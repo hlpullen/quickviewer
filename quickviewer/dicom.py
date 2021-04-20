@@ -103,6 +103,62 @@ def load_image_multiple_files(paths, uid=None):
 def load_structs(path):
     """Load structures from a DICOM file."""
 
-    return
+    try:
+        ds = pydicom.read_file(path)
+    except pydicom.errors.InvalidDicomError:
+        raise TypeError("Not a valid DICOM file!")
+
+    # Check it's a structure file
+    if not (ds.SOPClassUID == "1.2.840.10008.5.1.4.1.1.481.3"):
+        print(f"Warning: {path} is not a DICOM structure set file!")
+        return
+
+    # Get structure names
+    seq = get_dicom_sequence(ds, "StructureSetROI")
+    structs = {}
+    for struct in seq:
+        structs[int(struct.ROINumber)] = {"name": struct.ROIName}
+
+    # Load contour data
+    roi_seq = get_dicom_sequence(ds, "ROIContour")
+    for roi in roi_seq:
+
+        number = roi.ReferencedROINumber
+        data = {"contours": {}}
+
+        # Get colour
+        if "ROIDisplayColor" in roi:
+            data["color"] = roi.ROIDisplayColor 
+        else:
+            data["color"] = None
+
+        # Get contours
+        contour_seq = get_dicom_sequence(roi, "Contour")
+        if contour_seq:
+            contour_data = {}
+            for c in contour_seq:
+                plane_data = [
+                    (c.ContourData[i * 3], c.ContourData[i * 3 + 1])
+                    for i in range(c.NumberOfContourPoints)
+                ]
+                z = c.ContourData[2]
+                if z not in data["contours"]:
+                    data["contours"][z] = []
+                data["contours"][z].append(plane_data)
+
+        structs[number].update(data)
+
+    return structs
 
 
+def get_dicom_sequence(ds=None, basename=""):
+
+    sequence = []
+
+    for suffix in ["Sequence", "s"]:
+        attribute = f"{basename}{suffix}"
+        if hasattr(ds, attribute):
+            sequence = getattr(ds, attribute)
+            break
+
+    return sequence

@@ -1091,7 +1091,14 @@ class StructImage(NiftiImage):
         self.path = nii if isinstance(nii, str) else None
 
         # Set name
-        self.name = name
+        if name is not None:
+            self.name = name
+        elif isinstance(nii, str):
+            basename = os.path.basename(nii).replace(".gz", "").replace(".nii", "")
+            self.name = re.sub(r"RTSTRUCT_[MVCT]+_\d+_\d+_\d+_", "",
+                               basename).replace(" ", "_")
+        else:
+            self.name = "Structure"
         self.set_label(label)
 
         # Assign a random color
@@ -1122,16 +1129,20 @@ class StructImage(NiftiImage):
         if self.loaded:
             return
 
-        # Load the mask
+        # Try loading from DICOM
+
+        # Load structure masks from any other format
         NiftiImage.__init__(self, self.nii, **self.nii_kwargs)
         if not self.valid:
             return
 
+        # Load contours
+        self.set_contours()
+
         # Convert to boolean mask
         self.data = self.data > 0.5
 
-        # Load contours
-        self.set_contours()
+        # Check whether structure is empty
         self.empty = not sum([len(contours) for contours in 
                               self.contours.values()])
         if self.empty:
@@ -1279,6 +1290,11 @@ class StructImage(NiftiImage):
                 contour = self.get_contour_slice(view, sl)
                 if contour is not None:
                     self.contours[view][sl] = contour
+
+    def set_mask(self):
+        """Compute structure mask using contours."""
+
+        pass
 
     def get_contour_slice(self, view, sl):
         """Convert mask to contours on a given slice <sl> in a given
