@@ -1921,9 +1921,9 @@ class ImageViewer():
         self.df_struct_info = pd.DataFrame(struct_info)
         self.ui_struct_table = ipyw.HTML()
         self.ui_struct_info = ipyw.HBox([
+            ipyw.VBox(self.ui_struct_checkboxes),
+                      #  layout=ipyw.Layout(width="30px")),
             self.ui_struct_table,
-            ipyw.VBox(self.ui_struct_checkboxes, 
-                      layout=ipyw.Layout(width="30px")),
         ])
 
         # Table saving UI
@@ -2119,6 +2119,7 @@ class ImageViewer():
                 <style>
                     th, td {
                         padding: 2px 10px;
+                        white-space: nowrap;
                     }
                     th {
                         background-color: rgb(225, 225, 225);

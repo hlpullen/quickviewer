@@ -185,8 +185,8 @@ def contours_to_indices(contours, origin, voxel_sizes, shape):
         # Convert points on each contour
         for points in conts:
             pi = np.zeros(points.shape)
-            pi[:, 0] = shape[0] - (points[:, 0] - origin[0]) / voxel_sizes[0]
-            pi[:, 1] = shape[1] - (points[:, 1] - origin[1]) / voxel_sizes[1]
+            pi[:, 0] = shape[0] - 1 - (points[:, 0] - origin[0]) / voxel_sizes[0]
+            pi[:, 1] = shape[1] - 1 - (points[:, 1] - origin[1]) / voxel_sizes[1]
             pi[:, 2] = zi
             converted[zi].append(pi)
 
