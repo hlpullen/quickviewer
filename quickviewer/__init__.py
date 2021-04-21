@@ -1634,20 +1634,18 @@ class ImageViewer():
             if self.zoom_ui:
 
                 # Get initial zoom level for each view
-                zoom = self.im.get_ax_dict(self.zoom)
-                if zoom is None:
-                    self.current_zoom = {view: 1 for view in _slider_axes}
+                if self.zoom is None:
+                    init_zoom = 1
+                elif core.is_list(self.zoom):
+                    init_zoom = max(self.zoom)
                 else:
-                    self.current_zoom = {}
-                    for view, (x, y) in _plot_axes.items():
-                        zooms = [zoom[x], zoom[y]]
-                        self.current_zoom[view] = max(zooms)
+                    init_zoom = self.zoom
 
                 # Zoom level slider
                 self.ui_zoom = ipyw.FloatSlider(
-                    min=1, max=8, step=0.1, description="Zoom",
-                    readout_format=".1f", continuous_update=False, 
-                    style=_style)
+                    min=1, max=8, step=0.1, value=init_zoom, 
+                    description="Zoom", readout_format=".1f", 
+                    continuous_update=False, style=_style)
 
                 # Get initial zoom centres
                 zoom_centre = self.im.get_ax_dict(self.zoom_centre, 
@@ -1706,7 +1704,6 @@ class ImageViewer():
                 self.ui_zoom_centre_x = vimage.ui_zoom_centre_x
                 self.ui_zoom_centre_y = vimage.ui_zoom_centre_y
                 self.ui_zoom_reset = vimage.ui_zoom_reset
-                self.current_zoom = vimage.current_zoom
                 self.current_centre = vimage.current_centre
             self.own_ui_slice = False
 
@@ -2329,8 +2326,6 @@ class ImageViewer():
         if not self.zoom_ui:
             return
 
-        self.ui_zoom.value = self.current_zoom[self.view]
-
         units = " (mm)" if self.im.scale_in_mm else ""
         for i, ui in enumerate([self.ui_zoom_centre_x, self.ui_zoom_centre_y]):
 
@@ -2347,7 +2342,7 @@ class ImageViewer():
     def reset_zoom(self, _):
         """Reset zoom values to 1 and zoom centres to defaults."""
 
-        self.current_zoom[self.view] = 1 
+        self.ui_zoom.value = 1
         self.current_centre[self.view] = self.im.get_image_centre(self.view)
         self.plotting = True
         self.update_zoom_sliders()
@@ -2426,7 +2421,6 @@ class ImageViewer():
         # Get zoom settings
         if self.zoom_ui:
             self.zoom = self.ui_zoom.value
-            self.current_zoom[self.view] = self.zoom
             self.zoom_centre = [1, 1, 1]
             for i, ui in enumerate([self.ui_zoom_centre_x, 
                                     self.ui_zoom_centre_y]):
