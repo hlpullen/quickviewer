@@ -193,7 +193,7 @@ def contours_to_indices(contours, origin, voxel_sizes, shape):
     return converted
 
 
-def contours_to_mask(contours, shape):
+def contours_to_mask(contours, shape, level=0.25):
     """Convert contours to mask."""
 
     mask = np.zeros(shape)
@@ -229,4 +229,4 @@ def contours_to_mask(contours, shape):
                     mask[ix, iy, int(iz)] += overlap
 
     # Convert mask to boolean
-    return mask > 0.5
+    return mask > level

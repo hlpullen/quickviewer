@@ -28,6 +28,12 @@ def load_image(im, affine=None, voxel_sizes=None, origin=None, rescale=True):
     Returns image data, tuple of voxel sizes, tuple of origin points, 
     and path to image file (None if image was not from a file)."""
 
+    # Ensure voxel sizes and origin are lists
+    if isinstance(voxel_sizes, dict):
+        voxel_sizes = list(voxel_sizes.values())
+    if isinstance(origin, dict):
+        origin = list(origin.values())
+
     # Try loading from numpy array
     path = None
     if isinstance(im, np.ndarray):

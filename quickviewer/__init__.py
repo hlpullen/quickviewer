@@ -543,6 +543,14 @@ class QuickViewer:
             shown. If False, all loaded structures will be shown regardless of
             whether they have a comparison match.
 
+        structs_to_keep : list, default=True
+            List of structure names or wildcards matching structures that you 
+            wish to load. All other structures will be ignored.
+
+        structs_to_ignore : list, default=True
+            List of structure names or wildcards matching structures that you 
+            wish to ignore.
+
         continuous_update : bool, default=False
             If True, sliders in the UI will continuously update the figure as 
             they are adjusted. Can cause lag.
@@ -1918,9 +1926,9 @@ class ImageViewer():
         self.df_struct_info = pd.DataFrame(struct_info)
         self.ui_struct_table = ipyw.HTML()
         self.ui_struct_info = ipyw.HBox([
-            ipyw.VBox(self.ui_struct_checkboxes),
-                      #  layout=ipyw.Layout(width="30px")),
             self.ui_struct_table,
+            ipyw.VBox(self.ui_struct_checkboxes,
+                      layout=ipyw.Layout(width="30px")),
         ])
 
         # Table saving UI
@@ -2116,7 +2124,6 @@ class ImageViewer():
                 <style>
                     th, td {
                         padding: 2px 10px;
-                        white-space: nowrap;
                     }
                     th {
                         background-color: rgb(225, 225, 225);
@@ -2125,6 +2132,7 @@ class ImageViewer():
                 </style>
             </head>
         """
+                        #  white-space: nowrap;
         table_html = (header + html).replace("&gt;", ">").\
                 replace("&lt;", "<").replace("&amp;", "&")
         self.ui_struct_table.value = table_html

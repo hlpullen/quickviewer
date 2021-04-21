@@ -7,6 +7,7 @@
 - Ability to change type of comparison image with a dropdown menu
 - Computation and plotting of distance-to-agreement and gamma index comparison images
 - Ability to print mean squared error on comparison plot
+- Options `structs_to_keep` and `structs_to_ignore` to give user more control over which structures to load
 
 ### Changed:
 - Zoom level stays the same when switching between different orientations.

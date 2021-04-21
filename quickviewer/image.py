@@ -1082,6 +1082,10 @@ class StructImage(NiftiImage):
                             "StructImage!")
         self.nii = nii
         self.nii_kwargs = kwargs if kwargs is not None else {}
+        if isinstance(voxel_sizes, dict):
+            voxel_sizes = list(voxel_sizes.values())
+        if isinstance(origin, dict):
+            origin = list(origin.values())
         self.nii_kwargs.update({"voxel_sizes": voxel_sizes, "origin": origin})
         self.visible = True
         self.path = nii if isinstance(nii, str) else None
@@ -1131,7 +1135,9 @@ class StructImage(NiftiImage):
 
         # Create mask from initial set of contours if needed
         if self.nii is None:
-            self.nii = dicom.contours_to_mask(self.contours, self.shape)
+            contours_idx = dicom.contours_to_indices(
+                self.contours, self.origin, self.voxel_sizes, self.shape)
+            self.nii = dicom.contours_to_mask(contours_idx, self.shape)
 
         NiftiImage.__init__(self, self.nii, **self.nii_kwargs)
         if not self.valid:
@@ -1290,7 +1296,7 @@ class StructImage(NiftiImage):
         for z, conts in contours.items():
 
             # Convert z key to slice number
-            z_sl = self.idx_to_slice(z, "z")
+            z_sl = self.pos_to_slice(z, "z")
             contours_converted[z_sl] = []
 
             # Convert x/y to either position or slice number
@@ -1298,10 +1304,9 @@ class StructImage(NiftiImage):
                 points = []
                 for p in c:
                     x, y = p[0], p[1]
-                    conv = self.idx_to_pos if self.scale_in_mm \
-                            else self.idx_to_slice
-                    x = conv(x, "x")
-                    y = conv(y, "y")
+                    if not self.scale_in_mm:
+                        x = self.pos_to_slice(x, "x")
+                        y = self.pos_to_slice(y, "y")
                     points.append((x, y))
                 contours_converted[z_sl].append(points)
 
@@ -1493,7 +1498,7 @@ class StructImage(NiftiImage):
             points_x = [p[0] for p in points]
             points_y = [p[1] for p in points]
             points_x.append(points_x[0])
-            points_y.append(points_y[1])
+            points_y.append(points_y[0])
             self.ax.plot(points_x, points_y, **kwargs)
 
         if centroid:
@@ -1613,6 +1618,8 @@ class MultiImage(NiftiImage):
         comp_type="auto",
         ignore_empty_structs=False,
         ignore_unpaired_structs=False,
+        structs_to_keep=None,
+        structs_to_ignore=None,
         mask_threshold=0.5,
         **kwargs
     ):
@@ -1717,7 +1724,10 @@ class MultiImage(NiftiImage):
                           compare_structs=compare_structs, 
                           ignore_empty=ignore_empty_structs,
                           ignore_unpaired=ignore_unpaired_structs,
-                          comp_type=comp_type)
+                          comp_type=comp_type,
+                          to_keep=structs_to_keep,
+                          to_ignore=structs_to_ignore
+                         )
 
         # Mask settings
         self.structs_as_mask = structs_as_mask
@@ -1761,7 +1771,9 @@ class MultiImage(NiftiImage):
                      compare_structs=False, 
                      ignore_empty=False,
                      ignore_unpaired=False,
-                     comp_type="auto"
+                     comp_type="auto",
+                     to_keep=None,
+                     to_ignore=None
                     ):
         """Load structures from a path/wildcard or list of paths/wildcards in
         <structs>, and assign the colors in <colors>."""
@@ -1788,7 +1800,10 @@ class MultiImage(NiftiImage):
                                   comp_type=comp_type,
                                   struct_kwargs={"scale_in_mm": 
                                                  self.scale_in_mm},
-                                  image=self)
+                                  image=self,
+                                  to_keep=to_keep,
+                                  to_ignore=to_ignore
+                                 )
             self.structs = loader.get_structs(ignore_unpaired, ignore_empty)
 
             if compare_structs:
@@ -1816,7 +1831,8 @@ class MultiImage(NiftiImage):
                                       comp_type=comp_type,
                                       struct_kwargs={"scale_in_mm": 
                                                      self.scale_in_mm},
-                                      image=self)
+                                      image=self, to_keep=to_keep,
+                                      to_ignore=to_ignore)
                 struct_colors = loader.reassign_colors(struct_colors)
                 self.dated_structs[date] = loader.get_structs(
                     ignore_unpaired, ignore_empty, sort=True)
@@ -2895,7 +2911,7 @@ class StructLoader:
 
     def __init__(self, structs=None, multi_structs=None, names=None, 
                  colors=None, comp_type="auto", struct_kwargs=None,
-                 image=None):
+                 image=None, to_keep=None, to_ignore=None):
         """Load structures. 
 
         Parameters
@@ -2955,6 +2971,13 @@ class StructLoader:
             of the others.
             - "overlap": Each structure will be comapred to the overlapping
             region of all of the others.
+
+        to_keep : list, default=None
+            List of structure names/wildcards to keep. If this argument is set,
+            all otehr structures will be ignored.
+
+        to_ignore : list, default=None
+            List of structure names to ignore.
         """
 
         # Lists for storing structures
@@ -2968,6 +2991,8 @@ class StructLoader:
         if not (structs or multi_structs):
             return
         self.image = image
+        self.to_keep = to_keep
+        self.to_ignore = to_ignore
 
         # Format colors and names
         names = self.load_settings(names)
@@ -3095,6 +3120,21 @@ class StructLoader:
             if fnmatch.fnmatch(standard_str(name), standard_str(comp_name)):
                 return color
 
+    def keep_struct(self, name):
+        """Check whether a structure with a given name should be kept or 
+        ignored."""
+
+        keep = True
+        if self.to_keep is not None:
+            if not any([fnmatch.fnmatch(standard_str(name), standard_str(k)) 
+                        for k in self.to_keep]):
+                keep = False
+        if self.to_ignore is not None:
+            if any([fnmatch.fnmatch(standard_str(name), standard_str(i)) 
+                    for i in self.to_ignore]):
+                keep = False
+        return keep
+
     def add_struct_file(self, path, label, names, colors, multi=False):
         """Create StructImage object(s) from file and add to list."""
 
@@ -3110,14 +3150,17 @@ class StructLoader:
         else:
             name = f"Structure {len(self.structs) + 1}"
 
+        # Keep or ignore
+
         # Only one structure per file
         if not multi:
-            struct = StructImage(path, label=label, name=name, load=False, 
-                                 **self.struct_kwargs)
-            color = self.find_color_match(colors, struct.name)
-            if color is not None:
-                struct.assign_color(color)
-            self.structs.append(struct)
+            if self.keep_struct(name):
+                struct = StructImage(path, label=label, name=name, load=False, 
+                                     **self.struct_kwargs)
+                color = self.find_color_match(colors, struct.name)
+                if color is not None:
+                    struct.assign_color(color)
+                self.structs.append(struct)
             return
 
         # Search for many label masks in one file
@@ -3130,12 +3173,13 @@ class StructLoader:
 
         # Case with only one structure in that file
         if len(mask_labels) < 2:
-            struct = StructImage(path, label=label, name=name, load=False, 
-                                 **self.struct_kwargs)
-            color = self.find_color_match(colors, struct.name)
-            if color is not None:
-                struct.assign_color(color)
-            self.structs.append(struct)
+            if self.keep_struct(name):
+                struct = StructImage(path, label=label, name=name, load=False, 
+                                     **self.struct_kwargs)
+                color = self.find_color_match(colors, struct.name)
+                if color is not None:
+                    struct.assign_color(color)
+                self.structs.append(struct)
             return
 
         # Load multiple massk
@@ -3144,12 +3188,13 @@ class StructLoader:
             name = self.find_name_match(names, ml)
             if name is None:
                 name = f"Structure {ml}"
-            color = self.find_color_match(colors, name)
+            if self.keep_struct(name):
+                color = self.find_color_match(colors, name)
 
-            struct = StructImage(data == ml, name=name, label=label, 
-                                 color=color, **kwargs)
-            struct.path = path
-            self.structs.append(struct)
+                struct = StructImage(data == ml, name=name, label=label, 
+                                     color=color, **kwargs)
+                struct.path = path
+                self.structs.append(struct)
 
     def load_struct_pairs(self, structs, names, colors):
         """Load structs from pairs and create a StructComparison for each."""
@@ -3159,6 +3204,8 @@ class StructLoader:
             s_pair = []
             for path in pair:
                 name = self.find_name_match(names, path)
+                if not self.keep_struct(name):
+                    return
                 color = self.find_color_match(colors, name)
                 s_pair.append(StructImage(path, name=name, color=color, 
                                           load=False, **self.struct_kwargs))
@@ -3184,25 +3231,25 @@ class StructLoader:
 
             # Get settings for this structure
             name = self.find_name_match(names, struct["name"])
+            if not self.keep_struct(name):
+                continue
             color = self.find_color_match(colors, name)
             if color is None:
                 color = struct["color"]
             contours = struct["contours"]
 
-            # Convert all contour positions to indices
-            origin = list(self.image.origin.values())
-            voxel_sizes = list(self.image.voxel_sizes.values())
-            contours_idx = dicom.contours_to_indices(
-                contours, origin=origin, voxel_sizes=voxel_sizes, 
-                shape=self.image.data.shape
-            )
+            # Adjust contours
+            for z, conts in contours.items():
+                for c in conts:
+                    c[:, 0] -= self.image.voxel_sizes["x"] / 2
+                    c[:, 1] += self.image.voxel_sizes["y"] / 2
 
             # Create structure
-            struct = StructImage(contours=contours_idx, label=label, name=name, 
+            struct = StructImage(contours=contours, label=label, name=name, 
                                  load=False, color=color, 
                                  shape=self.image.data.shape,
-                                 origin=origin,
-                                 voxel_sizes=voxel_sizes,
+                                 origin=self.image.origin,
+                                 voxel_sizes=self.image.voxel_sizes,
                                  **self.struct_kwargs)
             self.structs.append(struct)
 
