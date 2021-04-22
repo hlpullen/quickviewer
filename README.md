@@ -350,6 +350,8 @@ The names of structures are inferred from:
 
 Colours are automatically assigned to each, either from the DICOM structure set (if applicable) or from a default sequence of colours if no structure set colours are available.
 
+If you only want to load a subset of structures from the given file(s), you can specify these by name or wildcard in the `structs_to_keep` argument. E.g. to only load the parotid gland structures, you could set `structs_to_keep=["*parotid*"]`. Similarly, you can ignore certain structures by name or wildcard with the `structs_to_ignore` argument.
+
 By default, the extra zooming widgets are loaded when structures are used; to turn this behaviour off, set `zoom_ui=False`. The legend drawn on the plot can also be turned off by omitting the `struct_legend=True` argument.
 
 An extra widget will appear below the plot, listing all loaded structures and their colors, and allowing the user to remove structures from the plot by unchecking the corresponding checkbox:
