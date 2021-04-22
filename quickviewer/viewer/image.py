@@ -19,7 +19,7 @@ from matplotlib.ticker import MultipleLocator, AutoMinorLocator, \
         FormatStrFormatter
 from shapely import geometry
 
-from quickviewer import core, dicom
+from quickviewer.viewer import core, dicom
 
 
 # Shared parameters

@@ -11,7 +11,7 @@ import matplotlib as mpl
 import shutil
 import configparser
 
-from quickviewer import dicom
+from quickviewer.viewer import dicom
 
 
 user_settings_dir = os.path.expanduser("~/.quickviewer")
