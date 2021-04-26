@@ -83,7 +83,8 @@ class GeometricNifti():
             "voxel_sizes": self.voxel_sizes
         }
         qv_kwargs.update(kwargs)
-        QuickViewer(self.get_data(), **qv_kwargs)
+        structs = {shape.name: shape.get_data() for shape in self.structs}
+        QuickViewer(self.get_data(), structs=structs, **qv_kwargs)
 
     def get_data(self):
         """Get data in orientation consistent with dcm2nii."""
@@ -123,12 +124,14 @@ class GeometricNifti():
         print(f"Wrote NIfTI image to file {filename}")
 
         # Write all structures to files
-        dirname = os.path.dirname(filename)
-        struct_dir = os.path.join(dirname, "structs")
-        if not os.path.exists(struct_dir):
-            os.mkdir(struct_dir)
-        for struct in self.structs:
-            struct.write(self.affine, struct_dir)
+        if len(self.structs):
+            dirname = os.path.dirname(filename)
+            prefix = os.path.basename(filename).split(".")[0]
+            struct_dir = os.path.join(dirname, f"{prefix}_structs")
+            if not os.path.exists(struct_dir):
+                os.mkdir(struct_dir)
+            for struct in self.structs:
+                struct.write(self.affine, struct_dir)
 
     def get_image_centre(self):
         """Get coordinates (in voxels) of the centre of the image."""
@@ -193,7 +196,8 @@ class Shape:
     def write(self, affine, dirname="."):
 
         path = os.path.join(os.path.expanduser(dirname), f"{self.name}.nii.gz")
-        self.nii = nibabel.Nifti1Image(self.get_data(), self.affine)
+        self.nii = nibabel.Nifti1Image(self.get_data().astype(int), 
+                                       affine)
         self.nii.to_filename(path)
 
 

@@ -3041,12 +3041,11 @@ class StructLoader:
         # Case where structs are already in a dict of labels and sources
         if isinstance(structs, dict):
 
-            # Load numpy arrays
-            array_structs = [name for name in structs if 
-                             isinstance(structs[name], np.ndarray)]
-            for name in array_structs:
-                self.add_struct_array(structs[name], name, colors)
-                del structs[name]
+            # Load any numpy arrays
+            for name, struct in structs:
+                if isinstance(struct, np.ndarray):
+                    self.add_struct_array(struct, name, colors)
+                    del structs[name]
 
             # Load path/label combos
             struct_dict = structs
@@ -3161,11 +3160,6 @@ class StructLoader:
                                " StructLoader class must be created with the "
                                "<image> argument!")
 
-        color = self.find_color_match(colors, name)
-        struct = StructImage(array, name=name, color=color, 
-                             origin=self.image.origin,
-                             voxel_sizes=self.image.voxel_sizes)
-        self.structs.append(struct)
 
     def add_struct_file(self, path, label, names, colors, multi=False):
         """Create StructImage object(s) from file and add to list."""
