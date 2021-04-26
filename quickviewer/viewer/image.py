@@ -1137,7 +1137,15 @@ class StructImage(NiftiImage):
         if self.nii is None:
             contours_idx = dicom.contours_to_indices(
                 self.contours, self.origin, self.voxel_sizes, self.shape)
-            self.nii = dicom.contours_to_mask(contours_idx, self.shape)
+            affine = np.array([
+                [self.voxel_sizes[0], 0, 0, self.origin[0]],
+                [0, self.voxel_sizes[1], 0, self.origin[1]],
+                [0, 0, self.voxel_sizes[2], self.origin[2]],
+                [0, 0, 0, 1]
+            ])
+            save_as = "/Users/hannahpullen/test_masks/" + self.name
+            self.nii = dicom.contours_to_mask(contours_idx, self.shape,
+                                              save_name=save_as, affine=affine)
 
         NiftiImage.__init__(self, self.nii, **self.nii_kwargs)
         if not self.valid:

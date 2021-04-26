@@ -9,7 +9,7 @@ import os
 import nibabel
 import subprocess
 
-from imagetools.simulation import GeometricNifti
+from quickviewer.simulation import GeometricNifti
 
 
 def make_grids(mpath, outdir, thickness=3, nx=20):

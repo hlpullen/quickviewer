@@ -1,5 +1,6 @@
 """Helper functions for loading DICOM images."""
 
+import nibabel
 import pydicom
 import numpy as np
 import os
@@ -18,11 +19,12 @@ def load_image(path, rescale=True):
             
             # Look for other files from same image
             else:
-                uid = ds.SeriesInstanceUID
+                num = ds.SeriesNumber
                 dirname = os.path.dirname(path)
                 paths = [os.path.join(dirname, p) for p in os.listdir(dirname) 
                          if not os.path.isdir(os.path.join(dirname, p))]
-                data, affine = load_image_multiple_files(paths, uid=uid, 
+                data, affine = load_image_multiple_files(paths, 
+                                                         series_num=num, 
                                                          rescale=rescale)
 
         except pydicom.errors.InvalidDicomError:
@@ -78,7 +80,7 @@ def load_image_single_file(ds, rescale=True):
     return data, affine
 
 
-def load_image_multiple_files(paths, uid=None, rescale=True):
+def load_image_multiple_files(paths, series_num=None, rescale=True):
     """Load a single dicom image from multiple files."""
 
 
@@ -86,7 +88,7 @@ def load_image_multiple_files(paths, uid=None, rescale=True):
     for path in paths:
         try:
             ds = pydicom.read_file(path)
-            if uid is not None and ds.SeriesInstanceUID != uid:
+            if series_num is not None and ds.SeriesNumber != series_num:
                 continue
             slice_num = ds.SliceLocation
             data, affine = load_image_single_file(ds, rescale=rescale)
@@ -193,7 +195,7 @@ def contours_to_indices(contours, origin, voxel_sizes, shape):
     return converted
 
 
-def contours_to_mask(contours, shape, level=0.25):
+def contours_to_mask(contours, shape, level=0.25, save_name=None, affine=None):
     """Convert contours to mask."""
 
     mask = np.zeros(shape)
@@ -229,4 +231,11 @@ def contours_to_mask(contours, shape, level=0.25):
                     mask[ix, iy, int(iz)] += overlap
 
     # Convert mask to boolean
-    return mask > level
+    mask = mask > level
+
+    # Save if needed
+    if save_name is not None and affine is not None:
+        nii = nibabel.Nifti1Image(mask.astype(int), affine)
+        nii.to_filename(save_name + ".nii.gz")
+
+    return mask
