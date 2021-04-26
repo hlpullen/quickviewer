@@ -7,15 +7,18 @@ import os
 import numpy as np
 import nibabel
 import logging
+import shutil
 
+from quickviewer.viewer.image import NiftiImage
 from quickviewer.viewer.core import make_three, is_list
 
 
-class GeometricNifti():
+class GeometricNifti(NiftiImage):
     """Class for creating a NIfTI file containing synthetic image data."""
 
     def __init__(self, shape, filename=None, origin=(0, 0, 0),
-                 voxel_sizes=(1, 1, 1), intensity=0, noise_std=None):
+                 voxel_sizes=(1, 1, 1), intensity=0, noise_std=None,
+                 in_mm=False):
         """Create data to write to a NIfTI file, initially containing a 
         blank image array.
 
@@ -44,19 +47,13 @@ class GeometricNifti():
             If None, no noise will be applied.
         """
 
-        # Set up logging
-        self.logger = logging.getLogger(__name__)
-        self.logger.setLevel(logging.INFO)
-
         # Create image properties
         self.shape = shape if isinstance(shape, tuple) \
             else (shape, shape, shape)
-        self.origin = origin
-        self.voxel_sizes = voxel_sizes
         self.affine = np.array([
-            [self.voxel_sizes[0], 0, 0, self.origin[0]],
-            [0, self.voxel_sizes[1], 0, self.origin[1]],
-            [0, 0, self.voxel_sizes[2], self.origin[2]],
+            [voxel_sizes[0], 0, 0, origin[0]],
+            [0, voxel_sizes[1], 0, origin[1]],
+            [0, 0, voxel_sizes[2], origin[2]],
             [0, 0, 0, 1]
         ])
         self.max_hu = 0 if noise_std is None else noise_std * 3
@@ -65,7 +62,13 @@ class GeometricNifti():
         self.background = self.make_background()
         self.shapes = []
         self.structs = []
+        self.groups = {}
         self.shape_count = {}
+        self.in_mm = in_mm
+
+        # Initialise as NiftiImage
+        NiftiImage.__init__(self, self.background, voxel_sizes=voxel_sizes,
+                            origin=origin)
 
         # Write to file if a filename is given
         if filename is not None:
@@ -77,13 +80,14 @@ class GeometricNifti():
 
         from quickviewer import QuickViewer
         qv_kwargs = {
-            "hu_limits": [self.min_hu, self.max_hu],
+            "hu": [self.min_hu, self.max_hu],
             "title": "",
             "origin": self.origin,
             "voxel_sizes": self.voxel_sizes
         }
         qv_kwargs.update(kwargs)
-        structs = {shape.name: shape.get_data() for shape in self.structs}
+        structs = {shape.name: shape.get_data(self.get_coords()) 
+                   for shape in self.structs}
         QuickViewer(self.get_data(), structs=structs, **qv_kwargs)
 
     def get_data(self):
@@ -91,7 +95,7 @@ class GeometricNifti():
 
         data = self.background.copy()
         for shape in self.shapes:
-            data[shape.get_data()] = shape.intensity
+            data[shape.get_data(self.get_coords())] = shape.intensity
 
         if self.noise_std is not None:
             data += np.random.normal(0, self.noise_std, self.shape)
@@ -128,15 +132,19 @@ class GeometricNifti():
             dirname = os.path.dirname(filename)
             prefix = os.path.basename(filename).split(".")[0]
             struct_dir = os.path.join(dirname, f"{prefix}_structs")
-            if not os.path.exists(struct_dir):
-                os.mkdir(struct_dir)
+            shutil.rmtree(struct_dir)
+            os.mkdir(struct_dir)
             for struct in self.structs:
-                struct.write(self.affine, struct_dir)
+                struct.write(self.affine, self.get_coords(), struct_dir)
+            print("Wrote structures to", struct_dir)
 
-    def get_image_centre(self):
-        """Get coordinates (in voxels) of the centre of the image."""
+    def get_image_centre(self, in_mm=False):
+        """Get coordinates of the centre of the image."""
 
-        return [float(self.shape[i] - 1) / 2 for i in range(3)]
+        centre = [float(self.shape[i] - 1) / 2 for i in range(3)]
+        if in_mm:
+            centre = self.idx_to_pos_3d(centre)
+        return centre
 
     def make_background(self, noise_std=None):
         """Make blank image array or noisy array."""
@@ -147,7 +155,7 @@ class GeometricNifti():
             noise = np.random.normal(0, self.noise_std, self.shape)
             return noise
 
-    def add_shape(self, shape, shape_type, is_struct, above):
+    def add_shape(self, shape, shape_type, is_struct, above, group):
 
         if above:
             self.shapes.append(shape)
@@ -155,7 +163,14 @@ class GeometricNifti():
             self.shapes.insert(0, shape)
 
         if is_struct:
-            self.structs.append(shape)
+            if group is not None:
+                if group not in self.groups:
+                    self.groups[group] = ShapeGroup([shape], name=group)
+                    self.structs.append(self.groups[group])
+                else:
+                    self.groups[group].add_shape(shape)
+            else:
+                self.structs.append(shape)
 
         if shape_type not in self.shape_count:
             self.shape_count[shape_type] = 1
@@ -169,36 +184,123 @@ class GeometricNifti():
         self.max_hu = max([shape.intensity, self.max_hu])
 
     def add_sphere(self, radius, centre=None, intensity=1, is_struct=False,
-                   name=None, above=True):
+                   name=None, above=True, in_mm=None, group=None):
 
+        if in_mm is None:
+            in_mm = self.in_mm
         if centre is None:
-            centre = self.get_image_centre()
+            centre = self.get_image_centre(in_mm)
+
+        # Get radius and centre in mm
+        if not in_mm:
+            centre = self.idx_to_pos_3d(centre)
+            radius = self.length_in_mm(radius, "x")
+
         sphere = Sphere(self.shape, radius, centre, intensity, name)
-        self.add_shape(sphere, "sphere", is_struct, above)
+        self.add_shape(sphere, "sphere", is_struct, above, group)
+
+    def add_cube(self, side_length, centre=None, intensity=1, is_struct=False,
+                 name=None, above=True, in_mm=None, group=None):
+
+        # Convert to mm, ensuring side lengths are the same
+        if not in_mm:
+            side_length = self.length_in_mm(side_length, "x")
+            if centre is not None:
+                centre = self.idx_to_pos_3d(centre)
+        self.add_cuboid(side_length, centre, intensity, is_struct, name,
+                        above, in_mm=True, group=group)
 
     def add_cuboid(self, side_length, centre=None, intensity=1, 
-                   is_struct=False, name=None, above=True):
+                   is_struct=False, name=None, above=True, in_mm=None,
+                   group=None):
 
+        if in_mm is None:
+            in_mm = self.in_mm
         if centre is None:
-            centre = self.get_image_centre()
+            centre = self.get_image_centre(in_mm)
+        if not is_list(side_length):
+            side_length = make_three(side_length)
+
+        # Get side lengths and centre in mm
+        if not in_mm:
+            centre = self.idx_to_pos_3d(centre)
+            side_length = [
+                self.length_in_mm(side_length[0], "x"),
+                self.length_in_mm(side_length[1], "y"),
+                self.length_in_mm(side_length[2], "z")
+            ]
+
         cuboid = Cuboid(self.shape, side_length, centre, intensity, name)
-        self.add_shape(cuboid, "cuboid", is_struct, above)
+        self.add_shape(cuboid, "cuboid", is_struct, above, group)
 
     def add_grid(self, spacing, thickness=1, intensity=1, axis=None,
-                 name=None, above=True):
+                 name=None, above=True, in_mm=None):
     
+        if in_mm is None:
+            in_mm = self.in_mm
         grid = Grid(self.shape, spacing, thickness, intensity, axis, name)
-        self.add_shape(grid, "grid", False, above)
+        self.add_shape(grid, "grid", False, above, group=None)
+
+    def length_in_voxels(self, length, axis):
+        """Convert a length in mm to a length in voxels."""
+
+        return length / abs(self.voxel_sizes[axis])
+
+    def length_in_mm(self, length, axis):
+        """Convert a length in voxels to a length in mm."""
+
+        return length * abs(self.voxel_sizes[axis])
+
+    def idx_to_pos_3d(self, idx):
+        """Transform a 3D position in array indices to a position in mm."""
+
+        return (
+            self.idx_to_pos(idx[0], "x"),
+            self.idx_to_pos(idx[1], "y"),
+            self.idx_to_pos(idx[2], "z")
+        )
+
+    def get_coords(self):
+        """Get grids of x, y, and z coordinates for this image."""
+
+        if not hasattr(self, "coords"):
+            coords_1d = []
+            for i in ["x", "y", "z"]:
+                coords_1d.append(np.arange(
+                    self.origin[i], 
+                    self.origin[i] + self.voxel_sizes[i] * self.n_voxels[i],
+                    self.voxel_sizes[i]
+                ))
+            self.coords = np.meshgrid(*coords_1d)
+        return self.coords
 
         
 class Shape:
 
-    def write(self, affine, dirname="."):
+    def write(self, affine, coords, dirname="."):
 
         path = os.path.join(os.path.expanduser(dirname), f"{self.name}.nii.gz")
-        self.nii = nibabel.Nifti1Image(self.get_data().astype(int), 
+        self.nii = nibabel.Nifti1Image(self.get_data(coords).astype(int), 
                                        affine)
         self.nii.to_filename(path)
+
+
+class ShapeGroup(Shape):
+
+    def __init__(self, shapes, name):
+        
+        self.name = name
+        self.shapes = shapes
+
+    def add_shape(self, shape):
+        self.shapes.append(shape)
+
+    def get_data(self, coords):
+
+        data = self.shapes[0].get_data(coords)
+        for shape in self.shapes[1:]:
+            data += shape.get_data(coords)
+        return data
 
 
 class Sphere(Shape):
@@ -209,15 +311,13 @@ class Sphere(Shape):
         self.radius = radius
         self.centre = centre
         self.intensity = intensity
-        self.shape = shape
 
-    def get_data(self):
+    def get_data(self, coords):
 
-        indices = np.indices(self.shape)
         distance_to_centre = np.sqrt(
-            (indices[0] - self.centre[0]) ** 2
-            + (indices[1] - self.centre[1]) ** 2
-            + (indices[2] - self.centre[2]) ** 2
+            (coords[0] - self.centre[0]) ** 2
+            + (coords[1] - self.centre[1]) ** 2
+            + (coords[2] - self.centre[2]) ** 2
         )
         return distance_to_centre <= self.radius
 
@@ -232,15 +332,9 @@ class Cuboid(Shape):
             self.side_length = make_three(self.side_length)
         self.centre = centre
         self.intensity = intensity
-        self.shape = shape
 
-    def get_data(self):
+    def get_data(self, coords):
 
-        coords = np.meshgrid(
-            np.arange(0, self.shape[0]),
-            np.arange(0, self.shape[1]),
-            np.arange(0, self.shape[2])
-        )
         data = (
             (np.absolute(coords[0] - self.centre[0]) <= self.side_length[0] / 2) &
             (np.absolute(coords[1] - self.centre[1]) <= self.side_length[1] / 2) &
@@ -251,7 +345,7 @@ class Cuboid(Shape):
 
 class Cylinder(Shape):
 
-    def __init__(self, shape, radius, length, centre, axis, intensity,
+    def __init__(self, shape, radius, length, centre, axis, intensity, 
                  name=None):
 
         self.radius = radius

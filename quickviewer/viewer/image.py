@@ -385,14 +385,14 @@ class NiftiImage:
         else:
             return self.origin[ax] + idx * self.voxel_sizes[ax]
 
-    def pos_to_idx(self, pos, ax):
+    def pos_to_idx(self, pos, ax, force_int=True):
         """Convert a position in mm to an index along a given axis."""
 
         if ax != "z":
-            idx = round(self.n_voxels[ax] - 1 + (self.origin[ax] - pos) / 
-                        self.voxel_sizes[ax])
+            idx = self.n_voxels[ax] - 1 + (self.origin[ax] - pos) /  \
+                    self.voxel_sizes[ax]
         else:
-            idx = round((pos - self.origin[ax]) / self.voxel_sizes[ax])
+            idx = (pos - self.origin[ax]) / self.voxel_sizes[ax]
 
         if idx < 0 or idx >= self.n_voxels[ax]:
             if idx < 0:
@@ -400,6 +400,8 @@ class NiftiImage:
             if idx >= self.n_voxels[ax]:
                 idx = self.n_voxels[ax] - 1
 
+        if force_int:
+            idx = round(idx)
         return idx
 
     def idx_to_slice(self, idx, ax):
