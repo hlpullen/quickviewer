@@ -407,7 +407,7 @@ class NiftiImage:
     def idx_to_slice(self, idx, ax):
         """Convert an index to a slice number along a given axis."""
 
-        if ax == "x":
+        if self.voxel_sizes[ax] < 0:
             return idx + 1
         else:
             return self.n_voxels[ax] - idx
@@ -415,7 +415,7 @@ class NiftiImage:
     def slice_to_idx(self, sl, ax):
         """Convert a slice number to an index along a given axis."""
 
-        if ax == "x":
+        if self.voxel_sizes[ax] < 0:
             idx = sl - 1
         else:
             idx = self.n_voxels[ax] - sl
@@ -1145,9 +1145,8 @@ class StructImage(NiftiImage):
                 [0, 0, self.voxel_sizes[2], self.origin[2]],
                 [0, 0, 0, 1]
             ])
-            save_as = "/Users/hannahpullen/test_masks/" + self.name
             self.nii = dicom.contours_to_mask(contours_idx, self.shape,
-                                              save_name=save_as, affine=affine)
+                                              affine=affine)
 
         NiftiImage.__init__(self, self.nii, **self.nii_kwargs)
         if not self.valid:
@@ -1545,7 +1544,7 @@ class StructImage(NiftiImage):
 
         self.load()
         if self.empty:
-            return 0
+            return [0, 0, 0]
 
         if not hasattr(self, "full_extent"):
             non_zero = np.argwhere(self.data)

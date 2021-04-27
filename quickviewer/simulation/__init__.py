@@ -18,7 +18,7 @@ class GeometricNifti(NiftiImage):
 
     def __init__(self, shape, filename=None, origin=(0, 0, 0),
                  voxel_sizes=(1, 1, 1), intensity=0, noise_std=None,
-                 in_mm=False):
+                 in_mm=True):
         """Create data to write to a NIfTI file, initially containing a 
         blank image array.
 
@@ -48,10 +48,11 @@ class GeometricNifti(NiftiImage):
         """
 
         # Create image properties
-        self.shape = shape if isinstance(shape, tuple) \
-            else (shape, shape, shape)
+        self.shape = make_three(shape)
+        voxel_sizes = [abs(v) for v in make_three(voxel_sizes)]
         self.affine = np.array([
-            [voxel_sizes[0], 0, 0, origin[0]],
+            [-voxel_sizes[0], 0, 0, origin[0] + (self.shape[0] - 1) * 
+             voxel_sizes[0]],
             [0, voxel_sizes[1], 0, origin[1]],
             [0, 0, voxel_sizes[2], origin[2]],
             [0, 0, 0, 1]
@@ -67,8 +68,7 @@ class GeometricNifti(NiftiImage):
         self.in_mm = in_mm
 
         # Initialise as NiftiImage
-        NiftiImage.__init__(self, self.background, voxel_sizes=voxel_sizes,
-                            origin=origin)
+        NiftiImage.__init__(self, self.background, affine=self.affine)
 
         # Write to file if a filename is given
         if filename is not None:
@@ -86,7 +86,7 @@ class GeometricNifti(NiftiImage):
             "voxel_sizes": self.voxel_sizes
         }
         qv_kwargs.update(kwargs)
-        structs = {shape.name: shape.get_data(self.get_coords()) 
+        structs = {shape.name: shape.get_data(self.get_coords())
                    for shape in self.structs}
         QuickViewer(self.get_data(), structs=structs, **qv_kwargs)
 
@@ -100,7 +100,7 @@ class GeometricNifti(NiftiImage):
         if self.noise_std is not None:
             data += np.random.normal(0, self.noise_std, self.shape)
 
-        return data[:, ::-1, :]
+        return data
 
     def write(self, filename=None):
         """Write to a NIfTI file.
@@ -138,7 +138,7 @@ class GeometricNifti(NiftiImage):
                 struct.write(self.affine, self.get_coords(), struct_dir)
             print("Wrote structures to", struct_dir)
 
-    def get_image_centre(self, in_mm=False):
+    def get_image_centre(self, in_mm=True):
         """Get coordinates of the centre of the image."""
 
         centre = [float(self.shape[i] - 1) / 2 for i in range(3)]
@@ -203,10 +203,13 @@ class GeometricNifti(NiftiImage):
                  name=None, above=True, in_mm=None, group=None):
 
         # Convert to mm, ensuring side lengths are the same
+        if in_mm is None:
+            in_mm = self.in_mm
         if not in_mm:
             side_length = self.length_in_mm(side_length, "x")
             if centre is not None:
                 centre = self.idx_to_pos_3d(centre)
+
         self.add_cuboid(side_length, centre, intensity, is_struct, name,
                         above, in_mm=True, group=group)
 
@@ -218,8 +221,7 @@ class GeometricNifti(NiftiImage):
             in_mm = self.in_mm
         if centre is None:
             centre = self.get_image_centre(in_mm)
-        if not is_list(side_length):
-            side_length = make_three(side_length)
+        side_length = make_three(side_length)
 
         # Get side lengths and centre in mm
         if not in_mm:
@@ -265,11 +267,11 @@ class GeometricNifti(NiftiImage):
 
         if not hasattr(self, "coords"):
             coords_1d = []
-            for i in ["x", "y", "z"]:
+            for ax in ["y", "x", "z"]:
                 coords_1d.append(np.arange(
-                    self.origin[i], 
-                    self.origin[i] + self.voxel_sizes[i] * self.n_voxels[i],
-                    self.voxel_sizes[i]
+                    self.origin[ax], 
+                    self.origin[ax] + self.voxel_sizes[ax] * self.n_voxels[ax],
+                    self.voxel_sizes[ax]
                 ))
             self.coords = np.meshgrid(*coords_1d)
         return self.coords
@@ -277,11 +279,16 @@ class GeometricNifti(NiftiImage):
         
 class Shape:
 
+
+    def get_data(self, coords):
+        data = self.get_shape_data(coords)
+        return data[::-1, ::-1, :]
+
     def write(self, affine, coords, dirname="."):
 
         path = os.path.join(os.path.expanduser(dirname), f"{self.name}.nii.gz")
-        self.nii = nibabel.Nifti1Image(self.get_data(coords).astype(int), 
-                                       affine)
+        data = self.get_data(coords).astype(int)
+        self.nii = nibabel.Nifti1Image(data, affine)
         self.nii.to_filename(path)
 
 
@@ -312,11 +319,11 @@ class Sphere(Shape):
         self.centre = centre
         self.intensity = intensity
 
-    def get_data(self, coords):
+    def get_shape_data(self, coords):
 
         distance_to_centre = np.sqrt(
-            (coords[0] - self.centre[0]) ** 2
-            + (coords[1] - self.centre[1]) ** 2
+            (coords[0] - self.centre[1]) ** 2
+            + (coords[1] - self.centre[0]) ** 2
             + (coords[2] - self.centre[2]) ** 2
         )
         return distance_to_centre <= self.radius
@@ -327,17 +334,15 @@ class Cuboid(Shape):
     def __init__(self, shape, side_length, centre, intensity, name=None):
 
         self.name = name
-        self.side_length = side_length
-        if not is_list(self.side_length):
-            self.side_length = make_three(self.side_length)
+        self.side_length = make_three(side_length)
         self.centre = centre
         self.intensity = intensity
 
-    def get_data(self, coords):
+    def get_shape_data(self, coords):
 
         data = (
-            (np.absolute(coords[0] - self.centre[0]) <= self.side_length[0] / 2) &
-            (np.absolute(coords[1] - self.centre[1]) <= self.side_length[1] / 2) &
+            (np.absolute(coords[0] - self.centre[1]) <= self.side_length[1] / 2) &
+            (np.absolute(coords[1] - self.centre[0]) <= self.side_length[0] / 2) &
             (np.absolute(coords[2] - self.centre[2]) <= self.side_length[2] / 2)
         )
         return data
@@ -355,7 +360,7 @@ class Cylinder(Shape):
         self.intensity = intensity
         self.name = name
 
-    def get_data(self):
+    def get_shape_data(self):
 
         # get cylinder data
         pass
@@ -367,12 +372,8 @@ class Grid(Shape):
                  name=None):
 
         self.name = name
-        self.spacing = spacing
-        if not is_list(self.spacing):
-            self.spacing = make_three(self.spacing)
-        self.thickness = thickness
-        if not is_list(self.thickness):
-            self.thickness = make_three(self.thickness)
+        self.spacing = make_three(spacing)
+        self.thickness = make_three(thickness)
         self.intensity = intensity
         self.axis = axis
         self.shape = shape
