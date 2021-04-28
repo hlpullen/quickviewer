@@ -1,21 +1,25 @@
 """Classes for displaying interactive medical image plots."""
-import os
-import re
-import itertools
+
 import ipywidgets as ipyw
-import numpy as np
-import matplotlib.pyplot as plt
+import itertools
 import matplotlib as mpl
+import matplotlib.pyplot as plt
+import numpy as np
+import os
 import pandas as pd
+import re
 
-from quickviewer.viewer.core import to_inches, check_settings_file
-from quickviewer.viewer.image import MultiImage, OrthogonalImage, \
-        ComparisonImage, standard_str
-from quickviewer.viewer.image import _slider_axes, _df_plot_types, _orient, \
-        _struct_plot_types, _orthog, _default_figsize, _plot_axes, _axes
-
-
-_style = {"description_width": "initial"}
+from quickviewer.data.image import to_inches, is_list
+from quickviewer.data.image import ImageComparison
+from quickviewer.data.image import (
+    _slider_axes,
+    _orient,
+    _default_figsize,
+    _plot_axes,
+    _axes,
+)
+from quickviewer.data.structures import standard_str
+from quickviewer.viewer.image import MultiImage, OrthogonalImage, _orthog
 
 
 # Matplotlib settings
@@ -23,6 +27,10 @@ mpl.rcParams["figure.figsize"] = (7.4, 4.8)
 mpl.rcParams["font.serif"] = "Times New Roman"
 mpl.rcParams["font.family"] = "serif"
 mpl.rcParams["font.size"] = 14.0
+
+
+# ipywidgets settings
+_style = {"description_width": "initial"}
 
 
 class QuickViewer:
@@ -60,7 +68,7 @@ class QuickViewer:
         diff_crit=15,
         suptitle=None,
         show=True,
-        **kwargs
+        **kwargs,
     ):
         """
         Display one or more interactive images.
@@ -77,7 +85,7 @@ class QuickViewer:
             (d) A NumPy array.
 
         title : string or list of strings, default=None
-            Custom title(s) to use for the image(s) to be displayed. If the 
+            Custom title(s) to use for the image(s) to be displayed. If the
             number of titles given, n, is less than the number of images, only
             the first n figures will be given custom titles. If any titles are
             None, the name of the image file will be used as the title.
@@ -105,8 +113,8 @@ class QuickViewer:
 
                 Structure names will be inferred from the filenames unless
                 the user indicates otherwise in the <struct_names> parameter;
-                e.g. a structure taken from a file called 
-                "right_parotid.nii.gz" would automatically be called 
+                e.g. a structure taken from a file called
+                "right_parotid.nii.gz" would automatically be called
                 "right parotid" in QuickViewer.
 
                 If multiple structures loaded have the same name, QuickViewer
@@ -114,13 +122,13 @@ class QuickViewer:
                     - If two structures named "heart" are loaded from different
                       directories dir1 and dir2, these will be labelled
                       "Heart (dir1)" and "Heart (dir2) in the UI.
-                    -  If two structures named "heart" are loaded from 
-                       different files, file1.nii and file2.nii, these will be 
-                       labelled "Heart (file1.nii)" and "Heart (file2.nii)" in 
+                    -  If two structures named "heart" are loaded from
+                       different files, file1.nii and file2.nii, these will be
+                       labelled "Heart (file1.nii)" and "Heart (file2.nii)" in
                        the UI.
-                However, if the <struct_legend> option is used, the structures 
-                will be labelled with the same name in the figure legend. See 
-                the labelling option below in part (3) or the <struct_names> 
+                However, if the <struct_legend> option is used, the structures
+                will be labelled with the same name in the figure legend. See
+                the labelling option below in part (3) or the <struct_names>
                 option for more customisation.
 
             2) List:
@@ -132,36 +140,36 @@ class QuickViewer:
 
             3) Dict:
                 Structure filepaths can be nested inside a dictionary, where
-                the keys are labels which the user wishes to use to refer to 
-                structures in those files, and the values are any of the 
+                the keys are labels which the user wishes to use to refer to
+                structures in those files, and the values are any of the
                 options listed above (except 2b).
 
-                The label will be displayed in parentheses next to the 
+                The label will be displayed in parentheses next to the
                 structure names in the QuickViewer UI and structure legend.
 
                 The <struct_names> and <struct_options> arguments can also
-                be nested inside a dictionary if the user wants to apply 
+                be nested inside a dictionary if the user wants to apply
                 different name and color options to the structures associated
                 with different labels.
 
         multi_structs : str/list/dict, default=None
 
         jacobian : string/nifti/array/list, default=None
-            Source(s) of jacobian determinant array(s) to overlay on each plot 
+            Source(s) of jacobian determinant array(s) to overlay on each plot
             (see valid image sources for <nii>).
 
         df : string/nifti/array/list, default=None
-            Source(s) of deformation field(s) to overlay on each plot 
+            Source(s) of deformation field(s) to overlay on each plot
             (see valid image sources for <nii>).
 
         share_slider : bool, default=True
-            If True and all displayed images are in the same frame of 
+            If True and all displayed images are in the same frame of
             reference, a single slice slider will be shared between all plots.
-            If plots have different frames of reference, this option will be 
+            If plots have different frames of reference, this option will be
             ignored.
 
         orthog_view : bool, default=False
-            If True, an orthgonal view with an indicator line showing the 
+            If True, an orthgonal view with an indicator line showing the
             current slice will be displayed alongside each plot.
 
         plots_per_row : int, default=None
@@ -172,7 +180,7 @@ class QuickViewer:
             Method for adjusting axis limits. Can either be:
             - An integer n, where 0 < n < number of plots, or n is -1. The axes
               of all plots will be adjusted to be the same as those of plot n.
-            - "all"/"both": axes for all plots will be adjusted to cover the 
+            - "all"/"both": axes for all plots will be adjusted to cover the
               maximum range of all plots.
             - "overlap": axes for all plots will be adjusted to just show the
               overlapping region.
@@ -185,34 +193,34 @@ class QuickViewer:
             indices.
 
         show_cb : bool, default=False
-            If True, a chequerboard image will be displayed. This option will 
+            If True, a chequerboard image will be displayed. This option will
             only be applied if the number of images in <nii> is 2.
 
         show_overlay : bool, default=False
             If True, a blue/red transparent overlaid image will be displayed.
-            This option will only be applied if the number of images in 
+            This option will only be applied if the number of images in
             <nii> is 2.
 
         show_diff : bool, default=False
-            If True, a the difference between two images will be shown. This 
-            option will only be applied if the number of images in <nii> 
+            If True, a the difference between two images will be shown. This
+            option will only be applied if the number of images in <nii>
             is 2.
 
         comparison : bool/str/list, default=None
-            Indicator for which type(s) of comparison image(s) to show. If 
-            True or "all", a comparison image control by a dropdown menu with all 
-            comparison options will be loaded. Can also be a single string or 
-            list containing any combination of "all", "chequerboard", 
+            Indicator for which type(s) of comparison image(s) to show. If
+            True or "all", a comparison image control by a dropdown menu with all
+            comparison options will be loaded. Can also be a single string or
+            list containing any combination of "all", "chequerboard",
             "overlay", and "difference" to plot those images in the desired order.
 
         comparison_only : bool, False
             If True, only comparison images (overlay/chequerboard/difference)
-            will be shown. If no comparison options are selected, this 
+            will be shown. If no comparison options are selected, this
             parameter will be ignored.
 
         cb_splits : int, default=2
             Number of sections to show for chequerboard image. Minimum = 1
-            (corresponding to no chequerboard). Can later be changed 
+            (corresponding to no chequerboard). Can later be changed
             interactively.
 
         overlay_opacity : float, default=0.5
@@ -222,22 +230,22 @@ class QuickViewer:
             If True, a legend will be displayed on the overlay plot.
 
         legend_loc : str, default='lower left'
-            Location for any legends being displayed. Must be a valid 
+            Location for any legends being displayed. Must be a valid
             matplotlib legend location.
 
         translation : bool, default=False
-            If True, widgets will be displayed allowing the user to apply a 
-            translation to the image and write this to an elastix transform 
+            If True, widgets will be displayed allowing the user to apply a
+            translation to the image and write this to an elastix transform
             file or plain text file.
 
         translation_file_to_overwrite : str, default=None
             If not None and the <translation> option is used, this parameter
-            will be used to populate the "Original" and "Output" file fields in 
+            will be used to populate the "Original" and "Output" file fields in
             the translation user interface.
 
         show_mse : str, default=None
             Color for annotation of mean-squared-error if using comparison
-            images. If None, no annotation will be added. Can be set to "True" 
+            images. If None, no annotation will be added. Can be set to "True"
             to use default colour (white).
 
         dta_tolerance : float, default=5
@@ -254,7 +262,7 @@ class QuickViewer:
             Global title for all subplots. If None, no suptitle will be added.
 
         show : bool, default=True
-            If True, the plot will be displayed when the QuickViewer object is 
+            If True, the plot will be displayed when the QuickViewer object is
             created. Otherwise, the plot can be displayed later via
             QuickViewer.show().
 
@@ -270,15 +278,15 @@ class QuickViewer:
 
             In cases (a) and (b), QuickViewer will attempt to infer the date
             first from the directory name, then from the filename if no valid
-            date is found within the directory name. The date is taken from the 
-            first unbroken string of numbers that can be successfully parsed 
+            date is found within the directory name. The date is taken from the
+            first unbroken string of numbers that can be successfully parsed
             with dateutil.parser.
 
         init_view : string, default='x-y'
             Orientation at which to initially display the image(s).
 
         init_sl : integer, default=None
-            Slice number in the initial orientation direction at which to 
+            Slice number in the initial orientation direction at which to
             display the first image (can be changed interactively later). If
             None, the central slice will be displayed.
 
@@ -288,14 +296,14 @@ class QuickViewer:
             <init_pos> will override <init_idx> only if <scale_in_mm> is True.
 
         hu : float/tuple, default=(-300, 200)
-            HU central value or range thresholds at which to display the image. 
+            HU central value or range thresholds at which to display the image.
             Can later be changed interactively. If a single value is given, the
-            HU range will be centred at this value with width given by 
+            HU range will be centred at this value with width given by
             <hu_width>. If a tuple is given, the HU range will be set to the
             two values in the tuple.
 
         hu_width : float, default=500
-            Initial width of the HU window. Only used if <hu> is a single 
+            Initial width of the HU window. Only used if <hu> is a single
             value.
 
         hu_limits : tuple, default=None
@@ -311,15 +319,15 @@ class QuickViewer:
             _default_figsize is used.
 
         xlim : tuple, default=None
-            Custom limits for the x axis. If one of the values in the tuple is 
+            Custom limits for the x axis. If one of the values in the tuple is
             None, the default x limits will be used.
 
         ylim : tuple, default=None
-            Custom limits for the y axis. If one of the values in the tuple is 
+            Custom limits for the y axis. If one of the values in the tuple is
             None, the default y limits will be used.
 
         zlim : tuple, default=None
-            Custom limits for the z axis. If one of the values in the tuple is 
+            Custom limits for the z axis. If one of the values in the tuple is
             None, the default z limits will be used.
 
         cmap : str, default=None
@@ -327,7 +335,7 @@ class QuickViewer:
             cmap included in <mpl_kwargs>.
 
         colorbar : bool, default=False
-            If True, colorbars will be displayed for HU, dose and Jacobian 
+            If True, colorbars will be displayed for HU, dose and Jacobian
             determinant.
 
         colorbar_label : str, default=None
@@ -337,7 +345,7 @@ class QuickViewer:
 
         mpl_kwargs : dict, default=None
             Dictionary of keyword arguments to pass to matplotlib.pyplot.imshow
-            for the main image.See https://matplotlib.org/stable/api/_as_gen/matplotlib.pyplot.imshow.html 
+            for the main image.See https://matplotlib.org/stable/api/_as_gen/matplotlib.pyplot.imshow.html
             for options.
             Some useful keywords are:
                 - "cmap": colormap (default="gray").
@@ -349,7 +357,7 @@ class QuickViewer:
 
         dose_kwargs : dict, default=None
             Dictionary of keyword arguments to pass to matplotlib.pyplot.imshow
-            for the dose image. See https://matplotlib.org/stable/api/_as_gen/matplotlib.pyplot.imshow.html 
+            for the dose image. See https://matplotlib.org/stable/api/_as_gen/matplotlib.pyplot.imshow.html
             for options.
             Some useful keywords are:
                 - "cmap": colormap (default="jet").
@@ -357,7 +365,7 @@ class QuickViewer:
 
         dose_range : list, default=None
             Min and max dose range to plot. This can also be set via the "vmin"
-            and "xmax" keys in <dose_kwargs>; <dose_range> will take precedence 
+            and "xmax" keys in <dose_kwargs>; <dose_range> will take precedence
             if set.
 
         dose_cmap : str, default="jet"
@@ -375,7 +383,7 @@ class QuickViewer:
             will be masked (or values above, if <invert_mask> is True).
 
         jacobian_opacity : float, default=0.5
-            Initial opacity of the overlaid jacobian determinant. Can later 
+            Initial opacity of the overlaid jacobian determinant. Can later
             be changed interactively.
 
         jacobian_kwargs : dict, default=None
@@ -387,14 +395,14 @@ class QuickViewer:
                 - "interpolation": interpolation method (default="antialiased")
 
         df_plot_type : str, default="grid"
-            Option for initial plotting of deformation field. Can be 'grid', 
+            Option for initial plotting of deformation field. Can be 'grid',
             'quiver', or 'none'. Can later be changed interactively.
 
         df_spacing : int/tuple, default=30
-            Spacing between arrows on the quiver plot/gridlines on the grid 
-            plot of a deformation field. Can be a single value for spacing in 
+            Spacing between arrows on the quiver plot/gridlines on the grid
+            plot of a deformation field. Can be a single value for spacing in
             all directions, or a tuple with values for (x, y, z). Dimensions
-            are mm if <scale_in_mm> is True, or voxels if <scale_in_mm> is 
+            are mm if <scale_in_mm> is True, or voxels if <scale_in_mm> is
             False.
 
         df_kwargs : dict, default=None
@@ -409,43 +417,43 @@ class QuickViewer:
             For quiver plotting options, see https://matplotlib.org/stable/api/_as_gen/matplotlib.pyplot.quiver.html.
 
         struct_plot_type : str, default='contour'
-            Option for initial plot of structures. Can be 'contour', 'mask', 
+            Option for initial plot of structures. Can be 'contour', 'mask',
             'filled', or 'none'. Can later be changed interactively.
 
         struct_opacity : float, default=None
-            Initial opacity of structures when plotted as masks or filled 
+            Initial opacity of structures when plotted as masks or filled
             contours. Can later be changed interactively. Default=1 for masks,
             0.3 for filled contours.
 
         struct_linewidth : float, default=2
-            Initial linewidth of structures when plotted as contours. Can later 
+            Initial linewidth of structures when plotted as contours. Can later
             be changed interactively.
 
         struct_info : bool, default=False
-            If True, the lengths and volumes of each structure will be 
+            If True, the lengths and volumes of each structure will be
             displayed below the plot.
 
         struct_info_dp : int, default=2
-            Number of decimal places to show for floats in structure info and 
+            Number of decimal places to show for floats in structure info and
             comparison tables.
 
         length_units : str, default=None
-            Units in which to display the lengths of structures if 
-            <struct_info> if True. If None, units will be voxels if 
+            Units in which to display the lengths of structures if
+            <struct_info> if True. If None, units will be voxels if
             <scale_in_mm> is False, or mm if <scale_in_mm> is True. Options:
                 (a) "mm"
                 (b) "voxels"
 
         area_units : str, default=None
-            Units in which to display the areas of structures if 
-            <struct_info> if True. If None, units will be voxels if 
+            Units in which to display the areas of structures if
+            <struct_info> if True. If None, units will be voxels if
             <scale_in_mm> is False, or mm if <scale_in_mm> is True. Options:
                 (a) "mm"
                 (b) "voxels"
 
         vol_units : str, default=None
-            Units in which to display the volumes of structures if 
-            <struct_info> if True. If None, units will be voxels if 
+            Units in which to display the volumes of structures if
+            <struct_info> if True. If None, units will be voxels if
             <scale_in_mm> is False, or mm^3 if <scale_in_mm> is True. Options:
                 (a) "mm" for mm^3
                 (b) "voxels" for voxels
@@ -460,44 +468,44 @@ class QuickViewer:
             and <init_sl>.
 
         struct_names : list/dict, default=None
-            Custom names for structures. 
+            Custom names for structures.
 
-            If only one structure is to be loaded per file, this should be a 
-            dictionary where the keys are structure names, filepaths or 
-            wildcards matching a structure name or filepath, and the values are 
+            If only one structure is to be loaded per file, this should be a
+            dictionary where the keys are structure names, filepaths or
+            wildcards matching a structure name or filepath, and the values are
             the custom names to give the structure loaded from that file.
 
-            If multiple structures are to be loaded from files (i.e. 
-            <many_structs_per_file> is True), the <struct_names> parameter 
+            If multiple structures are to be loaded from files (i.e.
+            <many_structs_per_file> is True), the <struct_names> parameter
             can either be:
-                a) A list of names, where the Nth name in the list will be 
+                a) A list of names, where the Nth name in the list will be
                    applied to the structure with mask label N in the structure
                    array; or
                 b) A dictionary where the keys are integers such that the
                    name associated with key N will be applied to the structure
                    with mask label N in the structure array.
 
-            Any of the options described above can also be nested into a 
+            Any of the options described above can also be nested into a
             dictionary where the keys are labels, if a label dictionary was
             used to load structures in the <structs> parameter. The nested
             options for each key will only be applied to structures whose
             label is that key.
 
         struct_colors : dict, default=None
-            A dictionary mapping structure names to colors in which the 
-            structure will be displayed. 
+            A dictionary mapping structure names to colors in which the
+            structure will be displayed.
 
             The dictionary keys should be either structure names or wildcards
             matching structure name(s). Note that structure names are inferred
             from the structure's filename unless otherwise specified in the
             <struct_names> parameter.
 
-            The values of the dictionary can be any matplotlib colorlike 
+            The values of the dictionary can be any matplotlib colorlike
             object.
 
-            The color dictionary can also be nested into a dictionary where the 
-            keys are labels, if a label dictionary was used to load structures 
-            in the <structs> parameter. The nested options for each key will 
+            The color dictionary can also be nested into a dictionary where the
+            keys are labels, if a label dictionary was used to load structures
+            in the <structs> parameter. The nested options for each key will
             only be applied to structures whose label is that key.
 
         structs_as_mask : bool, default=True
@@ -507,34 +515,34 @@ class QuickViewer:
         compare_structs : bool, default=False
             If True, slice-by-slice comparison metrics for pairs of structures
             will be displayed below the plot, and compared structures masks
-            will be plotted with their overlapping region in a different 
+            will be plotted with their overlapping region in a different
             colour.
 
             The structures to compare can be set in three different ways:
 
                 a) The user can explicitly indicate which structures should be
-                   compared by giving a list of lists for the <structs> 
-                   argument, where each sublist contains exactly 2 filepaths 
-                   corresponding to a pair of structures to be compared (see 
+                   compared by giving a list of lists for the <structs>
+                   argument, where each sublist contains exactly 2 filepaths
+                   corresponding to a pair of structures to be compared (see
                    option 2b for <structs>).
 
                 b) If only two structures are found for the filepaths/wildcards
                    given in the <structs> option, these two structures will
                    be compared.
 
-                c) Otherwise, QuickViewer will search for pairs of loaded 
+                c) Otherwise, QuickViewer will search for pairs of loaded
                    structures with the same name (either inferred from the
-                   filenames or specified manually by the user in the 
+                   filenames or specified manually by the user in the
                    <struct_names> option). If no structures with matching names
                    are found, no comparisons will be performed.
 
         ignore_empty_structs : bool, default=False
             If True, any loaded structures array that only contains zeros will
-            be ignored. If False, the names of empty structures will be 
+            be ignored. If False, the names of empty structures will be
             displayed in the UI with "(empty)" next to them.
 
         ignore_unpaired_structs : bool, default=False
-            If <structure_comparison> is True and structure pairs are 
+            If <structure_comparison> is True and structure pairs are
             automatically detected based on their names, this parameter
             determines whether any structures for which a matching name is not
             found should be displayed.
@@ -544,33 +552,33 @@ class QuickViewer:
             whether they have a comparison match.
 
         structs_to_keep : list, default=True
-            List of structure names or wildcards matching structures that you 
+            List of structure names or wildcards matching structures that you
             wish to load. All other structures will be ignored.
 
         structs_to_ignore : list, default=True
-            List of structure names or wildcards matching structures that you 
+            List of structure names or wildcards matching structures that you
             wish to ignore.
 
         continuous_update : bool, default=False
-            If True, sliders in the UI will continuously update the figure as 
+            If True, sliders in the UI will continuously update the figure as
             they are adjusted. Can cause lag.
 
         annotate_slice : str, default=None
             Color for annotation of slice number. Can be set to "True" to use
-            default colour (white).  If None, no annotation will 
-            be added unless viewing outside jupyter, in which case the 
+            default colour (white).  If None, no annotation will
+            be added unless viewing outside jupyter, in which case the
             annotation will be white by default.
 
         save_as : str, default=None
             File to which the figure will be saved upon creation. If not None,
-            a text input and button will be added to the UI, allowing the 
+            a text input and button will be added to the UI, allowing the
             user to save the figure again at a later point.
 
         zoom : double/tuple, default=None
-            Amount between by which to zoom in (e.g. zoom=2 would give a 
+            Amount between by which to zoom in (e.g. zoom=2 would give a
             2x zoom). Can be a single value for all directions or a tuple of
             values for the (x, y, z) directions.
-            
+
         zoom_centre : tuple, default=None
             Centrepoint of zooming in order (x, y, z). If any of the values are
             None, the midpoint of the image will be used in that direction.
@@ -578,7 +586,7 @@ class QuickViewer:
         zoom_ui : bool, default=None
             If True, a UI for zooming will be displayed. Default is False
             unless structs are loaded, in which case default is True.
-            
+
         downsample : int/tuple, default=None
             Factor by which to downsample an image. Can be a single value for
             all directions or a tuple of values in the (x, y, z) directions.
@@ -586,9 +594,9 @@ class QuickViewer:
             in the z direction only: downsample=(1, 1, 3).
 
         affine : 4x4 array, default=None
-            Affine matrix to be used if image source(s) are NumPy array(s). If 
-            image sources are nifti file paths or nibabel objects, this 
-            parameter is ignored. If None, the arguments <voxel_sizes> and 
+            Affine matrix to be used if image source(s) are NumPy array(s). If
+            image sources are nifti file paths or nibabel objects, this
+            parameter is ignored. If None, the arguments <voxel_sizes> and
             <origin> will be used to set the affine matrix.
 
         voxel_sizes : tuple, default=(1, 1, 1)
@@ -610,7 +618,7 @@ class QuickViewer:
 
         ticks_all_sides : bool, default=False
             If True, major (and minor if using) tick marks will be shown above
-            and to the right hand side of the plot as well as below and to the 
+            and to the right hand side of the plot as well as below and to the
             left. The top/right ticks will not be labelled.
         """
 
@@ -626,24 +634,30 @@ class QuickViewer:
         self.dose = self.get_input_list(dose)
         self.mask = self.get_input_list(mask)
         self.structs = self.get_input_list(structs, allow_sublist=True)
-        self.multi_structs = self.get_input_list(multi_structs, 
-                                                 allow_sublist=True)
+        self.multi_structs = self.get_input_list(multi_structs, allow_sublist=True)
         self.jacobian = self.get_input_list(jacobian)
         self.df = self.get_input_list(df)
 
         # Make individual viewers
         self.scale_in_mm = scale_in_mm
         self.viewer = []
-        viewer_type = ImageViewer if not orthog_view else OrthogViewer
-        kwargs = {key.replace("colour", "color"): val for key, val in 
-                  kwargs.items()}
+        viewer_type = SingleViewer if not orthog_view else OrthogViewer
+        kwargs = {key.replace("colour", "color"): val for key, val in kwargs.items()}
         for i in range(self.n):
             viewer = viewer_type(
-                self.nii[i], title=self.title[i], dose=self.dose[i],
-                mask=self.mask[i], structs=self.structs[i],
-                multi_structs=self.multi_structs[i], jacobian=self.jacobian[i], 
-                df=self.df[i], standalone=False, scale_in_mm=scale_in_mm, 
-                legend_loc=legend_loc, **kwargs)
+                self.nii[i],
+                title=self.title[i],
+                dose=self.dose[i],
+                mask=self.mask[i],
+                structs=self.structs[i],
+                multi_structs=self.multi_structs[i],
+                jacobian=self.jacobian[i],
+                df=self.df[i],
+                standalone=False,
+                scale_in_mm=scale_in_mm,
+                legend_loc=legend_loc,
+                **kwargs,
+            )
             if viewer.im.valid:
                 self.viewer.append(viewer)
         self.n = len(self.viewer)
@@ -657,9 +671,11 @@ class QuickViewer:
         self.overlay_legend = overlay_legend
         self.legend_loc = legend_loc
         self.comparison_only = comparison_only
-        if comparison_only and comparison is None and not any([show_cb,
-                                                               show_overlay,
-                                                               show_diff]):
+        if (
+            comparison_only
+            and comparison is None
+            and not any([show_cb, show_overlay, show_diff])
+        ):
             comparison = True
         self.load_comparison(comparison, show_cb, show_overlay, show_diff)
         self.translation = translation
@@ -690,7 +706,7 @@ class QuickViewer:
         self.show(show)
 
     def show(self, show=True):
-        ImageViewer.show(self, show)
+        SingleViewer.show(self, show)
 
     def get_input_list(self, inp, allow_sublist=False):
         """Convert an input to a list with one item per image to be
@@ -711,8 +727,7 @@ class QuickViewer:
         return input_list + [None for i in range(self.n - len(input_list))]
 
     def any_attr(self, attr):
-        """Check whether any of this object's viewers have a given attribute.
-        """
+        """Check whether any of this object's viewers have a given attribute."""
 
         return any([getattr(v.im, "has_" + attr) for v in self.viewer])
 
@@ -724,16 +739,18 @@ class QuickViewer:
         comp_opts = []
         self.has_multicomp = False
         if isinstance(comparison, str):
-            comparison = [comparison]   
+            comparison = [comparison]
         if isinstance(comparison, bool):
             self.has_multicomp = comparison
             if self.has_multicomp:
                 comp_opts = ["all"]
-        elif core.is_list(comparison):
+        elif is_list(comparison):
             self.has_multicomp = "all" in comparison
             comp_opts = comparison
-        for name, flag in zip(["chequerboard", "overlay", "difference"], 
-                              [show_cb, show_overlay, show_diff]):
+        for name, flag in zip(
+            ["chequerboard", "overlay", "difference"],
+            [show_cb, show_overlay, show_diff],
+        ):
             if flag and name not in comp_opts:
                 comp_opts.append(name)
             setattr(self, f"has_{name}", name in comp_opts)
@@ -751,8 +768,9 @@ class QuickViewer:
         for comp in comp_opts:
             name = "multicomp" if comp == "all" else comp
             plot_type = None if comp == "all" else comp
-            comp_im = ComparisonImage(im1, im2, plot_type=plot_type,
-                                      scale_in_mm=self.scale_in_mm)
+            comp_im = ImageComparison(
+                im1, im2, plot_type=plot_type, scale_in_mm=self.scale_in_mm
+            )
             setattr(self, name, comp_im)
             self.comparison[name] = comp_im
 
@@ -785,12 +803,12 @@ class QuickViewer:
                     ax_lims = im.ax_lims[view]
 
                 except TypeError:
-                    raise TypeError("Unrecognised option for <match_axes>",
-                                    match_axes)
+                    raise TypeError("Unrecognised option for <match_axes>", match_axes)
 
             # Set these limits for all plots
-            all_ims = [v.im for v in self.viewer] \
-                    + [c for c in self.comparison.values()]
+            all_ims = [v.im for v in self.viewer] + [
+                c for c in self.comparison.values()
+            ]
             for im in all_ims:
                 if match_axes != "y":
                     im.ax_lims[view][0] = ax_lims[0]
@@ -801,8 +819,9 @@ class QuickViewer:
 
         # Only allow share_slider if images have same frame of reference
         if share_slider:
-            share_slider *= all([v.im.same_frame(self.viewer[0].im) for v in
-                                 self.viewer])
+            share_slider *= all(
+                [v.im.same_frame(self.viewer[0].im) for v in self.viewer]
+            )
 
         # Make UI for first image
         v0 = self.viewer[0]
@@ -869,9 +888,10 @@ class QuickViewer:
             self.extra_ui.extend([v0.ui_jac_opacity, v0.ui_jac_range])
         if self.any_attr("structs"):
             to_add = [
-                v0.ui_struct_plot_type, 
+                v0.ui_struct_plot_type,
                 v0.ui_struct_linewidth,
-                v0.ui_struct_opacity]
+                v0.ui_struct_opacity,
+            ]
             if any([v.im.comp_type == "others" for v in self.viewer]):
                 to_add.insert(1, v0.ui_struct_plot_type2)
                 to_add.insert(2, v0.ui_struct_comp_type)
@@ -883,10 +903,14 @@ class QuickViewer:
         self.make_translation_ui()
 
         # Assemble UI boxes
-        main_and_extra_box = ipyw.HBox([ipyw.VBox(self.main_ui),
-                                        ipyw.VBox(self.extra_ui),
-                                        ipyw.VBox(self.trans_ui),
-                                        ipyw.VBox(self.comp_ui)])
+        main_and_extra_box = ipyw.HBox(
+            [
+                ipyw.VBox(self.main_ui),
+                ipyw.VBox(self.extra_ui),
+                ipyw.VBox(self.trans_ui),
+                ipyw.VBox(self.comp_ui),
+            ]
+        )
         self.slider_boxes = [ipyw.VBox(ui) for ui in self.per_image_ui]
         self.set_slider_widths()
         self.upper_ui = [main_and_extra_box, ipyw.HBox(self.slider_boxes)]
@@ -926,29 +950,34 @@ class QuickViewer:
             self.lower_ui.extend(v.lower_ui)
             self.ui_struct_checkboxes.extend(v.ui_struct_checkboxes)
 
-        self.lower_ui.extend([self.viewer[0].save_name, 
-                              self.viewer[0].save_button])
+        self.lower_ui.extend([self.viewer[0].save_name, self.viewer[0].save_button])
 
     def make_comparison_ui(self):
 
         self.comp_ui = []
 
         # Multicomparison dropdown
-        comp_opts = ["chequerboard", "overlay", "difference", 
-                     "absolute difference", "distance to agreement",
-                     "gamma index"]
+        comp_opts = [
+            "chequerboard",
+            "overlay",
+            "difference",
+            "absolute difference",
+            "distance to agreement",
+            "gamma index",
+        ]
         if self.comparison_only:
             comp_opts.extend(["image 1", "image 2"])
-        self.ui_multicomp = ipyw.Dropdown(
-            options=comp_opts, description="Comparison"
-        )
+        self.ui_multicomp = ipyw.Dropdown(options=comp_opts, description="Comparison")
         if self.has_multicomp:
             self.comp_ui.append(self.ui_multicomp)
 
         # Chequerboard slider
         max_splits = max([15, self.cb_splits])
         self.ui_cb = ipyw.IntSlider(
-            min=2, max=max_splits, value=self.cb_splits, step=1,
+            min=2,
+            max=max_splits,
+            value=self.cb_splits,
+            step=1,
             continuous_update=self.viewer[0].continuous_update,
             description="Chequerboard splits",
             style=_style,
@@ -958,7 +987,10 @@ class QuickViewer:
 
         # Overlay slider
         self.ui_overlay = ipyw.FloatSlider(
-            value=self.overlay_opacity, min=0, max=1, step=0.1,
+            value=self.overlay_opacity,
+            min=0,
+            max=1,
+            step=0.1,
             description="Overlay opacity",
             continuous_update=self.viewer[0].continuous_update,
             readout_format=".1f",
@@ -968,8 +1000,7 @@ class QuickViewer:
             self.comp_ui.append(self.ui_overlay)
 
         # Inversion checkbox
-        self.ui_invert = ipyw.Checkbox(value=False,
-                                       description="Invert comparison")
+        self.ui_invert = ipyw.Checkbox(value=False, description="Invert comparison")
         if len(self.comparison):
             self.comp_ui.append(self.ui_invert)
 
@@ -997,11 +1028,9 @@ class QuickViewer:
 
         # Make translation file UI
         if self.has_translation_input:
-            self.translation_input = ipyw.Text(description="Original:",
-                                               value=tfile)
+            self.translation_input = ipyw.Text(description="Original:", value=tfile)
             self.trans_ui.append(self.translation_input)
-        self.translation_output = ipyw.Text(description="Save as:",
-                                            value=tfile_out)
+        self.translation_output = ipyw.Text(description="Save as:", value=tfile_out)
         self.tbutton = ipyw.Button(description="Write translation")
         self.tbutton.on_click(self.write_translation_to_file)
         self.trans_ui.extend([self.translation_output, self.tbutton])
@@ -1019,12 +1048,10 @@ class QuickViewer:
                 #  style=_style
             )
             self.trans_ui.append(self.tsliders[ax])
-        self.current_trans = {ax: slider.value for ax, slider
-                              in self.tsliders.items()}
+        self.current_trans = {ax: slider.value for ax, slider in self.tsliders.items()}
 
     def find_translation_file(self, image):
-        """Find an elastix translation file inside the directory of an image.
-        """
+        """Find an elastix translation file inside the directory of an image."""
 
         if not hasattr(image, "path"):
             return
@@ -1036,16 +1063,18 @@ class QuickViewer:
     def write_translation_to_file(self, _):
         """Write current translation to file."""
 
-        input_file = self.translation_input.value \
-            if self.has_translation_input else None
+        input_file = (
+            self.translation_input.value if self.has_translation_input else None
+        )
         if input_file == "":
             input_file = None
         output_file = self.translation_output.value
-        translations = {f"d{ax}": - self.tsliders[ax].value 
-                        * abs(self.trans_viewer.im.voxel_sizes[ax])
-                        for ax in self.tsliders}
-        write_translation_to_file(output_file, input_file=input_file,
-                                  **translations)
+        translations = {
+            f"d{ax}": -self.tsliders[ax].value
+            * abs(self.trans_viewer.im.voxel_sizes[ax])
+            for ax in self.tsliders
+        }
+        write_translation_to_file(output_file, input_file=input_file, **translations)
 
     def apply_translation(self):
         """Update the description of translation sliders to show translation
@@ -1057,14 +1086,15 @@ class QuickViewer:
 
         # Set shift for image
         self.current_trans = new_trans
-        self.trans_viewer.im.set_shift(self.current_trans["x"],
-                                       self.current_trans["y"],
-                                       self.current_trans["z"])
+        self.trans_viewer.im.set_shift(
+            self.current_trans["x"], self.current_trans["y"], self.current_trans["z"]
+        )
 
         # Adjust descriptions
         for ax, slider in self.tsliders.items():
             slider.description = "{} ({:.0f} mm)".format(
-                ax, self.trans_viewer.im.shift_mm[ax])
+                ax, self.trans_viewer.im.shift_mm[ax]
+            )
 
     def set_slider_widths(self):
         """Adjust widths of slider UI."""
@@ -1072,13 +1102,17 @@ class QuickViewer:
         if self.plots_per_row is not None and self.plots_per_row < self.n:
             return
         for i, slider in enumerate(self.slider_boxes[:-1]):
-            width = self.figsize * self.viewer[i].im.get_relative_width(
-                self.view, self.zoom, self.colorbar) \
-                    * mpl.rcParams["figure.dpi"]
+            width = (
+                self.figsize
+                * self.viewer[i].im.get_relative_width(
+                    self.view, self.zoom, self.colorbar
+                )
+                * mpl.rcParams["figure.dpi"]
+            )
             slider.layout = ipyw.Layout(width=f"{width}px")
 
     def make_reset_zoom(self, viewer):
-        """Make a reset zoom function for a given viewer that updates zoom 
+        """Make a reset zoom function for a given viewer that updates zoom
         without plotting, then plots afterwards."""
 
         def reset_zoom(_):
@@ -1092,26 +1126,28 @@ class QuickViewer:
     def make_fig(self):
 
         # Get relative width of each subplot
-        width_ratios = [v.im.get_relative_width(self.view, self.zoom, 
-                                                self.colorbar)
-                        for v in self.viewer]
-        width_ratios.extend([c.get_relative_width(self.view, 
-                                                  self.comp_colorbar,
-                                                  self.figsize) 
-                             for c in self.comparison.values()])
+        width_ratios = [
+            v.im.get_relative_width(self.view, self.zoom, self.colorbar)
+            for v in self.viewer
+        ]
+        width_ratios.extend(
+            [
+                c.get_relative_width(self.view, self.comp_colorbar, self.figsize)
+                for c in self.comparison.values()
+            ]
+        )
 
         # Get rows and columns
-        n_plots = (not self.comparison_only) * self.n \
-            + len(self.comparison)
+        n_plots = (not self.comparison_only) * self.n + len(self.comparison)
         if self.comparison_only:
-            width_ratios = width_ratios[self.n:]
+            width_ratios = width_ratios[self.n :]
         if self.plots_per_row is not None:
             n_cols = min([self.plots_per_row, n_plots])
             n_rows = int(np.ceil(n_plots / n_cols))
-            width_ratios_padded = width_ratios + \
-                [0 for i in range((n_rows * n_cols) - n_plots)]
-            ratios_per_row = np.array(width_ratios_padded).reshape(n_rows,
-                                                                   n_cols)
+            width_ratios_padded = width_ratios + [
+                0 for i in range((n_rows * n_cols) - n_plots)
+            ]
+            ratios_per_row = np.array(width_ratios_padded).reshape(n_rows, n_cols)
             width_ratios = np.amax(ratios_per_row, axis=0)
         else:
             n_cols = n_plots
@@ -1147,8 +1183,8 @@ class QuickViewer:
     def set_callbacks(self):
         """Set callbacks for scrolls and keypresses."""
 
-        self.fig.canvas.mpl_connect('key_press_event', self.on_key)
-        self.fig.canvas.mpl_connect('scroll_event', self.on_scroll)
+        self.fig.canvas.mpl_connect("key_press_event", self.on_key)
+        self.fig.canvas.mpl_connect("scroll_event", self.on_scroll)
 
     def on_key(self, event):
         """Callbacks for key presses."""
@@ -1182,8 +1218,10 @@ class QuickViewer:
         elif event.key == "o":
             if self.has_overlay:
                 ops = [0.2, 0.35, 0.5, 0.65, 0.8]
-                next_op = {ops[i]: ops[i + 1] if i + 1 < len(ops)
-                             else ops[0] for i in range(len(ops))}
+                next_op = {
+                    ops[i]: ops[i + 1] if i + 1 < len(ops) else ops[0]
+                    for i in range(len(ops))
+                }
                 diffs = [abs(op - self.ui_overlay.value) for op in ops]
                 current = ops[diffs.index(min(diffs))]
                 self.ui_overlay.value = next_op[current]
@@ -1269,9 +1307,9 @@ class QuickViewer:
             # Plot all comparisons
             for name, comp in self.comparison.items():
                 plot_type = None if name != "multicomp" else multicomp_plot_type
-                ImageViewer.plot_image(
-                    self, 
-                    comp, 
+                SingleViewer.plot_image(
+                    self,
+                    comp,
                     invert=invert,
                     plot_type=plot_type,
                     cb_splits=self.ui_cb.value,
@@ -1281,12 +1319,12 @@ class QuickViewer:
                     zoom=self.viewer[0].zoom,
                     zoom_centre=self.viewer[0].zoom_centre,
                     mpl_kwargs=self.viewer[0].v_min_max,
-                    colorbar=self.comp_colorbar, 
+                    colorbar=self.comp_colorbar,
                     colorbar_label=self.viewer[0].colorbar_label,
                     show_mse=self.show_mse,
                     dta_tolerance=self.dta_tolerance,
                     dta_crit=self.dta_crit,
-                    diff_crit=self.diff_crit
+                    diff_crit=self.diff_crit,
                 )
 
         if self.suptitle is not None:
@@ -1307,7 +1345,7 @@ class QuickViewer:
             self.fig.canvas.flush_events()
 
 
-class ImageViewer():
+class SingleViewer:
     """Class for displaying a MultiImage with interactive elements."""
 
     def __init__(
@@ -1361,7 +1399,7 @@ class ImageViewer():
         major_ticks=None,
         minor_ticks=None,
         ticks_all_sides=False,
-        **kwargs
+        **kwargs,
     ):
 
         # Make MultiImage
@@ -1380,8 +1418,9 @@ class ImageViewer():
             self.view = init_view
 
         # Set initial slice numbers
-        self.slice = {view: np.ceil(self.im.n_voxels[z] / 2) for view, z
-                      in _slider_axes.items()}
+        self.slice = {
+            view: np.ceil(self.im.n_voxels[z] / 2) for view, z in _slider_axes.items()
+        }
         if init_pos is not None and self.im.scale_in_mm:
             self.set_slice_from_pos(init_view, init_pos)
         else:
@@ -1405,8 +1444,9 @@ class ImageViewer():
         elif hu_limits == "auto":
             self.hu_limits = (self.im.data.min(), self.im.data.max())
         if hu_step is None:
-            self.hu_step = 1 if abs(self.hu_limits[1] 
-                                    - self.hu_limits[0]) >= 10 else 0.1
+            self.hu_step = (
+                1 if abs(self.hu_limits[1] - self.hu_limits[0]) >= 10 else 0.1
+            )
 
         # Other settings
         self.in_notebook = in_notebook()
@@ -1415,8 +1455,7 @@ class ImageViewer():
         self.continuous_update = continuous_update
         self.colorbar = colorbar
         self.colorbar_drawn = False
-        self.colorbar_label = colorbar_label if colorbar_label is not None \
-                else "HU"
+        self.colorbar_label = colorbar_label if colorbar_label is not None else "HU"
         self.annotate_slice = annotate_slice
         if self.annotate_slice is None and not self.in_notebook:
             self.annotate_slice = True
@@ -1475,15 +1514,18 @@ class ImageViewer():
         self.init_struct = init_struct
 
         # Structure info settings
-        self.compare_structs = kwargs.get("compare_structs", False) \
-                and len(self.im.struct_comparisons)
+        self.compare_structs = kwargs.get("compare_structs", False) and len(
+            self.im.struct_comparisons
+        )
         self.struct_info = struct_info
         self.float_str = "{:." + str(struct_info_dp) + "f}"
         self.float_fmt = lambda x: self.float_str.format(x)
+
         def get_units(units):
             if units is None:
                 return "mm" if self.im.scale_in_mm else "voxels"
             return units
+
         self.area_units = get_units(area_units)
         self.length_units = get_units(length_units)
         self.vol_units = get_units(vol_units)
@@ -1500,9 +1542,11 @@ class ImageViewer():
     def set_ax_lims(self, xlim, ylim, zlim):
         """Set custom axis limits after image has been loaded."""
 
-        axes = {"x": {"x-z": 1, "x-y": 0},
-                "y": {"x-y": 1, "y-z": 1},
-                "z": {"x-z": 0, "y-z": 0}}
+        axes = {
+            "x": {"x-z": 1, "x-y": 0},
+            "y": {"x-y": 1, "y-z": 1},
+            "z": {"x-z": 0, "y-z": 0},
+        }
         for ax, lims in zip(axes.keys(), [xlim, ylim, zlim]):
             if lims is None:
                 continue
@@ -1556,11 +1600,11 @@ class ImageViewer():
             return sl
 
     def make_ui(self, vimage=None, share_slider=True):
-        """Make Jupyter notebook UI. If vimage contains another ImageViewer
+        """Make Jupyter notebook UI. If vimage contains another SingleViewer
         instance, the UI will be taken from that image. If share_slider is
         False, independent HU and slice sliders will be created."""
 
-        shared_ui = isinstance(vimage, ImageViewer)
+        shared_ui = isinstance(vimage, SingleViewer)
         self.main_ui = []
 
         # View radio buttons
@@ -1580,9 +1624,10 @@ class ImageViewer():
 
         # Structure jumping menu
         # Get list of structures
-        self.structs_for_jump = {"": None, 
-                                 **{s.name_unique: s for s in
-                                    self.im.structs}}
+        self.structs_for_jump = {
+            "": None,
+            **{s.name_unique: s for s in self.im.structs},
+        }
         structs_standard = {standard_str(s): s for s in self.structs_for_jump}
         if standard_str(self.init_struct) in structs_standard:
             self.current_struct = structs_standard[standard_str(self.init_struct)]
@@ -1605,7 +1650,7 @@ class ImageViewer():
                 hu_limits = (self.im.data.min(), self.im.data.max())
             else:
                 hu_limits = self.hu_limits
-            
+
             # Single range slider
             if not self.hu_from_width:
                 vmin = max([self.hu[0], hu_limits[0]])
@@ -1617,23 +1662,32 @@ class ImageViewer():
                     "description": self.colorbar_label,
                     "continuous_update": False,
                     "style": _style,
-                    "step": self.hu_step
+                    "step": self.hu_step,
                 }
-                slider_kind = ipyw.FloatRangeSlider if self.hu_step < 1 else \
-                        ipyw.IntRangeSlider
+                slider_kind = (
+                    ipyw.FloatRangeSlider if self.hu_step < 1 else ipyw.IntRangeSlider
+                )
                 self.ui_hu = slider_kind(**ui_hu_kwargs)
                 self.main_ui.append(self.ui_hu)
 
             # Centre and window sliders
             else:
                 self.ui_hu_centre = ipyw.IntSlider(
-                    min=hu_limits[0], max=hu_limits[1],
-                    value=self.hu, description="HU centre",
-                    continuous_update=False, style=_style)
+                    min=hu_limits[0],
+                    max=hu_limits[1],
+                    value=self.hu,
+                    description="HU centre",
+                    continuous_update=False,
+                    style=_style,
+                )
                 self.ui_hu_width = ipyw.IntSlider(
-                    min=0, max=abs(hu_limits[1] - hu_limits[0]),
-                    value=self.hu_width, description="HU width",
-                    continuous_update=False, style=_style)
+                    min=0,
+                    max=abs(hu_limits[1] - hu_limits[0]),
+                    value=self.hu_width,
+                    description="HU width",
+                    continuous_update=False,
+                    style=_style,
+                )
                 self.ui_hu_list = [self.ui_hu_centre, self.ui_hu_width]
                 self.main_ui.extend(self.ui_hu_list)
                 self.ui_hu = ipyw.VBox(self.ui_hu_list)
@@ -1644,47 +1698,62 @@ class ImageViewer():
                 # Get initial zoom level for each view
                 if self.zoom is None:
                     init_zoom = 1
-                elif core.is_list(self.zoom):
+                elif is_list(self.zoom):
                     init_zoom = max(self.zoom)
                 else:
                     init_zoom = self.zoom
 
                 # Zoom level slider
                 self.ui_zoom = ipyw.FloatSlider(
-                    min=1, max=8, step=0.1, value=init_zoom, 
-                    description="Zoom", readout_format=".1f", 
-                    continuous_update=False, style=_style)
+                    min=1,
+                    max=8,
+                    step=0.1,
+                    value=init_zoom,
+                    description="Zoom",
+                    readout_format=".1f",
+                    continuous_update=False,
+                    style=_style,
+                )
 
                 # Get initial zoom centres
-                zoom_centre = self.im.get_ax_dict(self.zoom_centre, 
-                                                  default=None)
-                self.default_centre = {view: self.im.get_image_centre(view) 
-                                       for view in _slider_axes}
+                zoom_centre = self.im.get_ax_dict(self.zoom_centre, default=None)
+                self.default_centre = {
+                    view: self.im.get_image_centre(view) for view in _slider_axes
+                }
                 self.current_centre = {}
                 for view in _plot_axes:
                     self.current_centre[view] = []
                     for i, ax in enumerate(_plot_axes[view]):
                         if zoom_centre is None or zoom_centre[ax] is None:
                             self.current_centre[view].append(
-                                self.default_centre[view][i])
+                                self.default_centre[view][i]
+                            )
                         else:
                             self.current_centre[view].append(zoom_centre[ax])
 
                 # Make zoom centre sliders
                 self.ui_zoom_centre_x = ipyw.FloatSlider(
                     continuous_update=self.continuous_update,
-                    readout_format=".1f", step=1)
+                    readout_format=".1f",
+                    step=1,
+                )
                 self.ui_zoom_centre_y = ipyw.FloatSlider(
                     continuous_update=self.continuous_update,
-                    readout_format=".1f", step=1)
+                    readout_format=".1f",
+                    step=1,
+                )
                 self.update_zoom_sliders()
 
                 # Zoom reset button
                 self.ui_zoom_reset = ipyw.Button(description="Reset zoom")
                 if self.standalone:
                     self.ui_zoom_reset.on_click(self.reset_zoom)
-                self.all_zoom_ui = [self.ui_zoom, self.ui_zoom_centre_x,
-                                    self.ui_zoom_centre_y, self.ui_zoom_reset]
+                self.all_zoom_ui = [
+                    self.ui_zoom,
+                    self.ui_zoom_centre_x,
+                    self.ui_zoom_centre_y,
+                    self.ui_zoom_reset,
+                ]
                 self.main_ui.extend(self.all_zoom_ui)
 
             # Make slice slider
@@ -1692,7 +1761,7 @@ class ImageViewer():
             self.ui_slice = ipyw.FloatSlider(
                 continuous_update=self.continuous_update,
                 style=_style,
-                readout_format=readout
+                readout_format=readout,
             )
             self.own_ui_slice = True
             self.update_slice_slider()
@@ -1718,9 +1787,11 @@ class ImageViewer():
         # Make time slider
         if self.im.timeseries:
             self.ui_time = ipyw.IntSlider(
-                min=1, max=len(self.im.dates), style=_style,
-                description="Timepoint", 
-                continuous_update=self.continuous_update
+                min=1,
+                max=len(self.im.dates),
+                style=_style,
+                description="Timepoint",
+                continuous_update=self.continuous_update,
             )
             self.main_ui.append(self.ui_time)
 
@@ -1729,40 +1800,53 @@ class ImageViewer():
         if not shared_ui:
 
             # Mask checkbox
-            self.ui_mask = ipyw.Checkbox(value=self.im.has_mask, indent=False,
-                                         description="Apply mask")
+            self.ui_mask = ipyw.Checkbox(
+                value=self.im.has_mask, indent=False, description="Apply mask"
+            )
             if self.im.has_mask:
                 self.extra_ui.append(self.ui_mask)
 
             # Dose opacity
             self.ui_dose = ipyw.FloatSlider(
-                value=self.init_dose_opacity, min=0, max=1, step=0.05,
+                value=self.init_dose_opacity,
+                min=0,
+                max=1,
+                step=0.05,
                 description="Dose opacity",
                 continuous_update=self.continuous_update,
-                readout_format=".2f", style=_style,
+                readout_format=".2f",
+                style=_style,
             )
             if self.im.has_dose:
                 self.extra_ui.append(self.ui_dose)
 
             # Jacobian opacity and range
             self.ui_jac_opacity = ipyw.FloatSlider(
-                value=self.init_jac_opacity, min=0, max=1, step=0.05,
+                value=self.init_jac_opacity,
+                min=0,
+                max=1,
+                step=0.05,
                 description="Jacobian opacity",
                 continuous_update=self.continuous_update,
-                readout_format=".2f", style=_style,
+                readout_format=".2f",
+                style=_style,
             )
             self.ui_jac_range = ipyw.FloatRangeSlider(
-                min=-0.5, max=2.5, step=0.1, value=[0.8, 1.2],
-                description="Jacobian range", continuous_update=False,
-                style=_style, readout_format=".1f"
+                min=-0.5,
+                max=2.5,
+                step=0.1,
+                value=[0.8, 1.2],
+                description="Jacobian range",
+                continuous_update=False,
+                style=_style,
+                readout_format=".1f",
             )
             if self.im.has_jacobian:
-                self.extra_ui.extend([self.ui_jac_opacity,
-                                      self.ui_jac_range])
+                self.extra_ui.extend([self.ui_jac_opacity, self.ui_jac_range])
 
             # Deformation field plot type
             self.ui_df = ipyw.Dropdown(
-                options=_df_plot_types,
+                options=["grid", "quiver", "none"],
                 value=self.df_plot_type,
                 description="Deformation field",
                 style=_style,
@@ -1773,7 +1857,14 @@ class ImageViewer():
             # Structure UI
             # Structure plot type
             self.ui_struct_plot_type = ipyw.Dropdown(
-                options=_struct_plot_types,
+                options=[
+                    "contour",
+                    "mask",
+                    "filled",
+                    "centroid",
+                    "filled centroid",
+                    "none",
+                ],
                 value=self.struct_plot_type,
                 description="Structure plotting",
                 style=_style,
@@ -1781,23 +1872,33 @@ class ImageViewer():
             self.ui_struct_plot_type2 = ipyw.Dropdown(
                 options=["individual", "group others"],
                 description="Comparison plotting",
-                style=_style
+                style=_style,
             )
             self.ui_struct_comp_type = ipyw.Dropdown(
                 options=["majority vote", "sum", "overlap"],
                 description="Comparison type",
-                style=_style
+                style=_style,
             )
             self.struct_comp_type = self.ui_struct_comp_type.value
 
             # Opacity/linewidth sliders
             self.ui_struct_linewidth = ipyw.IntSlider(
-                min=1, max=8, step=1, value=self.struct_linewidth, 
-                description="Linewidth", continuous_update=False, 
-                style=_style)
+                min=1,
+                max=8,
+                step=1,
+                value=self.struct_linewidth,
+                description="Linewidth",
+                continuous_update=False,
+                style=_style,
+            )
             self.ui_struct_opacity = ipyw.FloatSlider(
-                min=0, max=1, step=0.1, continuous_update=False, 
-                description="Opacity", style=_style)
+                min=0,
+                max=1,
+                step=0.1,
+                continuous_update=False,
+                description="Opacity",
+                style=_style,
+            )
             self.update_struct_sliders()
 
             # Add all structure UIs
@@ -1805,7 +1906,7 @@ class ImageViewer():
                 to_add = [
                     self.ui_struct_plot_type,
                     self.ui_struct_linewidth,
-                    self.ui_struct_opacity
+                    self.ui_struct_opacity,
                 ]
                 if self.im.comp_type == "others":
                     to_add.insert(1, self.ui_struct_plot_type2)
@@ -1813,11 +1914,20 @@ class ImageViewer():
                 self.extra_ui.extend(to_add)
 
         else:
-            to_share = ["ui_mask", "ui_dose", "ui_jac_opacity", "ui_jac_range",
-                        "ui_df", "ui_struct_plot_type", "ui_struct_plot_type2",
-                        "ui_struct_comp_type", "ui_struct_linewidth", 
-                        "ui_struct_linewidth", "ui_struct_opacity",
-                        "struct_comp_type"]
+            to_share = [
+                "ui_mask",
+                "ui_dose",
+                "ui_jac_opacity",
+                "ui_jac_range",
+                "ui_df",
+                "ui_struct_plot_type",
+                "ui_struct_plot_type2",
+                "ui_struct_comp_type",
+                "ui_struct_linewidth",
+                "ui_struct_linewidth",
+                "ui_struct_opacity",
+                "struct_comp_type",
+            ]
             for ts in to_share:
                 setattr(self, ts, getattr(vimage, ts))
 
@@ -1830,32 +1940,29 @@ class ImageViewer():
         self.lower_ui_box = ipyw.VBox(self.lower_ui)
         self.trigger = ipyw.Checkbox(value=True)
         self.all_ui = (
-            self.main_ui 
-            + self.extra_ui 
-            + self.ui_struct_checkboxes
-            + [self.trigger]
+            self.main_ui + self.extra_ui + self.ui_struct_checkboxes + [self.trigger]
         )
 
     def get_struct_html(self, struct):
         """Get HTML string containing name and colour for a structure."""
 
         if not struct.visible:
-            return ('<p style="color: rgb(100, 100, 100)">'
-                    f'{struct.name_unique}</p>')
+            return '<p style="color: rgb(100, 100, 100)">' f"{struct.name_unique}</p>"
 
         red, green, blue = [c * 255 for c in struct.color[:3]]
-        text_col = "black" if (red * 0.299 + green * 0.587 + blue * 0.114) \
-                > 186 else "white"
-        return ('<p style="background-color: rgb({}, {}, {}); '
-                'color: {};">&nbsp;{}&nbsp;</p>').format(
-                    red, green, blue, text_col, struct.name_unique)
+        text_col = (
+            "black" if (red * 0.299 + green * 0.587 + blue * 0.114) > 186 else "white"
+        )
+        return (
+            '<p style="background-color: rgb({}, {}, {}); '
+            'color: {};">&nbsp;{}&nbsp;</p>'
+        ).format(red, green, blue, text_col, struct.name_unique)
 
     def make_lower_ui(self):
 
         # Saving UI
         self.lower_ui = []
-        self.save_name = ipyw.Text(description="Output file:",
-                                   value=self.save_as)
+        self.save_name = ipyw.Text(description="Output file:", value=self.save_as)
         self.save_button = ipyw.Button(description="Save")
         self.save_button.on_click(self.save_fig)
 
@@ -1873,9 +1980,19 @@ class ImageViewer():
             "overall": "Overall",
         }
         for c in self.im.struct_comparisons:
-            row = {h: None for h in ["comp", "dice", "vol", "centroid",
-                                     "dice_slice", "area", "centroid_x",
-                                     "centroid_y"]}
+            row = {
+                h: None
+                for h in [
+                    "comp",
+                    "dice",
+                    "vol",
+                    "centroid",
+                    "dice_slice",
+                    "area",
+                    "centroid_x",
+                    "centroid_y",
+                ]
+            }
             struct_comps.append(row)
 
         self.df_struct_comp = pd.DataFrame(struct_comps)
@@ -1883,13 +2000,12 @@ class ImageViewer():
 
         # Structure checkboxes and info table
         blank = ipyw.HTML(value="&nbsp;")
-        self.ui_struct_checkboxes = [blank, blank, blank] if self.struct_info \
-                else [blank]
+        self.ui_struct_checkboxes = (
+            [blank, blank, blank] if self.struct_info else [blank]
+        )
         struct_info = []
-        vol_units = self.vol_units if self.vol_units != "mm" \
-            else "mm<sup>3</sup>"
-        area_units = self.area_units if self.area_units != "mm" \
-            else "mm<sup>2</sup>"
+        vol_units = self.vol_units if self.vol_units != "mm" else "mm<sup>3</sup>"
+        area_units = self.area_units if self.area_units != "mm" else "mm<sup>2</sup>"
         self.col_names = {
             "struct": "Structure",
             "vol": f"Volume ({vol_units})",
@@ -1902,17 +2018,31 @@ class ImageViewer():
         }
 
         self.struct_checkboxes = {
-            s: ipyw.Checkbox(value=True, indent=False) for s in 
-            self.structs_for_jump.keys() if s}
+            s: ipyw.Checkbox(value=True, indent=False)
+            for s in self.structs_for_jump.keys()
+            if s
+        }
         self.ui_struct_checkboxes.extend(list(self.struct_checkboxes.values()))
         for s in self.im.structs:
             s.checkbox = self.struct_checkboxes[s.name_unique]
             if not self.struct_info:
                 row = {"struct": None}
             else:
-                row = {h: None for h in ["struct", "vol", "x_full", "y_full", 
-                                         "z_full", "area", "x", "y", 
-                                         "centroid_x", "centroid_y"]}
+                row = {
+                    h: None
+                    for h in [
+                        "struct",
+                        "vol",
+                        "x_full",
+                        "y_full",
+                        "z_full",
+                        "area",
+                        "x",
+                        "y",
+                        "centroid_x",
+                        "centroid_y",
+                    ]
+                }
             struct_info.append(row)
         if self.im.struct_timeseries:
             for date, ts in self.im.dated_structs.items():
@@ -1921,24 +2051,27 @@ class ImageViewer():
                         s.checkbox = self.struct_checkboxes[s.name_unique]
                     except KeyError:
                         s.checkbox = ipyw.Checkbox(value=True)
-        
+
         self.visible_structs = self.get_struct_visibility()
         self.df_struct_info = pd.DataFrame(struct_info)
         self.ui_struct_table = ipyw.HTML()
-        self.ui_struct_info = ipyw.HBox([
-            self.ui_struct_table,
-            ipyw.VBox(self.ui_struct_checkboxes,
-                      layout=ipyw.Layout(width="30px")),
-        ])
+        self.ui_struct_info = ipyw.HBox(
+            [
+                self.ui_struct_table,
+                ipyw.VBox(self.ui_struct_checkboxes, layout=ipyw.Layout(width="30px")),
+            ]
+        )
 
         # Table saving UI
         self.ui_table_content = ipyw.Dropdown(
             options=["All", "Overall", "Slice-by-slice"],
-            description="Metrics to save", style=_style)
+            description="Metrics to save",
+            style=_style,
+        )
         self.ui_table_format = ipyw.Dropdown(
-            options=["csv", "tex"], description="Format", style=_style)
-        self.ui_table_opts = ipyw.VBox([self.ui_table_content,
-                                        self.ui_table_format])
+            options=["csv", "tex"], description="Format", style=_style
+        )
+        self.ui_table_opts = ipyw.VBox([self.ui_table_content, self.ui_table_format])
         table_saving = [self.ui_table_opts]
         if self.struct_info:
             self.ui_table_struct_info_name = ipyw.Text(
@@ -1947,11 +2080,12 @@ class ImageViewer():
             self.ui_table_struct_info_button = ipyw.Button(
                 description="Save struct info"
             )
-            self.ui_table_struct_info_button.on_click(
-                self.save_struct_info_table)
-            table_saving.append(ipyw.VBox([
-                self.ui_table_struct_info_name,
-                self.ui_table_struct_info_button]))
+            self.ui_table_struct_info_button.on_click(self.save_struct_info_table)
+            table_saving.append(
+                ipyw.VBox(
+                    [self.ui_table_struct_info_name, self.ui_table_struct_info_button]
+                )
+            )
         if self.compare_structs:
             self.ui_table_struct_comp_name = ipyw.Text(
                 description="File:", indent=False, value="struct_comparison"
@@ -1959,28 +2093,45 @@ class ImageViewer():
             self.ui_table_struct_comp_button = ipyw.Button(
                 description="Save comparisons", style=_style
             )
-            self.ui_table_struct_comp_button.on_click(
-                self.save_struct_comp_table)
-            table_saving.append(ipyw.VBox([
-                self.ui_table_struct_comp_name,
-                self.ui_table_struct_comp_button]))
+            self.ui_table_struct_comp_button.on_click(self.save_struct_comp_table)
+            table_saving.append(
+                ipyw.VBox(
+                    [self.ui_table_struct_comp_name, self.ui_table_struct_comp_button]
+                )
+            )
         self.ui_table_saving = ipyw.HBox(table_saving)
 
         # Add to lower UI
         if self.compare_structs:
-            self.df_struct_comp.columns = pd.MultiIndex.from_tuples([
-                ("", "comp"), ("overall", "dice"), ("overall", "vol"),
-                ("overall", "centroid"), ("slice", "dice_slice"), 
-                ("slice", "area"), ("slice", "centroid_x"), 
-                ("slice", "centroid_y")])
+            self.df_struct_comp.columns = pd.MultiIndex.from_tuples(
+                [
+                    ("", "comp"),
+                    ("overall", "dice"),
+                    ("overall", "vol"),
+                    ("overall", "centroid"),
+                    ("slice", "dice_slice"),
+                    ("slice", "area"),
+                    ("slice", "centroid_x"),
+                    ("slice", "centroid_y"),
+                ]
+            )
             self.update_struct_comparisons()
             self.lower_ui.append(self.ui_struct_comp_table)
         if self.struct_info:
-            self.df_struct_info.columns = pd.MultiIndex.from_tuples([
-                ("", "struct"), ("overall", "vol"), ("overall", "full_x"),
-                ("overall", "full_y"), ("overall", "full_z"), 
-                ("slice", "area"), ("slice", "x"), ("slice", "y"), 
-                ("slice", "centroid_x"), ("slice", "centroid_y")])
+            self.df_struct_info.columns = pd.MultiIndex.from_tuples(
+                [
+                    ("", "struct"),
+                    ("overall", "vol"),
+                    ("overall", "full_x"),
+                    ("overall", "full_y"),
+                    ("overall", "full_z"),
+                    ("slice", "area"),
+                    ("slice", "x"),
+                    ("slice", "y"),
+                    ("slice", "centroid_x"),
+                    ("slice", "centroid_y"),
+                ]
+            )
         self.update_struct_info()
         self.lower_ui.append(self.ui_struct_info)
 
@@ -1995,11 +2146,14 @@ class ImageViewer():
 
         if not self.im.has_structs:
             return []
-        return [name for name in self.structs_for_jump if name and 
-                self.struct_checkboxes[name].value]
+        return [
+            name
+            for name in self.structs_for_jump
+            if name and self.struct_checkboxes[name].value
+        ]
 
     def update_struct_comparisons(self):
-        """Update structure comparison metrics to reflect the current 
+        """Update structure comparison metrics to reflect the current
         view/slice."""
 
         if not self.compare_structs:
@@ -2019,8 +2173,9 @@ class ImageViewer():
                     continue
 
             # Structure names
-            self.df_struct_comp.at[i, ("", "comp")] = \
-                    self.get_struct_html(sc.s1) + self.get_struct_html(sc.s2)
+            self.df_struct_comp.at[i, ("", "comp")] = self.get_struct_html(
+                sc.s1
+            ) + self.get_struct_html(sc.s2)
 
             # Global metrics
             dice = sc.global_dice_score()
@@ -2031,7 +2186,8 @@ class ImageViewer():
             dice_slice = sc.dice_score(self.view, self.slice[self.view])
             area = sc.relative_area(self.view, self.slice[self.view])
             centroid_x, centroid_y = sc.centroid_distance_2d(
-                self.view, self.slice[self.view], centroid_units)
+                self.view, self.slice[self.view], centroid_units
+            )
 
             # Fill dataframe
             self.df_struct_comp.at[i, ("overall", "dice")] = dice
@@ -2044,14 +2200,18 @@ class ImageViewer():
 
         # Convert dataframe to HTML
         x_ax, y_ax = _plot_axes[self.view]
-        self.comp_col_names.update({
-            "centroid_x": f"{x_ax} dist. ({centroid_units})",
-            "centroid_y": f"{y_ax} dist. ({centroid_units})",
-        })
-        html = self.df_struct_comp.drop(self.df_struct_comp.index[to_drop]).\
-                rename(self.comp_col_names, axis=1).\
-                fillna("—").\
-                to_html(index=False, float_format=self.float_fmt)
+        self.comp_col_names.update(
+            {
+                "centroid_x": f"{x_ax} dist. ({centroid_units})",
+                "centroid_y": f"{y_ax} dist. ({centroid_units})",
+            }
+        )
+        html = (
+            self.df_struct_comp.drop(self.df_struct_comp.index[to_drop])
+            .rename(self.comp_col_names, axis=1)
+            .fillna("—")
+            .to_html(index=False, float_format=self.float_fmt)
+        )
         header = """
             <head>
                 <style>
@@ -2065,10 +2225,14 @@ class ImageViewer():
                 </style>
             </head>
         """
-        table_html = (header + html).replace("&gt;", ">").\
-                replace("&lt;", "<").replace("&amp;", "&")
+        table_html = (
+            (header + html)
+            .replace("&gt;", ">")
+            .replace("&lt;", "<")
+            .replace("&amp;", "&")
+        )
         self.ui_struct_comp_table.value = table_html
-                
+
     def update_struct_info(self):
         """Update structure info UI to reflect current view/slice."""
 
@@ -2085,14 +2249,15 @@ class ImageViewer():
 
                 # Get metrics
                 volume = s.get_volume(self.vol_units)
-                area = s.get_area(self.view, self.slice[self.view],
-                                  self.area_units)
+                area = s.get_area(self.view, self.slice[self.view], self.area_units)
                 full_extents = s.get_full_extent(self.length_units)
-                extents = s.get_extents(self.view, self.slice[self.view],
-                                        self.length_units)
+                extents = s.get_extents(
+                    self.view, self.slice[self.view], self.length_units
+                )
                 centre_units = "mm" if self.im.scale_in_mm else "voxels"
-                centre = s.get_centroid_2d(self.view, self.slice[self.view],
-                                           centre_units)
+                centre = s.get_centroid_2d(
+                    self.view, self.slice[self.view], centre_units
+                )
 
                 # Update dataframe
                 self.df_struct_info.at[i, ("overall", "vol")] = volume
@@ -2111,14 +2276,19 @@ class ImageViewer():
         # Convert dataframe to HTML
         x_ax, y_ax = _plot_axes[self.view]
         centroid_units = " (mm)" if self.im.scale_in_mm else ""
-        self.col_names.update({
-            "x": f"{x_ax} length ({self.length_units})",
-            "y": f"{y_ax} length ({self.length_units})",
-            "centroid_x": f"{x_ax} centroid{centroid_units}",
-            "centroid_y": f"{y_ax} centroid{centroid_units}",
-        })
-        html = self.df_struct_info.rename(self.col_names, axis=1).fillna("—").\
-                to_html(index=False, float_format=self.float_fmt)
+        self.col_names.update(
+            {
+                "x": f"{x_ax} length ({self.length_units})",
+                "y": f"{y_ax} length ({self.length_units})",
+                "centroid_x": f"{x_ax} centroid{centroid_units}",
+                "centroid_y": f"{y_ax} centroid{centroid_units}",
+            }
+        )
+        html = (
+            self.df_struct_info.rename(self.col_names, axis=1)
+            .fillna("—")
+            .to_html(index=False, float_format=self.float_fmt)
+        )
         header = """
             <head>
                 <style>
@@ -2132,9 +2302,13 @@ class ImageViewer():
                 </style>
             </head>
         """
-                        #  white-space: nowrap;
-        table_html = (header + html).replace("&gt;", ">").\
-                replace("&lt;", "<").replace("&amp;", "&")
+        #  white-space: nowrap;
+        table_html = (
+            (header + html)
+            .replace("&gt;", ">")
+            .replace("&lt;", "<")
+            .replace("&amp;", "&")
+        )
         self.ui_struct_table.value = table_html
 
     def update_struct_sliders(self):
@@ -2143,10 +2317,12 @@ class ImageViewer():
         self.struct_plot_type = self.ui_struct_plot_type.value
 
         # Disable irrelevant sliders
-        self.ui_struct_opacity.disabled = self.struct_plot_type \
-                in ["contour", "none", "centroid"]
-        self.ui_struct_linewidth.disabled = self.struct_plot_type \
-                in ["mask", "none"]
+        self.ui_struct_opacity.disabled = self.struct_plot_type in [
+            "contour",
+            "none",
+            "centroid",
+        ]
+        self.ui_struct_linewidth.disabled = self.struct_plot_type in ["mask", "none"]
 
         # Set opacity of masked or filled structs
         if self.struct_plot_type == "mask":
@@ -2160,8 +2336,8 @@ class ImageViewer():
         if not self.standalone or self.callbacks_set:
             return
 
-        self.im.fig.canvas.mpl_connect('key_press_event', self.on_key)
-        self.im.fig.canvas.mpl_connect('scroll_event', self.on_scroll)
+        self.im.fig.canvas.mpl_connect("key_press_event", self.on_key)
+        self.im.fig.canvas.mpl_connect("scroll_event", self.on_scroll)
         self.callbacks_set = True
 
     def on_key(self, event):
@@ -2180,8 +2356,10 @@ class ImageViewer():
         elif event.key == "d":
             if self.im.has_dose:
                 doses = [0, 0.15, 0.35, 0.5, 1]
-                next_dose = {doses[i]: doses[i + 1] if i + 1 < len(doses)
-                             else doses[0] for i in range(len(doses))}
+                next_dose = {
+                    doses[i]: doses[i + 1] if i + 1 < len(doses) else doses[0]
+                    for i in range(len(doses))
+                }
                 diffs = [abs(d - self.ui_dose.value) for d in doses]
                 current = doses[diffs.index(min(diffs))]
                 self.ui_dose.value = next_dose[current]
@@ -2194,12 +2372,17 @@ class ImageViewer():
         # Press c to change structure plot type
         elif event.key == "c":
             if self.im.has_structs:
-                next_type = {"mask": "contour", "contour": "filled",
-                             "filled": "centroid", "centroid": 
-                             "filled centroid", "filled centroid": "none",
-                             "none": "mask"}
-                self.ui_struct_plot_type.value = \
-                    next_type[self.ui_struct_plot_type.value]
+                next_type = {
+                    "mask": "contour",
+                    "contour": "filled",
+                    "filled": "centroid",
+                    "centroid": "filled centroid",
+                    "filled centroid": "none",
+                    "none": "mask",
+                }
+                self.ui_struct_plot_type.value = next_type[
+                    self.ui_struct_plot_type.value
+                ]
 
         # Press j to jump between structures
         elif event.key == "j" and self.im.has_structs:
@@ -2226,7 +2409,7 @@ class ImageViewer():
 
         else:
             return
-        
+
         # Remake plot
         if self.standalone:
             self.plot()
@@ -2291,8 +2474,7 @@ class ImageViewer():
         self.update_slider(self.ui_slice, new_min, new_max, val)
 
         # Set step and description
-        self.ui_slice.step = abs(self.im.voxel_sizes[ax]) if \
-            self.im.scale_in_mm else 1
+        self.ui_slice.step = abs(self.im.voxel_sizes[ax]) if self.im.scale_in_mm else 1
         self.update_slice_slider_desc()
 
     def update_slider(self, slider, new_min, new_max, val):
@@ -2324,8 +2506,7 @@ class ImageViewer():
         if self.im.scale_in_mm:
             self.ui_slice.description = f"{ax} (mm)"
         else:
-            pos = self.im.slice_to_pos(
-                self.slider_to_sl(self.ui_slice.value), ax)
+            pos = self.im.slice_to_pos(self.slider_to_sl(self.ui_slice.value), ax)
             self.ui_slice.description = f"{ax} ({pos:.1f} mm)"
 
     def update_zoom_sliders(self):
@@ -2340,12 +2521,10 @@ class ImageViewer():
             # Set min, max, and value
             new_min = min(self.im.ax_lims[self.view][i])
             new_max = max(self.im.ax_lims[self.view][i])
-            self.update_slider(ui, new_min, new_max, 
-                               self.current_centre[self.view][i])
+            self.update_slider(ui, new_min, new_max, self.current_centre[self.view][i])
 
             # Update description
-            ui.description = "{} centre {}".format(
-                _plot_axes[self.view][i], units)
+            ui.description = "{} centre {}".format(_plot_axes[self.view][i], units)
 
     def reset_zoom(self, _):
         """Reset zoom values to 1 and zoom centres to defaults."""
@@ -2370,7 +2549,8 @@ class ImageViewer():
             if not struct.on_slice(self.view, self.slice[self.view]):
                 mid_slice = int(np.mean(list(struct.contours[self.view].keys())))
                 self.ui_slice.value = self.slice_to_slider(
-                    mid_slice, _slider_axes[self.view])
+                    mid_slice, _slider_axes[self.view]
+                )
                 self.slice[self.view] = mid_slice
             self.centre_at_struct(struct)
         self.ui_struct_jump.value = ""
@@ -2389,7 +2569,7 @@ class ImageViewer():
         """Display plot and UI."""
 
         if self.in_notebook:
-            ImageViewer.show_in_notebook(self, show)
+            SingleViewer.show_in_notebook(self, show)
         else:
             self.plot()
             if show:
@@ -2399,8 +2579,10 @@ class ImageViewer():
         """Display interactive output in a jupyter notebook."""
 
         from IPython.display import display, HTML
-        ui_kw = {str(np.random.rand()): ui for ui in self.all_ui if
-                 hasattr(ui, "value")}
+
+        ui_kw = {
+            str(np.random.rand()): ui for ui in self.all_ui if hasattr(ui, "value")
+        }
         self.out = ipyw.interactive_output(self.plot, ui_kw)
         to_display = [self.upper_ui_box, self.out]
         if len(self.lower_ui):
@@ -2430,8 +2612,7 @@ class ImageViewer():
         if self.zoom_ui:
             self.zoom = self.ui_zoom.value
             self.zoom_centre = [1, 1, 1]
-            for i, ui in enumerate([self.ui_zoom_centre_x, 
-                                    self.ui_zoom_centre_y]):
+            for i, ui in enumerate([self.ui_zoom_centre_x, self.ui_zoom_centre_y]):
                 self.zoom_centre[_axes[_plot_axes[self.view][i]]] = ui.value
                 self.current_centre[self.view][i] = ui.value
 
@@ -2470,9 +2651,11 @@ class ImageViewer():
         # Get jacobian settings
         jacobian_kwargs = {}
         if self.im.has_jacobian:
-            jacobian_kwargs = {"alpha": self.ui_jac_opacity.value,
-                               "vmin": self.ui_jac_range.value[0],
-                               "vmax": self.ui_jac_range.value[1]}
+            jacobian_kwargs = {
+                "alpha": self.ui_jac_opacity.value,
+                "vmin": self.ui_jac_range.value[0],
+                "vmax": self.ui_jac_range.value[1],
+            }
             if self.jacobian_kwargs is not None:
                 jacobian_kwargs.update(jacobian_kwargs)
 
@@ -2486,8 +2669,7 @@ class ImageViewer():
             self.ui_struct_jump.options = [""] + self.visible_structs
             if self.im.structs_as_mask:
                 self.im.set_masks()
-            update_comp_s2 = self.compare_structs and self.im.comp_type \
-                    == "others"
+            update_comp_s2 = self.compare_structs and self.im.comp_type == "others"
 
         # Update structure comparisons if needed
         if self.struct_comp_type != self.ui_struct_comp_type.value:
@@ -2503,8 +2685,12 @@ class ImageViewer():
         struct_kwargs = {}
         if self.ui_struct_plot_type.value != self.struct_plot_type:
             self.update_struct_sliders()
-        if self.struct_plot_type in ["contour", "filled", "centroid", 
-                                     "filled centroid"]:
+        if self.struct_plot_type in [
+            "contour",
+            "filled",
+            "centroid",
+            "filled centroid",
+        ]:
             self.struct_linewidth = self.ui_struct_linewidth.value
             struct_kwargs["linewidth"] = self.struct_linewidth
         if self.struct_plot_type == "mask":
@@ -2528,36 +2714,38 @@ class ImageViewer():
             n_date = self.ui_time.value
 
         # Make plot
-        self.plot_image(self.im,
-                        view=self.view,
-                        sl=self.slice[self.view],
-                        gs=self.gs,
-                        mpl_kwargs=mpl_kwargs,
-                        figsize=self.figsize,
-                        zoom=self.zoom,
-                        zoom_centre=self.zoom_centre,
-                        colorbar=colorbar,
-                        colorbar_label=self.colorbar_label,
-                        masked=self.ui_mask.value,
-                        invert_mask=self.invert_mask,
-                        mask_color=self.mask_color,
-                        dose_kwargs=dose_kwargs,
-                        jacobian_kwargs=jacobian_kwargs,
-                        df_plot_type=self.ui_df.value,
-                        df_spacing=self.df_spacing,
-                        df_kwargs=self.df_kwargs,
-                        struct_plot_type=self.struct_plot_type,
-                        struct_kwargs=struct_kwargs,
-                        struct_legend=self.struct_legend,
-                        legend_loc=self.legend_loc,
-                        struct_plot_grouping=struct_plot_grouping,
-                        struct_to_plot=self.current_struct,
-                        annotate_slice=self.annotate_slice,
-                        major_ticks=self.major_ticks,
-                        minor_ticks=self.minor_ticks,
-                        ticks_all_sides=self.ticks_all_sides,
-                        n_date=n_date,
-                        show=False)
+        self.plot_image(
+            self.im,
+            view=self.view,
+            sl=self.slice[self.view],
+            gs=self.gs,
+            mpl_kwargs=mpl_kwargs,
+            figsize=self.figsize,
+            zoom=self.zoom,
+            zoom_centre=self.zoom_centre,
+            colorbar=colorbar,
+            colorbar_label=self.colorbar_label,
+            masked=self.ui_mask.value,
+            invert_mask=self.invert_mask,
+            mask_color=self.mask_color,
+            dose_kwargs=dose_kwargs,
+            jacobian_kwargs=jacobian_kwargs,
+            df_plot_type=self.ui_df.value,
+            df_spacing=self.df_spacing,
+            df_kwargs=self.df_kwargs,
+            struct_plot_type=self.struct_plot_type,
+            struct_kwargs=struct_kwargs,
+            struct_legend=self.struct_legend,
+            legend_loc=self.legend_loc,
+            struct_plot_grouping=struct_plot_grouping,
+            struct_to_plot=self.current_struct,
+            annotate_slice=self.annotate_slice,
+            major_ticks=self.major_ticks,
+            minor_ticks=self.minor_ticks,
+            ticks_all_sides=self.ticks_all_sides,
+            n_date=n_date,
+            show=False,
+        )
         self.plotting = False
         self.colorbar_drawn = True
 
@@ -2571,7 +2759,7 @@ class ImageViewer():
             self.im.fig.canvas.flush_events()
 
     def plot_image(self, im, **kwargs):
-        """Plot a NiftiImage, reusing existing axes if outside a Jupyter 
+        """Plot a NiftiImage, reusing existing axes if outside a Jupyter
         notebook."""
 
         # Get axes
@@ -2593,8 +2781,7 @@ class ImageViewer():
         df = self.df_struct_info.copy()
         col_names = self.col_names.copy()
         for v in ["area", "vol"]:
-            col_names[v] = col_names[v].replace("<sup>", "").\
-                    replace("</sup>", "")
+            col_names[v] = col_names[v].replace("<sup>", "").replace("</sup>", "")
         df.rename(col_names, axis=1, inplace=True)
 
         to_drop = []
@@ -2645,14 +2832,14 @@ class ImageViewer():
             filename += "." + fmt
 
         # Save
-        if fmt == "csv": 
-            df_to_save.to_csv(filename, index=False, 
-                              float_format=self.float_str)
+        if fmt == "csv":
+            df_to_save.to_csv(filename, index=False, float_format=self.float_str)
         elif fmt == "tex":
             df_to_save.fillna("--", inplace=True)
             f = open(filename, "w")
-            tex = df_to_save.to_latex(index=False, multicolumn_format="c",
-                                      float_format=self.float_fmt)
+            tex = df_to_save.to_latex(
+                index=False, multicolumn_format="c", float_format=self.float_fmt
+            )
             tex = tex.replace("<sup>", "$^").replace("</sup>", "$")
             f.write(tex)
             f.close()
@@ -2660,8 +2847,8 @@ class ImageViewer():
         print("Saved table to", filename)
 
 
-class OrthogViewer(ImageViewer):
-    """ImageViewer with an orthgonal view displayed."""
+class OrthogViewer(SingleViewer):
+    """SingleViewer with an orthgonal view displayed."""
 
     def make_image(self, *args, **kwargs):
         """Set up image object."""
@@ -2674,7 +2861,7 @@ class OrthogViewer(ImageViewer):
             return
 
         struct = self.structs_for_jump[self.ui_struct_jump.value]
-        ImageViewer.jump_to_struct(self)
+        SingleViewer.jump_to_struct(self)
 
         orthog_view = _orthog[self.view]
         mid_slice = int(np.mean(list(struct.contours[orthog_view].keys())))
@@ -2684,7 +2871,7 @@ class OrthogViewer(ImageViewer):
 def in_notebook():
     try:
         shell = get_ipython().__class__.__name__
-        if shell == 'ZMQInteractiveShell':
+        if shell == "ZMQInteractiveShell":
             return True
         else:
             return False
@@ -2759,7 +2946,7 @@ def write_translation_to_file(
 
     # Make simple text
     else:
-        out_text = ''.join(f'{ax} {delta[ax]}\n' for ax in delta)
+        out_text = "".join(f"{ax} {delta[ax]}\n" for ax in delta)
 
     # Write to output
     outfile = open(output_file, "w")
