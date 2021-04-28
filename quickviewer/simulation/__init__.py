@@ -17,8 +17,7 @@ class GeometricNifti(NiftiImage):
     """Class for creating a NIfTI file containing synthetic image data."""
 
     def __init__(self, shape, filename=None, origin=(0, 0, 0),
-                 voxel_sizes=(1, 1, 1), intensity=0, noise_std=None,
-                 in_mm=True):
+                 voxel_sizes=(1, 1, 1), intensity=-1000, noise_std=None):
         """Create data to write to a NIfTI file, initially containing a 
         blank image array.
 
@@ -39,7 +38,7 @@ class GeometricNifti(NiftiImage):
         voxel_sizes : tuple, default=(1, 1, 1)
             Voxel sizes in mm for the image.
 
-        intensity : float, default=0
+        intensity : float, default=-1000
             Intensity in HU for the background of the image.
 
         noise_std : float, default=None
@@ -58,14 +57,14 @@ class GeometricNifti(NiftiImage):
             [0, 0, 0, 1]
         ])
         self.max_hu = 0 if noise_std is None else noise_std * 3
-        self.min_hu = -self.max_hu
+        self.min_hu = -self.max_hu if self.max_hu != 0 else -20
         self.noise_std = noise_std
+        self.bg_intensity = intensity
         self.background = self.make_background()
         self.shapes = []
         self.structs = []
         self.groups = {}
         self.shape_count = {}
-        self.in_mm = in_mm
 
         # Initialise as NiftiImage
         NiftiImage.__init__(self, self.background, affine=self.affine)
@@ -146,14 +145,10 @@ class GeometricNifti(NiftiImage):
             centre = self.idx_to_pos_3d(centre)
         return centre
 
-    def make_background(self, noise_std=None):
+    def make_background(self):
         """Make blank image array or noisy array."""
         
-        if self.noise_std is None:
-            return np.zeros(self.shape)
-        else:
-            noise = np.random.normal(0, self.noise_std, self.shape)
-            return noise
+        return np.ones(self.shape) * self.bg_intensity
 
     def add_shape(self, shape, shape_type, is_struct, above, group):
 
@@ -161,6 +156,9 @@ class GeometricNifti(NiftiImage):
             self.shapes.append(shape)
         else:
             self.shapes.insert(0, shape)
+
+        if is_struct is None and group is not None:
+            is_struct = True
 
         if is_struct:
             if group is not None:
@@ -183,11 +181,10 @@ class GeometricNifti(NiftiImage):
         self.min_hu = min([shape.intensity, self.min_hu])
         self.max_hu = max([shape.intensity, self.max_hu])
 
-    def add_sphere(self, radius, centre=None, intensity=1, is_struct=False,
-                   name=None, above=True, in_mm=None, group=None):
+    def add_sphere(self, radius, centre=None, intensity=0, is_struct=None,
+                   name=None, above=True, group=None):
 
-        if in_mm is None:
-            in_mm = self.in_mm
+        in_mm = True
         if centre is None:
             centre = self.get_image_centre(in_mm)
 
@@ -199,26 +196,43 @@ class GeometricNifti(NiftiImage):
         sphere = Sphere(self.shape, radius, centre, intensity, name)
         self.add_shape(sphere, "sphere", is_struct, above, group)
 
-    def add_cube(self, side_length, centre=None, intensity=1, is_struct=False,
-                 name=None, above=True, in_mm=None, group=None):
+    def add_cylinder(self, radius, length, axis="z", centre=None, intensity=0, 
+                     is_struct=None, name=None, above=True, 
+                     group=None):
+
+        in_mm = True
+        if centre is None:
+            centre = self.get_image_centre(in_mm)
+
+        # Get radius, centre and length in mm
+        if not in_mm:
+            centre = self.idx_to_pos_3d(centre)
+            rad_axis = "x" if axis != "x" else "y"
+            radius = self.length_in_mm(radius, rad_axis)
+            length = self.length_in_mm(length, axis)
+
+        cylinder = Cylinder(self.shape, radius, length, axis, centre, intensity,
+                            name)
+        self.add_shape(cylinder, "cylinder", is_struct, above, group)
+
+    def add_cube(self, side_length, centre=None, intensity=0, is_struct=None,
+                 name=None, above=True, group=None):
 
         # Convert to mm, ensuring side lengths are the same
-        if in_mm is None:
-            in_mm = self.in_mm
+        in_mm = True
         if not in_mm:
             side_length = self.length_in_mm(side_length, "x")
             if centre is not None:
                 centre = self.idx_to_pos_3d(centre)
 
         self.add_cuboid(side_length, centre, intensity, is_struct, name,
-                        above, in_mm=True, group=group)
+                        above, group=group)
 
-    def add_cuboid(self, side_length, centre=None, intensity=1, 
-                   is_struct=False, name=None, above=True, in_mm=None,
+    def add_cuboid(self, side_length, centre=None, intensity=0, 
+                   is_struct=None, name=None, above=True, 
                    group=None):
 
-        if in_mm is None:
-            in_mm = self.in_mm
+        in_mm = True
         if centre is None:
             centre = self.get_image_centre(in_mm)
         side_length = make_three(side_length)
@@ -235,7 +249,7 @@ class GeometricNifti(NiftiImage):
         cuboid = Cuboid(self.shape, side_length, centre, intensity, name)
         self.add_shape(cuboid, "cuboid", is_struct, above, group)
 
-    def add_grid(self, spacing, thickness=1, intensity=1, axis=None,
+    def add_grid(self, spacing, thickness=1, intensity=0, axis=None,
                  name=None, above=True, in_mm=None):
     
         if in_mm is None:
@@ -340,17 +354,21 @@ class Cuboid(Shape):
 
     def get_shape_data(self, coords):
 
-        data = (
-            (np.absolute(coords[0] - self.centre[1]) <= self.side_length[1] / 2) &
-            (np.absolute(coords[1] - self.centre[0]) <= self.side_length[0] / 2) &
-            (np.absolute(coords[2] - self.centre[2]) <= self.side_length[2] / 2)
-        )
-        return data
+        try:
+            data = (
+                (np.absolute(coords[0] - self.centre[1]) <= self.side_length[1] / 2) &
+                (np.absolute(coords[1] - self.centre[0]) <= self.side_length[0] / 2) &
+                (np.absolute(coords[2] - self.centre[2]) <= self.side_length[2] / 2)
+            )
+            return data
+        except TypeError:
+            print("centre:", self.centre)
+            print("side length:", self.side_length)
 
 
 class Cylinder(Shape):
 
-    def __init__(self, shape, radius, length, centre, axis, intensity, 
+    def __init__(self, shape, radius, length, axis, centre, intensity, 
                  name=None):
 
         self.radius = radius
@@ -360,10 +378,29 @@ class Cylinder(Shape):
         self.intensity = intensity
         self.name = name
 
-    def get_shape_data(self):
+    def get_shape_data(self, coords):
 
-        # get cylinder data
-        pass
+        # Get coordinates in each direction
+        axis_idx = {"x": 1, "y": 0, "z": 2}[self.axis]
+        circle_idx = [i for i in range(3) if i != axis_idx]
+        coords_c1 = coords[circle_idx[0]]
+        coords_c2 = coords[circle_idx[1]]
+        coords_length = coords[axis_idx]
+
+        # Get centre in each direction
+        centre = [self.centre[1], self.centre[0], self.centre[2]]
+        centre_c1 = centre[circle_idx[0]]
+        centre_c2 = centre[circle_idx[1]]
+        centre_length = centre[axis_idx]
+
+        # Make cylinder array
+        data = (
+            (np.sqrt((coords_c1 - centre_c1) ** 2
+                     + (coords_c2 - centre_c2) ** 2) <= self.radius)
+            & 
+            (np.absolute(coords_length - centre_length) <= self.length / 2)
+        )
+        return data
 
 
 class Grid(Shape):

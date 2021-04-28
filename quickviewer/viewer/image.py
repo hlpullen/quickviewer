@@ -701,6 +701,8 @@ class NiftiImage:
 
         # Get colormap
         kwargs = self.get_kwargs(mpl_kwargs)
+        if "interpolation" not in kwargs:
+            kwargs["interpolation"] = "none"
         cmap = copy.copy(matplotlib.cm.get_cmap(kwargs.pop("cmap")))
         cmap.set_bad(color=mask_color)
 
