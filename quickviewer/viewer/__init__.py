@@ -2562,6 +2562,8 @@ class SingleViewer:
             return
 
         centre = struct.get_centre(self.view, self.slice[self.view])
+        if None in centre:
+            return
         self.current_centre[self.view] = centre
         self.update_zoom_sliders()
 
