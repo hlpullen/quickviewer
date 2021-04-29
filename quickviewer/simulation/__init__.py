@@ -147,7 +147,8 @@ class GeometricNifti(Image):
             dirname = os.path.dirname(filename)
             prefix = os.path.basename(filename).split(".")[0]
             struct_dir = os.path.join(dirname, f"{prefix}_structs")
-            shutil.rmtree(struct_dir)
+            if os.path.exists(struct_dir):
+                shutil.rmtree(struct_dir)
             os.mkdir(struct_dir)
             for struct in self.structs:
                 struct.write(self.affine, self.get_coords(), struct_dir)
@@ -173,7 +174,8 @@ class GeometricNifti(Image):
         else:
             self.shapes.insert(0, shape)
 
-        if is_struct is None and group is not None:
+        # Automatically treat as structure if given a group or name
+        if is_struct is None and (group is not None or shape.name is not None):
             is_struct = True
 
         if is_struct:
