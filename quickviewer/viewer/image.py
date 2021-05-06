@@ -48,6 +48,7 @@ class MultiImage(Image):
         ignore_unpaired_structs=False,
         structs_to_keep=None,
         structs_to_ignore=None,
+        autoload_structs=True,
         mask_threshold=0.5,
         **kwargs,
     ):
@@ -153,6 +154,7 @@ class MultiImage(Image):
             comp_type=comp_type,
             to_keep=structs_to_keep,
             to_ignore=structs_to_ignore,
+            autoload=autoload_structs
         )
 
         # Mask settings
@@ -202,6 +204,7 @@ class MultiImage(Image):
         comp_type="auto",
         to_keep=None,
         to_ignore=None,
+        autoload=True
     ):
         """Load structures from a path/wildcard or list of paths/wildcards in
         <structs>, and assign the colors in <colors>."""
@@ -234,6 +237,7 @@ class MultiImage(Image):
                 image=self,
                 to_keep=to_keep,
                 to_ignore=to_ignore,
+                autoload=autoload
             )
             self.structs = loader.get_structs(ignore_unpaired, ignore_empty)
 

@@ -559,6 +559,12 @@ class QuickViewer:
             List of structure names or wildcards matching structures that you
             wish to ignore.
 
+        autoload_structs : bool, default=True
+            If True, structures will all be automatically loaded and plotted.
+            If False, all structures will be initially turned off and will 
+            only be loaded if the user turns them on via the structure checkbox
+            UI.
+
         continuous_update : bool, default=False
             If True, sliders in the UI will continuously update the figure as
             they are adjusted. Can cause lag.
@@ -1512,6 +1518,7 @@ class SingleViewer:
         self.struct_legend = struct_legend
         self.legend_loc = legend_loc
         self.init_struct = init_struct
+        self.autoload_structs = kwargs.get("autoload_structs", True)
 
         # Structure info settings
         self.compare_structs = kwargs.get("compare_structs", False) and len(
@@ -2018,7 +2025,7 @@ class SingleViewer:
         }
 
         self.struct_checkboxes = {
-            s: ipyw.Checkbox(value=True, indent=False)
+            s: ipyw.Checkbox(value=self.autoload_structs, indent=False)
             for s in self.structs_for_jump.keys()
             if s
         }
@@ -2050,7 +2057,7 @@ class SingleViewer:
                     try:
                         s.checkbox = self.struct_checkboxes[s.name_unique]
                     except KeyError:
-                        s.checkbox = ipyw.Checkbox(value=True)
+                        s.checkbox = ipyw.Checkbox(value=self.autoload_structs)
 
         self.visible_structs = self.get_struct_visibility()
         self.df_struct_info = pd.DataFrame(struct_info)

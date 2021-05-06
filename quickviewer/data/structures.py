@@ -157,7 +157,7 @@ class Struct(Image):
 
     def load(self):
         """Load struct data and create contours in all orientations."""
-
+        
         if self.loaded:
             return
 
@@ -250,8 +250,7 @@ class Struct(Image):
     def get_volume(self, units):
         """Get total structure volume in voxels, mm, or ml."""
 
-        self.load()
-        if self.empty:
+        if not self.loaded or self.empty:
             return 0
 
         if not hasattr(self, "volume"):
@@ -266,8 +265,7 @@ class Struct(Image):
     def get_struct_length(self, units):
         """Get the total x, y, z length in voxels or mm."""
 
-        self.load()
-        if self.empty:
+        if not self.loaded or self.empty:
             return (0, 0, 0)
 
         if not hasattr(self, "length"):
@@ -290,8 +288,7 @@ class Struct(Image):
         """Get the centre of this structure in voxels or mm. If no
         units are given, units will be mm if <self_in_mm> is True."""
 
-        self.load()
-        if self.empty:
+        if not self.loaded or self.empty:
             return None, None, None
 
         if not hasattr(self, "centre"):
@@ -450,8 +447,10 @@ class Struct(Image):
             Factor by which to zoom in.
         """
 
+        if not self.visible:
+            return
         self.load()
-        if not self.valid or not self.visible:
+        if not self.valid:
             return
 
         mpl_kwargs = {} if mpl_kwargs is None else mpl_kwargs
@@ -579,7 +578,8 @@ class Struct(Image):
     def on_slice(self, view, sl):
         """Return True if a contour exists for this structure on a given slice."""
 
-        self.load()
+        if not self.loaded:
+            return False
         return sl in self.contours[view]
 
     def get_area(self, view, sl, units="voxels"):
@@ -599,8 +599,7 @@ class Struct(Image):
     def get_full_extent(self, units="voxels"):
         """Get the full extent along x, y, z."""
 
-        self.load()
-        if self.empty:
+        if not self.loaded or self.empty:
             return [0, 0, 0]
 
         if not hasattr(self, "full_extent"):
@@ -983,6 +982,7 @@ class StructLoader:
         image=None,
         to_keep=None,
         to_ignore=None,
+        autoload=True
     ):
         """Load structures.
 
@@ -1050,10 +1050,14 @@ class StructLoader:
 
         to_ignore : list, default=None
             List of structure names to ignore.
+
+        autoload : bool, default=True
+            If True, all structures will be loaded before being returned.
         """
 
         # Lists for storing structures
         self.loaded = False
+        self.autoload = autoload
         self.structs = []
         self.comparisons = []
         self.comparison_structs = []
@@ -1480,7 +1484,8 @@ class StructLoader:
                 s.assign_color(_standard_colors[i])
 
         for s in self.structs:
-            s.load()
+            if self.autoload:
+                s.load()
             self.set_unique_name(s)
 
         self.loaded = True
