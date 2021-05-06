@@ -169,13 +169,15 @@ class MultiImage(Image):
         rescale = "dose" if attr == "dose" else True
         if not isinstance(nii, dict):
             data = Image(nii, rescale=rescale, **kwargs)
-            setattr(self, attr, data)
+            data.match_size(self, 0)
             valid = data.valid
         else:
             data = {view: Image(nii[view], rescale=rescale, **kwargs) for view in nii}
             for view in _orient:
                 if view not in data or not data[view].valid:
                     data[view] = None
+                else:
+                    data[view].match_size(self, 0)
             valid = any([d.valid for d in data.values() if d is not None])
 
         setattr(self, attr, data)
@@ -215,7 +217,7 @@ class MultiImage(Image):
         # Check whether a timeseries of structs is being used
         if self.timeseries:
             try:
-                struct_dates = self.get_date_dict(structs, True)
+                struct_dates = self.get_date_dict(structs, True, True)
                 self.struct_timeseries = len(struct_dates) > 1
             except TypeError:
                 pass
@@ -289,7 +291,7 @@ class MultiImage(Image):
                 self.struct_comparisons = self.dated_comparisons[date]
                 self.standalone_structs = self.dated_standalone_structs[date]
 
-    def get_date_dict(self, timeseries, single_layer=False):
+    def get_date_dict(self, timeseries, single_layer=False, allow_dirs=False):
         """Convert list/dict/directory to sorted dict of dates and files."""
 
         if isinstance(timeseries, dict):
@@ -297,7 +299,7 @@ class MultiImage(Image):
 
         else:
             if isinstance(timeseries, str):
-                files = find_files(timeseries)
+                files = find_files(timeseries, allow_dirs=allow_dirs)
             elif is_list(timeseries):
                 files = timeseries
             else:

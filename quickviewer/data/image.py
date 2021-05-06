@@ -12,6 +12,7 @@ import numpy as np
 import os
 import pydicom
 import shutil
+from scipy import interpolate
 from matplotlib.ticker import MultipleLocator, AutoMinorLocator, FormatStrFormatter
 
 
@@ -183,6 +184,35 @@ class Image:
                 self.ax_lims[view] = [x_lim, [self.n_voxels[y] + 0.5, 0.5]]
                 self.extent[view] = self.ax_lims[view][0] + self.ax_lims[view][1]
                 self.aspect[view] = abs(self.voxel_sizes[y] / self.voxel_sizes[x])
+
+    def get_coords(self):
+        """Get lists of coordinates in each direction."""
+
+        x = np.linspace(self.lims["x"][0], self.lims["x"][1], self.shape[0])
+        y = np.linspace(self.lims["y"][0], self.lims["y"][1], self.shape[1])
+        z = np.linspace(self.lims["z"][0], self.lims["z"][1], self.shape[2])
+        return x, y, z
+
+    def match_size(self, im, fill_value=-1024):
+        """Match shape to that of another Image."""
+
+        if not hasattr(self, "shape") or self.shape == im.shape:
+            return
+
+        x, y, z = self.get_coords()
+        if x[0] > x[-1]:
+            x = x[::-1]
+        interpolant = interpolate.RegularGridInterpolator(
+            (x, y, z), self.data, method="linear", bounds_error=False,
+            fill_value=fill_value)
+        stack = np.vstack(np.meshgrid(*im.get_coords(), indexing="ij"))
+        points = stack.reshape(3, -1).T.reshape(*im.shape, 3)
+
+        self.data = interpolant(points)[::-1, :, :]
+        self.shape = im.shape
+        self.voxel_sizes = im.voxel_sizes
+        self.origin = im.origin
+        self.set_geom()
 
     def get_lengths(self, view):
         """Get the x and y lengths of the image in a given orientation."""
@@ -1361,7 +1391,7 @@ def load_image(im, affine=None, voxel_sizes=None, origin=None, rescale=True):
     return data, np.array(voxel_sizes), np.array(origin), path
 
 
-def find_files(paths, ext=""):
+def find_files(paths, ext="", allow_dirs=False):
     """Find files from a path, list of paths, directory, or list of
     directories. If <paths> contains directories, files with extension <ext>
     will be searched for inside those directories."""
@@ -1384,6 +1414,8 @@ def find_files(paths, ext=""):
                 elif os.path.isfile(m):
                     files.append(m)
 
+    if allow_dirs:
+        return files
     return [f for f in files if not os.path.isdir(f)]
 
 
