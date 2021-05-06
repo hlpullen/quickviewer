@@ -12,7 +12,7 @@ import numpy as np
 import os
 import pydicom
 import shutil
-from scipy import interpolate
+from scipy import interpolate, ndimage
 from matplotlib.ticker import MultipleLocator, AutoMinorLocator, FormatStrFormatter
 
 
@@ -148,6 +148,7 @@ class Image:
 
         # Number of voxels in each direction
         self.n_voxels = {ax: self.data.shape[n] for ax, n in _axes.items()}
+        self.centre = [n / 2 for n in self.n_voxels.values()]
 
         # Min and max voxel position
         self.lims = {
@@ -605,6 +606,78 @@ class Image:
 
         # Assign 2D array to current slice
         self.current_slice = im_slice
+
+    def get_min(self):
+        if not hasattr(self, "min_val"):
+            self.min_val = self.data.min()
+        return self.min_val
+
+    def length_to_voxels(self, length, ax):
+        return length / self.voxel_sizes[ax]
+
+    def translate(self, dx=0, dy=0, dz=0):
+        """Apply a translation to the image data."""
+
+        # Convert mm to voxels
+        if self.scale_in_mm:
+            dx = self.length_to_voxels(dx, "x")
+            dy = self.length_to_voxels(dy, "y")
+            dz = -self.length_to_voxels(dz, "z")
+
+        transform = np.array([
+            [1, 0, 0, dx],
+            [0, 1, 0, dy],
+            [0, 0, 1, dz],
+            [0, 0, 0, 1]
+        ])
+        if not hasattr(self, "original_data"):
+            self.original_data = self.data
+            self.original_centre = self.centre
+        self.data = ndimage.affine_transform(self.data, transform,
+                                             cval=self.get_min())
+        self.centre = [self.centre[i] + [dx, dy, dz][i] for i in range(3)]
+
+    def rotate(self, yaw=0, pitch=0, roll=0):
+        """Rotate image data."""
+
+        # Convert angles to radians
+        yaw = np.radians(yaw)
+        pitch = np.radians(pitch)
+        roll = np.radians(roll)
+
+        # Make 3D rotation matrix
+        cx, cy, cz = self.centre
+        r1 = np.array([
+            [np.cos(yaw), -np.sin(yaw), 0, cx - cx * np.cos(yaw) + cy * np.sin(yaw)],
+            [np.sin(yaw), np.cos(yaw), 0, cy - cx * np.sin(yaw) - cy * np.cos(yaw)],
+            [0, 0, 1, 0],
+            [0, 0, 0, 1]
+        ])
+        r2 = np.array([
+            [np.cos(pitch), 0, np.sin(pitch), cx - cx * np.cos(pitch) - cz * np.sin(pitch)],
+            [0, 1, 0, 0],
+            [-np.sin(pitch), 0, np.cos(pitch), cz + cx * np.sin(pitch) - cz * np.cos(pitch)],
+            [0, 0, 0, 1]
+        ])
+        r3 = np.array([
+            [1, 0, 0, 0],
+            [0, np.cos(roll), -np.sin(roll), cy - cy * np.cos(roll) + cz * np.sin(roll)],
+            [0, np.sin(roll), np.cos(roll), cz - cy * np.sin(roll) - cz * np.cos(roll)],
+            [0, 0, 0, 1]
+        ])
+        transform = r1.dot(r2).dot(r3)
+
+        # Rotate around image centre
+        if not hasattr(self, "original_data"):
+            self.original_data = self.data
+        self.data = ndimage.affine_transform(self.data, transform,
+                                             cval=self.get_min())
+
+    def reset(self):
+        if hasattr(self, "original_data"):
+            self.data = self.original_data
+        if hasattr(self, "original_centre"):
+            self.centre = self.original_centre
 
     def plot(
         self,
