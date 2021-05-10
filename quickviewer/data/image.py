@@ -215,6 +215,57 @@ class Image:
         self.origin = im.origin
         self.set_geom()
 
+    def resample(self, data, v, round_up=True):
+        """Resample an image to have particular voxel sizes."""
+
+
+        # Make interpolant
+        x, y, z = [
+            np.linspace(self.lims["x"][0], self.lims["x"][1], data.shape[0]),
+            np.linspace(self.lims["y"][0], self.lims["y"][1], data.shape[1]),
+            np.linspace(self.lims["z"][0], self.lims["z"][1], data.shape[2])
+        ]
+        if x[0] > x[-1]:
+            x = x[::-1]
+        interpolant = interpolate.RegularGridInterpolator(
+            (x, y, z), data, method="linear", bounds_error=False,
+            fill_value=self.get_min())
+
+        # Calculate desired limits and numbers of voxels
+        lims = []
+        shape = []
+        for i, ax in enumerate(_axes):
+            vx = v[i]
+            if vx * self.voxel_sizes[ax] < 0:
+                vx = -vx
+            lim1 = self.lims[ax][0]
+            lim2 = self.lims[ax][1] + self.voxel_sizes[ax]
+            length = lim2 - lim1
+            n = abs(length / vx)
+            if round_up:
+                shape.append(np.ceil(n))
+            else:
+                shape.append(np.floor(n))
+            remainder = abs(length) % vx
+            if not round_up:
+                remainder = vx - remainder
+            if length > 0:
+                lim2 += remainder
+            else:
+                lim2 -= remainder
+            lim2 -= vx
+            lims.append((lim1, lim2))
+        shape = [int(s) for s in shape]
+
+        # Interpolate to new set of coordinates
+        new_coords = [
+            np.linspace(lims[i][0], lims[i][1], shape[i])
+            for i in range(3)
+        ]
+        stack = np.vstack(np.meshgrid(*new_coords, indexing="ij"))
+        points = stack.reshape(3, -1).T.reshape(*shape, 3)
+        return interpolant(points)[::-1, :, :]
+
     def get_lengths(self, view):
         """Get the x and y lengths of the image in a given orientation."""
 
@@ -645,8 +696,23 @@ class Image:
         pitch = np.radians(pitch)
         roll = np.radians(roll)
 
+        # Resample image to have equal voxel sizes
+        vox = []
+        if yaw or pitch:
+            vox.append(abs(self.voxel_sizes["x"]))
+        if yaw or roll:
+            vox.append(abs(self.voxel_sizes["y"]))
+        if pitch or roll:
+            vox.append(abs(self.voxel_sizes["z"]))
+        to_resample = len(set(vox)) > 1
+        if to_resample:
+            v = min(vox)
+            data = self.resample(self.data, (v, v, v))
+        else:
+            data = self.data
+
         # Make 3D rotation matrix
-        cx, cy, cz = self.centre
+        cx, cy, cz = [n / 2 for n in data.shape]
         r1 = np.array([
             [np.cos(yaw), -np.sin(yaw), 0, cx - cx * np.cos(yaw) + cy * np.sin(yaw)],
             [np.sin(yaw), np.cos(yaw), 0, cy - cx * np.sin(yaw) - cy * np.cos(yaw)],
@@ -670,8 +736,13 @@ class Image:
         # Rotate around image centre
         if not hasattr(self, "original_data"):
             self.original_data = self.data
-        self.data = ndimage.affine_transform(self.data, transform,
-                                             cval=self.get_min())
+        rotated = ndimage.affine_transform(data, transform,
+                                           cval=self.get_min())
+        if to_resample:
+            self.data = self.resample(rotated, list(self.voxel_sizes.values()), 
+                                      round_up=False)
+        else:
+            self.data = rotated
 
     def reset(self):
         if hasattr(self, "original_data"):

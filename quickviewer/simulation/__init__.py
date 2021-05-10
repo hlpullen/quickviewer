@@ -21,7 +21,7 @@ class GeometricNifti(Image):
         filename=None,
         origin=(0, 0, 0),
         voxel_sizes=(1, 1, 1),
-        intensity=-1000,
+        intensity=-1024,
         noise_std=None,
     ):
         """Create data to write to a NIfTI file, initially containing a
