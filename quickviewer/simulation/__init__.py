@@ -8,8 +8,10 @@ import numpy as np
 import nibabel
 import logging
 import shutil
+from scipy import ndimage
 
 from quickviewer.data.image import Image, make_three, is_list
+from quickviewer.data.image import get_translation_matrix, get_rotation_matrix
 
 
 class GeometricNifti(Image):
@@ -77,6 +79,8 @@ class GeometricNifti(Image):
         self.structs = []
         self.groups = {}
         self.shape_count = {}
+        self.translation = None
+        self.rotation = None
 
         # Initialise as Image
         Image.__init__(self, self.background, affine=self.affine)
@@ -99,22 +103,31 @@ class GeometricNifti(Image):
             "mpl_kwargs": {"interpolation": "none"},
         }
         qv_kwargs.update(kwargs)
-        structs = {
-            shape.name: shape.get_data(self.get_coords()) for shape in self.structs
-        }
+        structs = self.get_struct_data()
         QuickViewer(self.get_data(), structs=structs, **qv_kwargs)
 
     def get_data(self):
         """Get data in orientation consistent with dcm2nii."""
 
+        # Get noiseless image
         data = self.background.copy()
         for shape in self.shapes:
             data[shape.get_data(self.get_coords())] = shape.intensity
 
+        # Apply noise
         if self.noise_std is not None:
             data += np.random.normal(0, self.noise_std, self.shape)
 
         return data
+
+    def get_struct_data(self):
+        """Get dict of structures and names, with any transformations applied."""
+
+        struct_data = {}
+        for shape in self.structs:
+            data = shape.get_data(self.get_coords())
+            struct_data[shape.name] = data
+        return struct_data
 
     def write(self, filename=None):
         """Write to a NIfTI file.
@@ -337,7 +350,11 @@ class GeometricNifti(Image):
     def get_coords(self):
         """Get grids of x, y, and z coordinates for this image."""
 
-        if not hasattr(self, "coords"):
+        if not hasattr(self, "coords") \
+           or self.prev_translation != self.translation \
+           or self.prev_rotation != self.rotation:
+
+            # Make coordinates
             coords_1d = []
             for ax in ["y", "x", "z"]:
                 coords_1d.append(
@@ -347,14 +364,59 @@ class GeometricNifti(Image):
                         self.voxel_sizes[ax],
                     )
                 )
-            self.coords = np.meshgrid(*coords_1d)
+            X, Y, Z = np.meshgrid(*coords_1d)
+
+            # Apply transformations
+            self.prev_translation = self.translation
+            self.prev_rotation = self.rotation
+            if self.rotation or self.translation:
+                transform = np.identity(4)
+                if self.translation:
+                    transform = transform.dot(
+                        get_translation_matrix(*self.translation)
+                    )
+                if self.rotation:
+                    centre = [
+                        np.mean(self.lims[ax]) for ax in ["x", "y", "z"]
+                    ]
+                    transform = transform.dot(
+                        get_rotation_matrix(*self.rotation, centre)
+                    )
+                Yt = transform[0, 0] * Y + transform[0, 1] * X \
+                    + transform[0, 2] * Z + transform[0, 3]
+                Xt = transform[1, 0] * Y + transform[1, 1] * X \
+                    + transform[1, 2] * Z + transform[1, 3]
+                Zt = transform[2, 0] * Y + transform[2, 1] * X \
+                        + transform[2, 2] * Z + transform[2, 3]
+                X, Y, Z = Xt, Yt, Zt
+
+            # Set coords
+            self.coords = (X, Y, Z)
+
+        # Apply transformations
         return self.coords
+
+    def reset(self):
+        """Remove any rotations or translations."""
+        self.translation = None
+        self.rotation = None
+        for shape in self.shapes:
+            shape.translation = None
+            shape.rotation = None
+
+    def translate(self, dx=0, dy=0, dz=0):
+        """Set a translation to apply to the final image."""
+        self.translation = (dx, dy, dz)
+
+    def rotate(self, yaw=0, pitch=0, roll=0):
+        """Set a rotation to apply to the final image."""
+        self.rotation = (yaw, pitch, roll)
 
 
 class Shape:
+
     def get_data(self, coords):
-        data = self.get_shape_data(coords)
-        return data[::-1, ::-1, :]
+        return self.get_shape_data(coords)[::-1, ::-1, :]
 
     def write(self, affine, coords, dirname="."):
 

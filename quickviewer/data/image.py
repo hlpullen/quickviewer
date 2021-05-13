@@ -675,12 +675,7 @@ class Image:
             dy = self.length_to_voxels(dy, "y")
             dz = -self.length_to_voxels(dz, "z")
 
-        transform = np.array([
-            [1, 0, 0, dx],
-            [0, 1, 0, dy],
-            [0, 0, 1, dz],
-            [0, 0, 0, 1]
-        ])
+        transform = get_translation_matrix(dx, dy, dz)
         if not hasattr(self, "original_data"):
             self.original_data = self.data
             self.original_centre = self.centre
@@ -690,11 +685,6 @@ class Image:
 
     def rotate(self, yaw=0, pitch=0, roll=0):
         """Rotate image data."""
-
-        # Convert angles to radians
-        yaw = np.radians(yaw)
-        pitch = np.radians(pitch)
-        roll = np.radians(roll)
 
         # Resample image to have equal voxel sizes
         vox = []
@@ -712,26 +702,8 @@ class Image:
             data = self.data
 
         # Make 3D rotation matrix
-        cx, cy, cz = [n / 2 for n in data.shape]
-        r1 = np.array([
-            [np.cos(yaw), -np.sin(yaw), 0, cx - cx * np.cos(yaw) + cy * np.sin(yaw)],
-            [np.sin(yaw), np.cos(yaw), 0, cy - cx * np.sin(yaw) - cy * np.cos(yaw)],
-            [0, 0, 1, 0],
-            [0, 0, 0, 1]
-        ])
-        r2 = np.array([
-            [np.cos(pitch), 0, np.sin(pitch), cx - cx * np.cos(pitch) - cz * np.sin(pitch)],
-            [0, 1, 0, 0],
-            [-np.sin(pitch), 0, np.cos(pitch), cz + cx * np.sin(pitch) - cz * np.cos(pitch)],
-            [0, 0, 0, 1]
-        ])
-        r3 = np.array([
-            [1, 0, 0, 0],
-            [0, np.cos(roll), -np.sin(roll), cy - cy * np.cos(roll) + cz * np.sin(roll)],
-            [0, np.sin(roll), np.cos(roll), cz - cy * np.sin(roll) - cz * np.cos(roll)],
-            [0, 0, 0, 1]
-        ])
-        transform = r1.dot(r2).dot(r3)
+        centre = [n / 2 for n in data.shape]
+        transform = get_rotation_matrix(pitch, yaw, roll, centre)
 
         # Rotate around image centre
         if not hasattr(self, "original_data"):
@@ -1652,3 +1624,39 @@ def find_date(s):
             return dateutil.parser.parse(num)
         except dateutil.parser.ParserError:
             continue
+
+def get_translation_matrix(dx, dy, dz):
+    return np.array([
+        [1, 0, 0, dx],
+        [0, 1, 0, dy],
+        [0, 0, 1, dz],
+        [0, 0, 0, 1]
+    ])
+
+def get_rotation_matrix(pitch, yaw, roll, centre):
+
+    # Convert angles to radians
+    yaw = np.radians(yaw)
+    pitch = np.radians(pitch)
+    roll = np.radians(roll)
+
+    cx, cy, cz = centre
+    r1 = np.array([
+        [np.cos(yaw), -np.sin(yaw), 0, cx - cx * np.cos(yaw) + cy * np.sin(yaw)],
+        [np.sin(yaw), np.cos(yaw), 0, cy - cx * np.sin(yaw) - cy * np.cos(yaw)],
+        [0, 0, 1, 0],
+        [0, 0, 0, 1]
+    ])
+    r2 = np.array([
+        [np.cos(pitch), 0, np.sin(pitch), cx - cx * np.cos(pitch) - cz * np.sin(pitch)],
+        [0, 1, 0, 0],
+        [-np.sin(pitch), 0, np.cos(pitch), cz + cx * np.sin(pitch) - cz * np.cos(pitch)],
+        [0, 0, 0, 1]
+    ])
+    r3 = np.array([
+        [1, 0, 0, 0],
+        [0, np.cos(roll), -np.sin(roll), cy - cy * np.cos(roll) + cz * np.sin(roll)],
+        [0, np.sin(roll), np.cos(roll), cz - cy * np.sin(roll) - cz * np.cos(roll)],
+        [0, 0, 0, 1]
+    ])
+    return r1.dot(r2).dot(r3)
