@@ -314,9 +314,12 @@ class QuickViewer:
             Step size to use for the HU slider. Defaults to 1 if the maximum
             HU is >= 10, otherwise 0.1.
 
-        figsize : float, default=5
-            Height of the displayed figure in inches. If None, the value in
-            _default_figsize is used.
+        figsize : float/tuple, default=5
+            Height of the displayed figure in inches; figure width will be 
+            automatically generated from this. If None, the value in
+            _default_figsize is used. Can also be a tuple containing 
+            (width, height) in inches in order to set width and height 
+            manually.
 
         xlim : tuple, default=None
             Custom limits for the x axis. If one of the values in the tuple is
@@ -692,7 +695,13 @@ class QuickViewer:
         self.diff_crit = diff_crit
 
         # Settings needed for plotting
-        self.figsize = to_inches(kwargs.get("figsize", _default_figsize))
+        figsize = kwargs.get("figsize", _default_figsize)
+        if is_list(figsize):
+            self.figwidth = figsize[0]
+            self.figsize = figsize[1]
+        else:
+            self.figsize = to_inches(figsize)
+            self.figwidth = "auto"
         self.colorbar = kwargs.get("colorbar", False)
         self.comp_colorbar = self.colorbar and self.comparison_only
         self.zoom = kwargs.get("zoom", None)
@@ -1160,8 +1169,12 @@ class QuickViewer:
             n_rows = 1
 
         # Calculate height and width
-        height = self.figsize * n_rows
-        width = self.figsize * sum(width_ratios)
+        if self.figwidth == "auto":
+            height = self.figsize * n_rows
+            width = self.figsize * sum(width_ratios)
+        else:
+            height = self.figsize
+            width = self.figwidth
 
         # Outside notebook, just resize figure
         if not self.in_notebook and hasattr(self, "fig"):
