@@ -703,7 +703,7 @@ class Image:
 
         # Make 3D rotation matrix
         centre = [n / 2 for n in data.shape]
-        transform = get_rotation_matrix(pitch, yaw, roll, centre)
+        transform = get_rotation_matrix(yaw, pitch, roll, centre)
 
         # Rotate around image centre
         if not hasattr(self, "original_data"):
@@ -1633,7 +1633,7 @@ def get_translation_matrix(dx, dy, dz):
         [0, 0, 0, 1]
     ])
 
-def get_rotation_matrix(pitch, yaw, roll, centre):
+def get_rotation_matrix(yaw, pitch, roll, centre):
 
     # Convert angles to radians
     yaw = np.radians(yaw)

@@ -129,26 +129,41 @@ class GeometricNifti(Image):
             struct_data[shape.name] = data
         return struct_data
 
-    def write(self, filename=None):
+    def write(self, outname=None):
         """Write to a NIfTI file.
 
         Parameters
         ----------
-        filename : str, default=None
-            Name of file to write to. If None and the "filename" argument was
+        outname : str, default=None
+            Name of file or directory to write to. If None and the "filename" argument was
             used when creating the object, the filename given at creation will
             be used. If no filename was provided, a RuntimeError will be
             thrown.
+            If the filename does not end in .nii or .nii.gz, a directory with
+            the given name will be created. The image will be saved as image.nii.gz,
+            while any structures will be saved in a subdirectory called structs.
         """
 
         # Check filename
-        if filename is None:
+        if outname is None:
             if hasattr(self, "filename"):
-                filename = self.filename
+                outname = self.filename
             else:
                 raise RuntimeError(
                     "Filename must be specified in __init__() " "or write()!"
                 )
+
+        # Check if it's a directory
+        if not outname.endswith(".nii") or outname.endswith(".nii.gz"):
+            if not os.path.exists(outname):
+                os.mkdir(outname)
+            filename = f"{outname}/image.nii.gz"
+            struct_dir = f"{outname}/structs"
+        else:
+            filename = outname
+            dirname = os.path.dirname(filename)
+            prefix = os.path.basename(filename).split(".")[0]
+            struct_dir = os.path.join(dirname, f"{prefix}_structs")
 
         # Write data to file
         self.nii = nibabel.Nifti1Image(self.get_data(), self.affine)
@@ -157,9 +172,6 @@ class GeometricNifti(Image):
 
         # Write all structures to files
         if len(self.structs):
-            dirname = os.path.dirname(filename)
-            prefix = os.path.basename(filename).split(".")[0]
-            struct_dir = os.path.join(dirname, f"{prefix}_structs")
             if os.path.exists(struct_dir):
                 shutil.rmtree(struct_dir)
             os.mkdir(struct_dir)
@@ -348,7 +360,7 @@ class GeometricNifti(Image):
         )
 
     def get_coords(self):
-        """Get grids of x, y, and z coordinates for this image."""
+        """Get grids of x, y, and z coordinates in mm for this image."""
 
         if not hasattr(self, "coords") \
            or self.prev_translation != self.translation \
@@ -373,14 +385,14 @@ class GeometricNifti(Image):
                 transform = np.identity(4)
                 if self.translation:
                     transform = transform.dot(
-                        get_translation_matrix(*self.translation)
+                        get_translation_matrix(*[-d for d in self.translation])
                     )
                 if self.rotation:
                     centre = [
                         np.mean(self.lims[ax]) for ax in ["x", "y", "z"]
                     ]
                     transform = transform.dot(
-                        get_rotation_matrix(*self.rotation, centre)
+                        get_rotation_matrix(*[-r for r in self.rotation], centre)
                     )
                 Yt = transform[0, 0] * Y + transform[0, 1] * X \
                     + transform[0, 2] * Z + transform[0, 3]
