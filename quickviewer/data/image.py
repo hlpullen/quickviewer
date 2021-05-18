@@ -1344,7 +1344,8 @@ def load_dicom(path, rescale=True):
 
         try:
             ds = pydicom.read_file(path)
-            if int(ds.ImagesInAcquisition) == 1:
+            if not hasattr(ds, "ImagesInAcquisition") \
+               or int(ds.ImagesInAcquisition) == 1:
                 data, affine = load_image_single_file(ds, rescale=rescale)
 
             # Look for other files from same image
@@ -1396,10 +1397,21 @@ def load_image_single_file(ds, rescale=True):
     elif rescale == "dose" and hasattr(ds, "DoseGridScaling"):
         data = data * float(ds.DoseGridScaling) + rescale_intercept
 
-    # Get affine matrix
-    vx, vy = ds.PixelSpacing
-    vz = ds.SliceThickness
-    px, py, pz = ds.ImagePositionPatient
+    # Get voxel sizes
+    if hasattr(ds, "PixelSpacing"):
+        vx, vy = ds.PixelSpacing
+    elif hasattr(ds, "ImagerPixelSpacing"):
+        vx, vy = ds.ImagerPixelSpacing
+    else:
+        raise RuntimeError("Image must have either PixelSpacing or "
+                           "ImagerPixelSpacing!")
+    vz = ds.SliceThickness if hasattr(ds, "SliceThickness") else 1
+
+    # Get origin
+    px, py, pz = ds.ImagePositionPatient if \
+            hasattr(ds, "ImagePositionPatient") else (0, 0, 0)
+
+    # Make affine matrix
     affine = np.array([[vx, 0, 0, px], [0, vy, 0, py], [0, 0, vz, pz], [0, 0, 0, 1]])
 
     # Adjust for consistency with dcm2nii
