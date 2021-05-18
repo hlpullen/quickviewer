@@ -8,7 +8,7 @@ from quickviewer.simulation import GeometricNifti
 ##################
 # Image settings #
 ##################
-n_voxels = [256, 256, 60]
+n_voxels = [256, 256, round(np.random.uniform(50, 80))]
 origin = [-n_voxels[0] / 2, -n_voxels[1] / 2, 0]
 voxel_sizes = [1, 1, 3]
 length = [n_voxels[i] * voxel_sizes[i] for i in range(3)]
@@ -68,7 +68,7 @@ def make_patient(outdir):
         )
 
     # Add eyes
-    for i in [-1, 1]:
+    for i, name in zip([-1, 1], ['right', 'left']):
         nii.add_sphere(
             radius=eye_radius,
             centre=[
@@ -77,7 +77,7 @@ def make_patient(outdir):
                 centre[2] + eye_offset_z
             ],
             intensity=40,
-            group='eyes'
+            name='eye_' + name
         )
 
     # Add teeth
