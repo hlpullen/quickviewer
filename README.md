@@ -55,6 +55,8 @@ II) [How to use QuickViewer](#ii-how-to-use-quickviewer)
       - [From the command line](#from-the-command-line)
       - [Inside a python script](#inside-a-python-script)
 
+III) [Acknowledgements](#acknowledgements)
+
 ## I) Installation
 
 ### Installing QuickViewer via pip
@@ -657,3 +659,6 @@ The `QuickViewer` class can be imported into a python script by adding
 to the script. Creating a `QuickViewer` object inside the code will cause a window containing the plot to be opened when the code is run.
 
 If you just want to save the plot without interactively displaying it, you can set the `save_as` argument to the output file name, and set `show=False` to suppress the interactive version.
+
+## Acknowledgements
+Many thanks to Karl Harrison and Ceilidh Welsh for code snippets, feature suggestions, and rigorous testing!
