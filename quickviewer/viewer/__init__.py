@@ -104,20 +104,24 @@ class QuickViewer:
 
             1) String:
                 a) The path to a NIfTI file containing a structure mask;
-                b) A wildcard matching one or more NIfTI files containing
-                   structure masks;
-                c) The path to a directory from which all files ending in *.nii
-                   or *.nii.gz are to be loaded;
-                d) A wildcard matching one or more directories from which all
-                   files ending in *.nii or *.nii.gz are to be loaded.
+                b) The path to a DICOM file containing structure contours;
+                b) A wildcard matching one or more of the above file types;
+                c) The path to a directory containing NIfTI or DICOM files;
+                d) A wildcard matching one or more directories containing 
+                   NIfTI or DICOM files.
 
-                Structure names will be inferred from the filenames unless
+                If the string is found to match a directory, the structures 
+                from all NIfTI or DICOM files inside that directory will 
+                be loaded.
+
+                Structure names will be inferred from the filenames (NIfTI)
+                or the structure names inside the file (DICOM) unless
                 the user indicates otherwise in the <struct_names> parameter;
                 e.g. a structure taken from a file called
                 "right_parotid.nii.gz" would automatically be called
                 "right parotid" in QuickViewer.
 
-                If multiple structures loaded have the same name, QuickViewer
+                If multiple loaded structures have the same names, QuickViewer
                 will attempt to label each with a unique name in the UI:
                     - If two structures named "heart" are loaded from different
                       directories dir1 and dir2, these will be labelled
@@ -132,7 +136,7 @@ class QuickViewer:
                 option for more customisation.
 
             2) List:
-                a) A list of any of the strings described above; all NIfTI
+                a) A list of any of the strings described above; all structure
                    files found will be loaded.
                 b) A list of pairs of paths to files containing structures to
                    be compared to one another (see the <struct_comparison>
@@ -152,7 +156,25 @@ class QuickViewer:
                 different name and color options to the structures associated
                 with different labels.
 
+            By default, each NIfTI file will be assumed to contain a single 
+            structure. To load multiple label masks from a single NIfTI file,
+            add the string "multi:" before the filepath, e.g.:
+
+                structs="multi:my_file.nii"
+
+            or alternatively use the multi_structs parameter.
+
         multi_structs : str/list/dict, default=None
+
+            Path(s) to file(s) from which to load multiple structure label 
+            masks per file. 
+
+            Same as the <structs> argument, except each file specified in the
+            <multi_structs> argument will be checked for different labels 
+            instead of being treated as a binary mask.
+
+            This can be used in conjunction with <structs> to load single masks
+            from some files and multiple masks from others.
 
         jacobian : string/nifti/array/list, default=None
             Source(s) of jacobian determinant array(s) to overlay on each plot
@@ -478,8 +500,9 @@ class QuickViewer:
             wildcards matching a structure name or filepath, and the values are
             the custom names to give the structure loaded from that file.
 
-            If multiple structures are to be loaded from files (i.e.
-            <many_structs_per_file> is True), the <struct_names> parameter
+            If multiple structures are to be loaded from files (i.e. the 
+            <multi_structs> parameter is set, or paths in the <structs> 
+            parameter are prefixed with "multi:") the <struct_names> parameter
             can either be:
                 a) A list of names, where the Nth name in the list will be
                    applied to the structure with mask label N in the structure

@@ -129,6 +129,7 @@ class Struct(Image):
             self.name = re.sub(r"RTSTRUCT_[MVCT]+_\d+_\d+_\d+_", "", basename).replace(
                 " ", "_"
             )
+            self.name = make_name_nice(self.name)
         else:
             self.name = "Structure"
         self.set_label(label)
@@ -149,8 +150,9 @@ class Struct(Image):
         """Set the label for this structure and use to generate nice name."""
 
         self.label = label
-        nice = self.name.replace("_", " ")
-        self.name_nice = nice[0].upper() + nice[1:]
+        #  nice = self.name.replace("_", " ")
+        #  self.name_nice = nice[0].upper() + nice[1:]
+        self.name_nice = self.name
         self.name_nice_nolabel = self.name_nice
         if self.label:
             self.name_nice += f" ({self.label})"
@@ -1083,17 +1085,36 @@ class StructLoader:
         if settings is None:
             return {}
 
+        parsed_settings = {}
+
         # Convert single list to enumerated dict
-        elif is_list(settings):
-            settings = {value: i + 1 for i, value in enumerate(settings)}
+        if is_list(settings):
+            parsed_settings = {value: i + 1 for i, value in 
+                               enumerate(settings)}
 
         # Convert label dict of lists into enumerated dicts
         elif isinstance(settings, dict):
             for label, s in settings.items():
-                if is_list(s):
-                    settings[label] = {value: i + 1 for i, value in enumerate(s)}
 
-        return settings
+                if isinstance(label, int):
+                    parsed_settings[s] = label
+
+                elif isinstance(s, dict):
+                    parsed_settings[label] = {}
+                    for label2, s2 in s.items():
+                        if isinstance(label2, int):
+                            parsed_settings[label][s2] = label2
+                        else:
+                            parsed_settings[label][label2] = s2
+
+                elif is_list(s):
+                    parsed_settings[label] = {value: i + 1 for i, value in 
+                                              enumerate(s)}
+
+                else:
+                    parsed_settings[label] = s
+
+        return parsed_settings
 
     def load_structs(self, structs, names, colors, multi=False):
         """Load a list/dict of structres."""
@@ -1177,6 +1198,7 @@ class StructLoader:
             name = re.sub(r"RTSTRUCT_[MVCT]+_\d+_\d+_\d+_", "", basename).replace(
                 " ", "_"
             )
+            name = make_name_nice(name)
 
             # See if we can convert this name based on names list
             for name2, matches in names.items():
@@ -1228,7 +1250,7 @@ class StructLoader:
         return keep
 
     def add_struct_array(self, array, name, colors):
-        """Create Struct object from a NumPy arrat and add to list."""
+        """Create Struct object from a NumPy array and add to list."""
 
         self.loaded = False
         if self.image is None:
@@ -1263,8 +1285,6 @@ class StructLoader:
         else:
             name = f"Structure {len(self.structs) + 1}"
 
-        # Keep or ignore
-
         # Only one structure per file
         if not multi:
             if self.keep_struct(name):
@@ -1284,18 +1304,6 @@ class StructLoader:
         kwargs.update({"voxel_sizes": voxel_sizes, "origin": origin})
         mask_labels = np.unique(data).astype(int)
         mask_labels = mask_labels[mask_labels != 0]
-
-        # Case with only one structure in that file
-        if len(mask_labels) < 2:
-            if self.keep_struct(name):
-                struct = Struct(
-                    path, label=label, name=name, load=False, **self.struct_kwargs
-                )
-                color = self.find_color_match(colors, struct.name)
-                if color is not None:
-                    struct.assign_color(color)
-                self.structs.append(struct)
-            return
 
         # Load multiple massk
         for ml in mask_labels:
@@ -1691,3 +1699,11 @@ def contours_to_mask(contours, shape, level=0.25, save_name=None, affine=None):
         nii.to_filename(save_name + ".nii.gz")
 
     return mask
+
+
+def make_name_nice(name):
+    """Replace underscores with spaces and make uppercase."""
+
+    name_nice = name.replace("_", " ")
+    name_nice = name_nice[0].upper() + name_nice[1:]
+    return name_nice
