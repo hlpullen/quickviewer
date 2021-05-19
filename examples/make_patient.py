@@ -11,7 +11,7 @@ def make_patient(outdir):
     ##################
     # Image settings #
     ##################
-    n_voxels = [256, 256, np.random.uniform(50, 80)]
+    n_voxels = [256, 256, round(np.random.uniform(50, 80))]
     origin = [-n_voxels[0] / 2, -n_voxels[1] / 2, 0]
     voxel_sizes = [1, 1, 3]
     length = [n_voxels[i] * voxel_sizes[i] for i in range(3)]
