@@ -5,47 +5,45 @@ import numpy as np
 from quickviewer.simulation import GeometricNifti
 
 
-##################
-# Image settings #
-##################
-n_voxels = [256, 256, round(np.random.uniform(50, 80))]
-origin = [-n_voxels[0] / 2, -n_voxels[1] / 2, 0]
-voxel_sizes = [1, 1, 3]
-length = [n_voxels[i] * voxel_sizes[i] for i in range(3)]
-noise_std = 10
-
-####################################
-# Randomised anatomical parameters #
-####################################
-# Head
-head_height = np.random.uniform(100, 170)
-head_radius = np.random.uniform(40, 80)
-
-# Ears
-ear_offset_x = np.random.uniform(-5, 5)
-ear_offset_y = np.random.uniform(-5, 5)
-ear_offset_z = np.random.uniform(-5, 10)
-ear_size_x = np.random.uniform(20, 60)
-ear_size_y = np.random.uniform(5, 20)
-ear_size_z = np.random.uniform(40, 60)
-
-# Eyes
-eye_angle = np.random.uniform(15, 40)
-eye_radius = np.random.uniform(5, 15)
-eye_offset_z = np.random.uniform(0, 10)
-
-# Teeth
-teeth_bottom_row_from_chin = np.random.uniform(10, 20)
-teeth_row_spacing = np.random.uniform(5, 15)
-teeth_angle_spacing = np.random.uniform(5, 10)
-teeth_size = np.random.uniform(5, 10)
-teeth_radius_frac = np.random.uniform(0.7, 0.9)
-
-
 def make_patient(outdir):
-    """Make a patient and write its image and structures to a directory."""
-
     """Create a random patient image."""
+
+    ##################
+    # Image settings #
+    ##################
+    n_voxels = [256, 256, np.random.uniform(50, 80)]
+    origin = [-n_voxels[0] / 2, -n_voxels[1] / 2, 0]
+    voxel_sizes = [1, 1, 3]
+    length = [n_voxels[i] * voxel_sizes[i] for i in range(3)]
+    noise_std = 10
+
+    ####################################
+    # Randomised anatomical parameters #
+    ####################################
+    # Head
+    head_height = np.random.uniform(100, 170)
+    head_radius = np.random.uniform(40, 80)
+
+    # Ears
+    ear_offset_x = np.random.uniform(-5, 5)
+    ear_offset_y = np.random.uniform(-5, 5)
+    ear_offset_z = np.random.uniform(-5, 10)
+    ear_size_x = np.random.uniform(20, 60)
+    ear_size_y = np.random.uniform(5, 20)
+    ear_size_z = np.random.uniform(40, 60)
+
+    # Eyes
+    eye_angle = np.random.uniform(15, 40)
+    eye_radius = np.random.uniform(5, 15)
+    eye_offset_z = np.random.uniform(0, 10)
+
+    # Teeth
+    teeth_bottom_row_from_chin = np.random.uniform(10, 20)
+    teeth_row_spacing = np.random.uniform(5, 15)
+    teeth_angle_spacing = np.random.uniform(5, 10)
+    teeth_size = np.random.uniform(5, 10)
+    teeth_radius_frac = np.random.uniform(0.7, 0.9)
+
 
     ##############
     # Make image #

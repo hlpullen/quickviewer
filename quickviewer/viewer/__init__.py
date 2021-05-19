@@ -496,18 +496,31 @@ class QuickViewer:
             Custom names for structures.
 
             If only one structure is to be loaded per file, this should be a
-            dictionary where the keys are structure names, filepaths or
-            wildcards matching a structure name or filepath, and the values are
-            the custom names to give the structure loaded from that file.
+            dictionary where the keys the desired custom names. The values
+            of the dictionary can be either:
+                (a) A string containing the path of the file containing the 
+                    structure to be renamed;
+                (b) A string containing the name of the structure to be renamed 
+                    within a DICOM file;
+                (c) A string containing the automatically-generated name of the
+                    structure to be renamed (e.g. if the structure came from a 
+                    file right_parotid.nii, its automatically generated name
+                    would be "right parotid";
+                (d) A wildcard matching any of the above;
+                (e) A list of any of the above.
+            The list functionality allows the user to list multiple names
+            that should be replace by a single custom name, e.g. to handle
+            cases where the same structure may have different names in 
+            different DICOM files.
 
             If multiple structures are to be loaded from files (i.e. the 
             <multi_structs> parameter is set, or paths in the <structs> 
             parameter are prefixed with "multi:") the <struct_names> parameter
             can either be:
-                a) A list of names, where the Nth name in the list will be
+                (a) A list of names, where the Nth name in the list will be
                    applied to the structure with mask label N in the structure
                    array; or
-                b) A dictionary where the keys are integers such that the
+                (b) A dictionary where the keys are integers such that the
                    name associated with key N will be applied to the structure
                    with mask label N in the structure array.
 
