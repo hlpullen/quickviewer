@@ -496,7 +496,7 @@ class QuickViewer:
             Custom names for structures.
 
             If only one structure is to be loaded per file, this should be a
-            dictionary where the keys the desired custom names. The values
+            dictionary where the keys are the desired custom names. The values
             of the dictionary can be either:
                 (a) A string containing the path of the file containing the 
                     structure to be renamed;
@@ -509,7 +509,7 @@ class QuickViewer:
                 (d) A wildcard matching any of the above;
                 (e) A list of any of the above.
             The list functionality allows the user to list multiple names
-            that should be replace by a single custom name, e.g. to handle
+            that should be replaced by a single custom name, e.g. to handle
             cases where the same structure may have different names in 
             different DICOM files.
 
