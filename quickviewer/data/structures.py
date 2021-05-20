@@ -813,8 +813,10 @@ class StructComparison:
                 zoom_centre,
                 centroid=centroid,
             )
+
         elif plot_type == "mask":
             self.plot_mask(view, sl, pos, ax, mpl_kwargs, zoom, zoom_centre)
+
         elif plot_type in ["filled", "filled centroid"]:
             mask_kwargs = {"alpha": mpl_kwargs.get("alpha", 0.3)}
             self.plot_mask(view, sl, pos, ax, mask_kwargs, zoom, zoom_centre)
@@ -877,7 +879,7 @@ class StructComparison:
                 **self.s1.get_kwargs(mpl_kwargs, default=self.s1.mask_kwargs),
             )
 
-        self.s1.adjust_ax(view, zoom, zoom_centre)
+        self.s2.adjust_ax(view, zoom, zoom_centre)
 
     def on_slice(self, view, sl):
         """Check whether both structures are on a given slice."""
