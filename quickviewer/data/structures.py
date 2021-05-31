@@ -7,6 +7,7 @@ import os
 import pydicom
 import re
 import skimage.measure
+from scipy.ndimage import morphology
 from shapely import geometry
 
 from quickviewer.data.image import (
@@ -217,7 +218,17 @@ class Struct(Image):
 
             return n1 < n2
 
-    def get_centroid(self, units="voxels"):
+    def get_slices(self, view="x-y"):
+        """Get list of slice numbers on which this structure is nonzero."""
+
+        return list(self.contours[view].keys())
+
+    def get_mid_slice(self, view="x-y"):
+        """Get central slice of this structure."""
+
+        return round(np.mean(list(self.contours[view].keys())))
+
+    def get_centroid(self, units="mm"):
         """Get the centroid position in 3D."""
 
         if not hasattr(self, "centroid"):
@@ -235,7 +246,7 @@ class Struct(Image):
 
         return np.array(self.centroid[units])
 
-    def get_centroid_2d(self, view, sl, units="voxels"):
+    def get_centroid_2d(self, view, sl, units="mm"):
         """Get the centroid position on a 2D slice."""
 
         if not self.on_slice(view, sl):
@@ -249,7 +260,7 @@ class Struct(Image):
             cy = self.n_voxels[y_ax] - 1 - cy
         return (conversion(cx, x_ax), conversion(cy, y_ax))
 
-    def get_volume(self, units):
+    def get_volume(self, units="mm"):
         """Get total structure volume in voxels, mm, or ml."""
 
         if not self.loaded or self.empty:
@@ -264,7 +275,7 @@ class Struct(Image):
 
         return self.volume[units]
 
-    def get_struct_length(self, units):
+    def get_length(self, units="mm"):
         """Get the total x, y, z length in voxels or mm."""
 
         if not self.loaded or self.empty:
@@ -584,7 +595,7 @@ class Struct(Image):
             return False
         return sl in self.contours[view]
 
-    def get_area(self, view, sl, units="voxels"):
+    def get_area(self, view, sl, units="mm"):
         """Get the area on a given slice."""
 
         if not self.on_slice(view, sl):
@@ -598,7 +609,7 @@ class Struct(Image):
             area *= abs(self.voxel_sizes[x] * self.voxel_sizes[y])
         return area
 
-    def get_full_extent(self, units="voxels"):
+    def get_full_extent(self, units="mm"):
         """Get the full extent along x, y, z."""
 
         if not self.loaded or self.empty:
@@ -620,7 +631,7 @@ class Struct(Image):
 
         return self.full_extent[units]
 
-    def get_extents(self, view, sl, units="voxels"):
+    def get_extents(self, view, sl, units="mm"):
         """Get extents along the x/y axes in a given view on a given slice."""
 
         if not self.on_slice(view, sl):
@@ -637,9 +648,9 @@ class Struct(Image):
             if units == "mm":
                 x_len *= abs(self.voxel_sizes[x])
                 y_len *= abs(self.voxel_sizes[y])
-            return x_len, y_len
+            return [x_len, y_len]
         else:
-            return 0, 0
+            return [0, 0]
 
     def get_centre(self, view, sl):
         """Get the coordinates of the centre of this structure in a given view
@@ -888,7 +899,7 @@ class StructComparison:
             return False
         return self.s1.on_slice(view, sl) and self.s2.on_slice(view, sl)
 
-    def centroid_distance(self, units="voxels", force=False):
+    def centroid_distance(self, units="mm", force=False):
         """Get total centroid distance."""
 
         if not hasattr(self, "centroid_dist") or force:
@@ -901,7 +912,7 @@ class StructComparison:
 
         return self.centroid_dist[units]
 
-    def centroid_distance_2d(self, view, sl, units="voxels"):
+    def centroid_distance_2d(self, view, sl, units="mm"):
         """Get distances between centroid in x, y directions for current "
         slice."""
 
@@ -909,7 +920,7 @@ class StructComparison:
         cx2, cy2 = self.s2.get_centroid_2d(view, sl, units)
         if cx1 is None or cx2 is None:
             return None, None
-        return cx1 - cx2, cy1 - cy2
+        return [cx1 - cx2, cy1 - cy2]
 
     def dice_score(self, view, sl):
         """Get dice score on a given slice."""
@@ -969,7 +980,59 @@ class StructComparison:
             return
         x1, y1 = self.s1.get_extents(view, sl)
         x2, y2 = self.s2.get_extents(view, sl)
-        return x1 / x2, y1 / y2
+        return [x1 / x2, y1 / y2]
+
+    def surface_distances(self, view="x-y", sl=None, connectivity=2):
+        """Get vector of surface distances."""
+
+        if not hasattr(self, "sds"):
+            self.sds = {}
+        if sl in self.sds:
+            return self.sds[sl]
+
+        # Get binary masks and voxel sizes
+        if sl == None:
+            mask1 = self.s1.data
+            mask2 = self.s2.data
+            voxel_sizes = list(self.s1.voxel_sizes.values())
+        else:
+            mask1 = self.s1.get_slice(view=view, sl=sl)
+            mask2 = self.s2.get_slice(view=view, sl=sl)
+            voxel_sizes = [self.s1.voxel_sizes[ax] for ax in _plot_axes[view]]
+        voxel_sizes = [abs(v) for v in voxel_sizes]
+
+        # Make structuring element
+        conn2 = morphology.generate_binary_structure(2, connectivity)
+        if mask1.ndim == 2:
+            conn = conn2
+        else:
+            conn = np.zeros((3, 3, 3), dtype=bool)
+            conn[:, :, 1] = conn2
+
+        # Get outer pixel of binary maps
+        surf1 = mask1 ^ morphology.binary_erosion(mask1, conn)
+        surf2 = mask2 ^ morphology.binary_erosion(mask2, conn)
+
+        # Make arrays of distances to surface of each pixel
+        dist1 = morphology.distance_transform_edt(~surf1, voxel_sizes)
+        dist2 = morphology.distance_transform_edt(~surf2, voxel_sizes)
+
+        # Make vector containing all distances
+        self.sds[sl] = np.concatenate([np.ravel(dist1[surf2 != 0]), 
+                                       np.ravel(dist2[surf1 != 0])])
+        return self.sds[sl]
+
+    def mean_surface_distance(self, view="x-y", sl=None, connectivity=2):
+        sds = self.surface_distances(view, sl, connectivity)
+        return sds.mean()
+
+    def rms_surface_distance(self, view="x-y", sl=None, connectivity=2):
+        sds = self.surface_distances(view, sl, connectivity)
+        return np.sqrt((sds ** 2).mean())
+
+    def hausdorff_distance(self, view="x-y", sl=None, connectivity=2):
+        sds = self.surface_distances(view, sl, connectivity)
+        return sds.max()
 
 
 class StructLoader:
@@ -1069,7 +1132,10 @@ class StructLoader:
         self.struct_kwargs = struct_kwargs if struct_kwargs is not None else {}
         if not (structs or multi_structs):
             return
-        self.image = image
+        if isinstance(image, str):
+            self.image = Image(image)
+        else:
+            self.image = image
         self.to_keep = to_keep
         self.to_ignore = to_ignore
 
@@ -1516,21 +1582,37 @@ class StructLoader:
                 colors[s.name_unique] = color
         return colors
 
-    def get_structs(self, ignore_unpaired=False, ignore_empty=False, sort=False):
+    def get_structs(self, name=None, ignore_unpaired=False, ignore_empty=False, 
+                    sort=False):
         """Get list of all structures. If <ignore_unpaired> is True, only
         structures that are part of a comparison pair will be returned."""
 
+        return list(self.get_struct_dict().values())
+
+    def get_struct(self, name):
+        """Get a structure with a specific name."""
+
+        structs = self.get_struct_dict()
+        if name not in structs:
+            print(f"Structure {name} not found!")
+            return
+        return structs[name]
+
+    def get_struct_dict(self, ignore_unpaired=False, ignore_empty=False,
+                        sort=False):
+        """Get dictionary of structures, where keys are structure names."""
+
         self.load_all()
-        s_list = self.structs
-        if sort:
-            s_list = sorted(s_list)
         if ignore_unpaired:
             self.find_comparisons()
-            s_list = self.comparison_structs
-        if ignore_empty:
-            return [s for s in s_list if not s.empty]
+            structs = {s.name_unique: s for s in self.comparison_structs}
         else:
-            return s_list
+            structs = {s.name_unique: s for s in self.structs}
+        if ignore_empty:
+            return {name: s for name, s in structs if not s.empty}
+        if sort:
+            return dict(sorted(structs.items(), key=lambda item: item[1]))
+        return structs
 
     def get_comparisons(self, ignore_empty=False):
         """Get list of StructComparison objects."""
@@ -1541,6 +1623,32 @@ class StructLoader:
             return [c for c in self.comparisons if not c.s1.empty or c.s2.empty]
         else:
             return self.comparisons
+
+    def get_comparison_dict(self, ignore_empty=False):
+
+        self.load_all()
+        self.find_comparisons()
+
+        # Make dictionary of all structure comparisons
+        comps = {}
+        for sc in self.comparisons:
+            if sc.s1.name_unique not in comps:
+                comps[sc.s1.name_unique] = {}
+            comps[sc.s1.name_unique][sc.s2.name_unique] = sc
+
+        # Ensure there's an entry both ways for every structure
+        for s1 in self.comparison_structs:
+            for s2 in self.comparison_structs:
+                name1 = s1.name_unique
+                name2 = s2.name_unique
+                if name1 == name2:
+                    continue
+                if name1 not in comps:
+                    comps[name1] = {}
+                if name2 not in comps[name1]:
+                    comps[name1][name2] = comps[name2][name1]
+
+        return comps
 
     def get_standalone_structs(self, ignore_unpaired=False, ignore_empty=False):
         """Get list of the structures that are not part of a comparison

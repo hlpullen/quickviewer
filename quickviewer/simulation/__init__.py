@@ -12,6 +12,7 @@ from scipy import ndimage
 
 from quickviewer.data.image import Image, make_three, is_list
 from quickviewer.data.image import get_translation_matrix, get_rotation_matrix
+from quickviewer.data.structures import Struct
 
 
 class GeometricNifti(Image):
@@ -128,6 +129,19 @@ class GeometricNifti(Image):
             data = shape.get_data(self.get_coords())
             struct_data[shape.name] = data
         return struct_data
+
+    def get_struct(self, name):
+        """Get a named structure as a Structure object."""
+
+        structs_dict = {s.name: s for s in self.structs}
+        if name not in structs_dict:
+            print("Structure", name, "not found!")
+            return
+
+        s = structs_dict[name]
+        return Struct(s.get_data(self.get_coords()),
+                      name=name,
+                      affine=self.affine)
 
     def write(self, outname=None):
         """Write to a NIfTI file.

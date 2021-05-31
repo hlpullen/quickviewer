@@ -2030,6 +2030,7 @@ class SingleViewer:
             "dice": "Dice",
             "vol": "Rel. vol. diff.",
             "centroid": f"Centroid dist. ({centroid_units})",
+            "rms_surf": "RMS surface dist. (mm)",
             "dice_slice": "Dice",
             "area": "Rel. area diff.",
             "slice": "Slice-by-slice",

@@ -563,6 +563,10 @@ class Image:
             self.min_hu = self.data.min()
         return self.min_hu
 
+    def get_slice(self, view, sl=None, pos=None):
+        self.set_slice(view, sl, pos)
+        return self.current_slice
+
     def set_slice(self, view, sl=None, pos=None, masked=False, invert_mask=False):
         """Assign a 2D array corresponding to a slice of the image in a given
         orientation to class variable self.current_slice. If the variable
@@ -1344,8 +1348,7 @@ def load_dicom(path, rescale=True):
 
         try:
             ds = pydicom.read_file(path)
-            if not hasattr(ds, "ImagesInAcquisition") \
-               or int(ds.ImagesInAcquisition) == 1:
+            if ds.get("ImagesInAcquisition", None) == 1:
                 data, affine = load_image_single_file(ds, rescale=rescale)
 
             # Look for other files from same image
@@ -1358,7 +1361,8 @@ def load_dicom(path, rescale=True):
                     if not os.path.isdir(os.path.join(dirname, p))
                 ]
                 data, affine = load_image_multiple_files(
-                    paths, series_num=num, rescale=rescale
+                    paths, series_num=num, rescale=rescale,
+                    orientation=ds.ImageOrientationPatient
                 )
 
         except pydicom.errors.InvalidDicomError:
@@ -1408,8 +1412,8 @@ def load_image_single_file(ds, rescale=True):
     vz = ds.SliceThickness if hasattr(ds, "SliceThickness") else 1
 
     # Get origin
-    px, py, pz = ds.ImagePositionPatient if \
-            hasattr(ds, "ImagePositionPatient") else (0, 0, 0)
+    px, py, pz = ds.ImagePositionPatient if hasattr(ds, "ImagePositionPatient") \
+        else (0, 0, 0)
 
     # Make affine matrix
     affine = np.array([[vx, 0, 0, px], [0, vy, 0, py], [0, 0, vz, pz], [0, 0, 0, 1]])
@@ -1424,7 +1428,8 @@ def load_image_single_file(ds, rescale=True):
     return data, affine
 
 
-def load_image_multiple_files(paths, series_num=None, rescale=True):
+def load_image_multiple_files(paths, series_num=None, rescale=True, 
+                              orientation=[1, 0, 0, 0, 1, 0]):
     """Load a single dicom image from multiple files."""
 
     data_slices = {}
@@ -1432,6 +1437,8 @@ def load_image_multiple_files(paths, series_num=None, rescale=True):
         try:
             ds = pydicom.read_file(path)
             if series_num is not None and ds.SeriesNumber != series_num:
+                continue
+            if ds.ImageOrientationPatient != orientation:
                 continue
             slice_num = ds.SliceLocation
             data, affine = load_image_single_file(ds, rescale=rescale)
@@ -1446,6 +1453,13 @@ def load_image_multiple_files(paths, series_num=None, rescale=True):
         data_slices[sl] for sl in sorted(list(data_slices.keys()), reverse=(vz >= 0))
     ]
     data = np.stack(data_list, axis=-1)
+
+    # Adjust orientation
+    orientation = [abs(int(x)) for x in orientation]
+    row = orientation[:3].index(1)
+    col = orientation[3:].index(1)
+    tr = (row, col, 3 - (row + col))
+    data = data.transpose(*tr)
 
     # Get z origin
     func = max if vz >= 0 else min

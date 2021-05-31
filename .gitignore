@@ -1,7 +1,9 @@
-tests
+tests/data
 .*
 !.gitignore
 __pycache__
 dist
 build
 quickviewer.egg-info/
+*.nii*
+*.dcm
