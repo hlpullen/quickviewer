@@ -2323,7 +2323,7 @@ class SingleViewer:
                     self.view, self.slice[self.view], self.length_units
                 )
                 centre_units = "mm" if self.im.scale_in_mm else "voxels"
-                centre = s.get_centroid_2d(
+                centre = s.centroid(
                     self.view, self.slice[self.view], centre_units
                 )
 

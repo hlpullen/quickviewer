@@ -218,47 +218,46 @@ class Struct(Image):
 
             return n1 < n2
 
-    def get_slices(self, view="x-y"):
-        """Get list of slice numbers on which this structure is nonzero."""
+    def slices(self, view="x-y"):
+        """Get list of slice numbers on which this structure is nonzero in
+        a given orientation."""
 
         return list(self.contours[view].keys())
 
-    def get_mid_slice(self, view="x-y"):
-        """Get central slice of this structure."""
+    def mid_slice(self, view="x-y"):
+        """Get central slice of this structure in a given orientation."""
 
-        return round(np.mean(list(self.contours[view].keys())))
+        return round(np.mean(self.slices(view)))
 
-    def get_centroid(self, units="mm"):
+    def centroid(self, view="x-y", sl=None, units="mm"):
         """Get the centroid position in 3D."""
 
-        if not hasattr(self, "centroid"):
-            self.centroid = {}
-            non_zero = np.argwhere(self.data)
-            cx, cy, cz = non_zero.mean(0)
-            centroid = [cx, cy, cz]
+        if sl is not None:
+            if not self.on_slice(view, sl):
+                return [None, None]
+            data = self.get_slice(view, sl)
+            axes = _plot_axes[view]
+        else:
+            data = self.data
             axes = ["x", "y", "z"]
-            self.centroid["voxels"] = [
-                self.idx_to_slice(c, axes[i]) for i, c in enumerate(centroid)
-            ]
-            self.centroid["mm"] = [
-                self.idx_to_pos(c, axes[i]) for i, c in enumerate(centroid)
-            ]
+            if not hasattr(self, "global_centroid"):
+                self.global_centroid = {}
+            if units in self.global_centroid:
+                return self.global_centroid[units]
 
-        return np.array(self.centroid[units])
+        # Compute centroid in required units
+        non_zero = np.argwhere(data)
+        centroid = list(non_zero.mean(0))
+        if sl is not None:
+            centroid.reverse()
+            if axes[1] == "y":
+                centroid[1] = self.n_voxels["y"] - 1 - centroid[1]
+        conversion = self.idx_to_pos if units == "mm" else self.idx_to_slice
+        centroid = [conversion(c, axes[i]) for i, c in enumerate(centroid)]
 
-    def get_centroid_2d(self, view, sl, units="mm"):
-        """Get the centroid position on a 2D slice."""
-
-        if not self.on_slice(view, sl):
-            return None, None
-        self.set_slice(view, sl)
-        non_zero = np.argwhere(self.current_slice)
-        cy, cx = non_zero.mean(0)
-        x_ax, y_ax = _plot_axes[view]
-        conversion = self.idx_to_slice if units == "voxels" else self.idx_to_pos
-        if y_ax == "y":
-            cy = self.n_voxels[y_ax] - 1 - cy
-        return (conversion(cx, x_ax), conversion(cy, y_ax))
+        if sl is None:
+            self.global_centroid[units] = centroid
+        return centroid
 
     def get_volume(self, units="mm"):
         """Get total structure volume in voxels, mm, or ml."""
@@ -582,7 +581,7 @@ class Struct(Image):
 
         if centroid:
             units = "voxels" if not self.scale_in_mm else "mm"
-            x, y = self.get_centroid_2d(view, sl, units)
+            x, y = self.centroid(view, sl, units)
             self.ax.plot(x, y, "+", **kwargs)
 
         self.adjust_ax(view, zoom, zoom_centre)
@@ -905,7 +904,8 @@ class StructComparison:
         if not hasattr(self, "centroid_dist") or force:
             self.centroid_dist = {
                 units: np.linalg.norm(
-                    self.s1.get_centroid(units) - self.s2.get_centroid(units)
+                    np.array(self.s1.centroid(units)) 
+                    - np.array(self.s2.centroid(units))
                 )
                 for units in ["mm", "voxels"]
             }
@@ -916,8 +916,8 @@ class StructComparison:
         """Get distances between centroid in x, y directions for current "
         slice."""
 
-        cx1, cy1 = self.s1.get_centroid_2d(view, sl, units)
-        cx2, cy2 = self.s2.get_centroid_2d(view, sl, units)
+        cx1, cy1 = self.s1.centroid(view, sl, units)
+        cx2, cy2 = self.s2.centroid(view, sl, units)
         if cx1 is None or cx2 is None:
             return None, None
         return [cx1 - cx2, cy1 - cy2]

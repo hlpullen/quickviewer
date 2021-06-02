@@ -20,7 +20,7 @@ cube2 = gn.get_struct("cube2")
 
 
 def test_centroid():
-    centroid = cube1.get_centroid()
+    centroid = cube1.centroid()
     assert centroid[0] == cx
     assert centroid[1] == cy
     assert centroid[2] == cz
@@ -28,13 +28,13 @@ def test_centroid():
 
 def test_centroid_slice():
     assert np.array_equal(
-        cube1.get_centroid_2d("x-y", sl=cube1.get_mid_slice("x-y")),
+        cube1.centroid("x-y", sl=cube1.mid_slice("x-y")),
         [cx, cy])
     assert np.array_equal(
-        cube1.get_centroid_2d("y-z", sl=cube1.get_mid_slice("y-z")),
+        cube1.centroid("y-z", sl=cube1.mid_slice("y-z")),
         [cz, cy])
     assert np.array_equal(
-        cube1.get_centroid_2d("x-z", sl=cube1.get_mid_slice("x-z")),
+        cube1.centroid("x-z", sl=cube1.mid_slice("x-z")),
         [cz, cx])
 
 
@@ -45,7 +45,7 @@ def test_volume():
 
 def test_area():
     for view in ["x-y", "y-z", "x-z"]:
-        assert cube1.get_area(view, sl=cube1.get_mid_slice(view)) == 100
+        assert cube1.get_area(view, sl=cube1.mid_slice(view)) == 100
 
 
 def test_length():
@@ -54,18 +54,18 @@ def test_length():
 
 def test_extent_slice():
     for view in ["x-y", "y-z", "x-z"]:
-        assert cube1.get_extents(view, cube1.get_mid_slice(view)) == [10, 10]
+        assert cube1.get_extents(view, cube1.mid_slice(view)) == [10, 10]
 
 
 def test_centre():
     assert np.array_equal(
-        cube1.get_centre("x-y", sl=cube1.get_mid_slice("x-y")),
+        cube1.get_centre("x-y", sl=cube1.mid_slice("x-y")),
         [cx, cy])
     assert np.array_equal(
-        cube1.get_centre("y-z", sl=cube1.get_mid_slice("y-z")),
+        cube1.get_centre("y-z", sl=cube1.mid_slice("y-z")),
         [cz, cy])
     assert np.array_equal(
-        cube1.get_centre("x-z", sl=cube1.get_mid_slice("x-z")),
+        cube1.get_centre("x-z", sl=cube1.mid_slice("x-z")),
         [cz, cx])
 
 
@@ -78,24 +78,24 @@ def test_centroid_distance():
 
 def test_centroid_distance_slice():
     assert np.array_equal(
-        comp.centroid_distance_2d("x-y", sl=cube1.get_mid_slice("x-y")),
+        comp.centroid_distance_2d("x-y", sl=cube1.mid_slice("x-y")),
         [-dx, -dy]
     )
     assert np.array_equal(
-        comp.centroid_distance_2d("y-z", sl=cube1.get_mid_slice("y-z")),
+        comp.centroid_distance_2d("y-z", sl=cube1.mid_slice("y-z")),
         [0, -dy]
     )
     assert np.array_equal(
-        comp.centroid_distance_2d("x-z", sl=cube1.get_mid_slice("x-z")),
+        comp.centroid_distance_2d("x-z", sl=cube1.mid_slice("x-z")),
         [0, -dx]
     )
 
 
 def test_dice():
     assert comp.global_dice_score() == 0.81
-    assert comp.dice_score("x-y", cube1.get_mid_slice("x-y")) == 0.81
+    assert comp.dice_score("x-y", cube1.mid_slice("x-y")) == 0.81
     for view in ["y-z", "x-z"]:
-        assert comp.dice_score(view, cube1.get_mid_slice(view)) == 0.9
+        assert comp.dice_score(view, cube1.mid_slice(view)) == 0.9
 
 
 def test_vol_comparison():
@@ -105,21 +105,21 @@ def test_vol_comparison():
 
 def test_area_comparison():
     for view in ["x-y", "y-z", "x-z"]:
-        assert comp.area_ratio(view, cube1.get_mid_slice(view)) == 1
-        assert comp.relative_area(view, cube1.get_mid_slice(view)) == 0
+        assert comp.area_ratio(view, cube1.mid_slice(view)) == 1
+        assert comp.relative_area(view, cube1.mid_slice(view)) == 0
 
 
 def test_extent_ratio():
     for view in ["x-y", "y-z", "x-z"]:
-        assert comp.extent_ratio(view, cube1.get_mid_slice(view)) == [1, 1]
+        assert comp.extent_ratio(view, cube1.mid_slice(view)) == [1, 1]
 
 
 def test_hausdorff():
     assert comp.hausdorff_distance() == approx(np.sqrt(2))
-    assert comp.hausdorff_distance("x-y", cube1.get_mid_slice("x-y")) \
+    assert comp.hausdorff_distance("x-y", cube1.mid_slice("x-y")) \
             == approx(np.sqrt(2))
     for view in ["y-z", "x-z"]:
-        assert comp.hausdorff_distance(view, cube1.get_mid_slice(view)) \
+        assert comp.hausdorff_distance(view, cube1.mid_slice(view)) \
                 == approx(1)
 
 
