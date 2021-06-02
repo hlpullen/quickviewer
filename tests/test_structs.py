@@ -13,8 +13,8 @@ def test_struct_mask():
     assert sm.get_volume("voxels") > 0
     assert sm.get_volume("ml") > 0
     assert sm.get_volume("mm") == approx(sm.get_volume("ml") * 1e3)
-    assert len(sm.get_struct_length("mm")) == 3
-    assert sm.get_struct_length("voxels")[0]
+    assert len(sm.get_length("mm")) == 3
+    assert sm.get_length("voxels")[0]
 
 def test_contours():
     assert len(sm.contours["x-y"])

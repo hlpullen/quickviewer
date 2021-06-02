@@ -2032,6 +2032,7 @@ class SingleViewer:
             "centroid": f"Centroid dist. ({centroid_units})",
             "rms_surf": "RMS surface dist. (mm)",
             "dice_slice": "Dice",
+            "rms_surf_slice": "RMS surface dist. (mm)",
             "area": "Rel. area diff.",
             "slice": "Slice-by-slice",
             "overall": "Overall",
@@ -2044,10 +2045,12 @@ class SingleViewer:
                     "dice",
                     "vol",
                     "centroid",
+                    "rms_surf",
                     "dice_slice",
                     "area",
                     "centroid_x",
                     "centroid_y",
+                    "rms_surf_slice"
                 ]
             }
             struct_comps.append(row)
@@ -2166,10 +2169,12 @@ class SingleViewer:
                     ("overall", "dice"),
                     ("overall", "vol"),
                     ("overall", "centroid"),
+                    ("overall", "rms_surf"),
                     ("slice", "dice_slice"),
                     ("slice", "area"),
                     ("slice", "centroid_x"),
                     ("slice", "centroid_y"),
+                    ("slice", "rms_surf_slice"),
                 ]
             )
             self.update_struct_comparisons()
@@ -2238,6 +2243,7 @@ class SingleViewer:
             dice = sc.global_dice_score()
             vol = sc.relative_vol()
             centroid_dist = sc.centroid_distance(centroid_units)
+            rms_surf = sc.rms_surface_distance()
 
             # Slice-by-slice metrics
             dice_slice = sc.dice_score(self.view, self.slice[self.view])
@@ -2245,15 +2251,20 @@ class SingleViewer:
             centroid_x, centroid_y = sc.centroid_distance_2d(
                 self.view, self.slice[self.view], centroid_units
             )
+            rms_surf_slice = sc.rms_surface_distance(self.view, 
+                                                     self.slice[self.view])
 
             # Fill dataframe
             self.df_struct_comp.at[i, ("overall", "dice")] = dice
             self.df_struct_comp.at[i, ("overall", "vol")] = vol
             self.df_struct_comp.at[i, ("overall", "centroid")] = centroid_dist
+            self.df_struct_comp.at[i, ("overall", "rms_surf")] = rms_surf
             self.df_struct_comp.at[i, ("slice", "area")] = area
             self.df_struct_comp.at[i, ("slice", "dice_slice")] = dice_slice
             self.df_struct_comp.at[i, ("slice", "centroid_x")] = centroid_x
             self.df_struct_comp.at[i, ("slice", "centroid_y")] = centroid_y
+            self.df_struct_comp.at[i, ("slice", "rms_surf_slice")] \
+                    = rms_surf_slice
 
         # Convert dataframe to HTML
         x_ax, y_ax = _plot_axes[self.view]

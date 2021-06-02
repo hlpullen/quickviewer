@@ -1023,14 +1023,20 @@ class StructComparison:
         return self.sds[sl]
 
     def mean_surface_distance(self, view="x-y", sl=None, connectivity=2):
+        if sl is not None and not self.on_slice(view, sl):
+            return
         sds = self.surface_distances(view, sl, connectivity)
         return sds.mean()
 
     def rms_surface_distance(self, view="x-y", sl=None, connectivity=2):
+        if sl is not None and not self.on_slice(view, sl):
+            return
         sds = self.surface_distances(view, sl, connectivity)
         return np.sqrt((sds ** 2).mean())
 
     def hausdorff_distance(self, view="x-y", sl=None, connectivity=2):
+        if sl is not None and not self.on_slice(view, sl):
+            return
         sds = self.surface_distances(view, sl, connectivity)
         return sds.max()
 
@@ -1582,12 +1588,13 @@ class StructLoader:
                 colors[s.name_unique] = color
         return colors
 
-    def get_structs(self, name=None, ignore_unpaired=False, ignore_empty=False, 
+    def get_structs(self, ignore_unpaired=False, ignore_empty=False, 
                     sort=False):
         """Get list of all structures. If <ignore_unpaired> is True, only
         structures that are part of a comparison pair will be returned."""
 
-        return list(self.get_struct_dict().values())
+        structs = self.get_struct_dict(ignore_unpaired, ignore_empty, sort)
+        return list(structs.values())
 
     def get_struct(self, name):
         """Get a structure with a specific name."""

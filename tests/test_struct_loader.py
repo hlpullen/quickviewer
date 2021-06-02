@@ -118,7 +118,6 @@ def test_standalone():
     structs = {"set2": "data/structs/my_structs/subdir"}
     names = {"set1": ["Sphere"]}
     s = StructLoader(structs=structs, multi_structs=multi, names=names)
-    print("names:", [st.name for st in s.get_structs()])
     assert len(s.get_structs()) == 4
     assert len(s.get_structs(True)) == 2
     assert len(s.get_comparisons()) == 1
