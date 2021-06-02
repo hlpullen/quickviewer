@@ -737,7 +737,7 @@ class StructComparison:
         self.s2.name_unique = f"vs. {self.comp_type} of others"
 
         self.centroid_distance(force=True)
-        self.global_dice_score(force=True)
+        self.dice(force=True)
 
     def is_valid(self):
         """Check both structures are valid and in same reference frame."""
@@ -922,26 +922,24 @@ class StructComparison:
             return None, None
         return [cx1 - cx2, cy1 - cy2]
 
-    def dice_score(self, view, sl):
+    def dice(self, view="x-y", sl=None, force=False):
         """Get dice score on a given slice."""
 
-        if not self.on_slice(view, sl):
-            return
-        self.s1.set_slice(view, sl)
-        self.s2.set_slice(view, sl)
-        slice1 = self.s1.current_slice
-        slice2 = self.s2.current_slice
-        return (slice1 & slice2).sum() / np.mean([slice1.sum(), slice2.sum()])
+        if sl is not None:
+            if not self.on_slice(view, sl):
+                return
+            s1 = self.s1.get_slice(view, sl)
+            s2 = self.s2.get_slice(view, sl)
+        else:
+            if hasattr(self, "global_dice") and not force:
+                return self.global_dice
+            s1 = self.s1.data
+            s2 = self.s2.data
 
-    def global_dice_score(self, force=False):
-        """Global dice score for entire structures."""
-
-        if not hasattr(self, "global_dice") or force:
-            self.global_dice = (self.s1.data & self.s2.data).sum() / np.mean(
-                [self.s1.data.sum(), self.s2.data.sum()]
-            )
-
-        return self.global_dice
+        dice = (s1 & s2).sum() / np.mean([s1.sum(), s2.sum()])
+        if sl is None:
+            self.global_dice = dice
+        return dice
 
     def vol_ratio(self):
         """Get relative volume of the two structures."""

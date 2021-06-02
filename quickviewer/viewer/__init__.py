@@ -2240,13 +2240,13 @@ class SingleViewer:
             ) + self.get_struct_html(sc.s2)
 
             # Global metrics
-            dice = sc.global_dice_score()
+            dice = sc.dice()
             vol = sc.relative_vol()
             centroid_dist = sc.centroid_distance(centroid_units)
             rms_surf = sc.rms_surface_distance()
 
             # Slice-by-slice metrics
-            dice_slice = sc.dice_score(self.view, self.slice[self.view])
+            dice_slice = sc.dice(self.view, self.slice[self.view])
             area = sc.relative_area(self.view, self.slice[self.view])
             centroid_x, centroid_y = sc.centroid_distance_2d(
                 self.view, self.slice[self.view], centroid_units

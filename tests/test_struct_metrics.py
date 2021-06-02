@@ -92,10 +92,10 @@ def test_centroid_distance_slice():
 
 
 def test_dice():
-    assert comp.global_dice_score() == 0.81
-    assert comp.dice_score("x-y", cube1.mid_slice("x-y")) == 0.81
+    assert comp.dice() == 0.81
+    assert comp.dice("x-y", cube1.mid_slice("x-y")) == 0.81
     for view in ["y-z", "x-z"]:
-        assert comp.dice_score(view, cube1.mid_slice(view)) == 0.9
+        assert comp.dice(view, cube1.mid_slice(view)) == 0.9
 
 
 def test_vol_comparison():
