@@ -73,20 +73,20 @@ comp = StructComparison(cube1, cube2)
 
 
 def test_centroid_distance():
-    assert comp.centroid_distance() == approx(np.sqrt(2))
+    assert comp.abs_centroid_distance() == approx(np.sqrt(2))
 
 
 def test_centroid_distance_slice():
     assert np.array_equal(
-        comp.centroid_distance_2d("x-y", sl=cube1.mid_slice("x-y")),
+        comp.centroid_distance("x-y", sl=cube1.mid_slice("x-y")),
         [-dx, -dy]
     )
     assert np.array_equal(
-        comp.centroid_distance_2d("y-z", sl=cube1.mid_slice("y-z")),
+        comp.centroid_distance("y-z", sl=cube1.mid_slice("y-z")),
         [0, -dy]
     )
     assert np.array_equal(
-        comp.centroid_distance_2d("x-z", sl=cube1.mid_slice("x-z")),
+        comp.centroid_distance("x-z", sl=cube1.mid_slice("x-z")),
         [0, -dx]
     )
 

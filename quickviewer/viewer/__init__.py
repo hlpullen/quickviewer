@@ -2242,13 +2242,13 @@ class SingleViewer:
             # Global metrics
             dice = sc.dice()
             vol = sc.relative_vol()
-            centroid_dist = sc.centroid_distance(centroid_units)
+            centroid_dist = sc.abs_centroid_distance(centroid_units)
             rms_surf = sc.rms_surface_distance()
 
             # Slice-by-slice metrics
             dice_slice = sc.dice(self.view, self.slice[self.view])
             area = sc.relative_area(self.view, self.slice[self.view])
-            centroid_x, centroid_y = sc.centroid_distance_2d(
+            centroid_x, centroid_y = sc.centroid_distance(
                 self.view, self.slice[self.view], centroid_units
             )
             rms_surf_slice = sc.rms_surface_distance(self.view, 

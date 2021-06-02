@@ -736,7 +736,7 @@ class StructComparison:
         self.s2.color = matplotlib.colors.to_rgba("white")
         self.s2.name_unique = f"vs. {self.comp_type} of others"
 
-        self.centroid_distance(force=True)
+        # Recompute dice score
         self.dice(force=True)
 
     def is_valid(self):
@@ -898,29 +898,24 @@ class StructComparison:
             return False
         return self.s1.on_slice(view, sl) and self.s2.on_slice(view, sl)
 
-    def centroid_distance(self, units="mm", force=False):
-        """Get total centroid distance."""
+    def abs_centroid_distance(self, view="x-y", sl=None, units="mm", 
+                              force=False):
+        """Get magnitude of centroid distance."""
 
-        if not hasattr(self, "centroid_dist") or force:
-            self.centroid_dist = {
-                units: np.linalg.norm(
-                    np.array(self.s1.centroid(units)) 
-                    - np.array(self.s2.centroid(units))
-                )
-                for units in ["mm", "voxels"]
-            }
+        return np.linalg.norm(np.array(
+            self.centroid_distance(view, sl, units)
+        ))
 
-        return self.centroid_dist[units]
+    def centroid_distance(self, view="x-y", sl=None, units="mm"):
+        """Get centroid displacement in each direction. If <sl> is not given,
+        the 3D centroid displacement will be returned; otherwise, only the 
+        centroid displacement within a slice will be returned."""
 
-    def centroid_distance_2d(self, view, sl, units="mm"):
-        """Get distances between centroid in x, y directions for current "
-        slice."""
-
-        cx1, cy1 = self.s1.centroid(view, sl, units)
-        cx2, cy2 = self.s2.centroid(view, sl, units)
-        if cx1 is None or cx2 is None:
-            return None, None
-        return [cx1 - cx2, cy1 - cy2]
+        c1 = self.s1.centroid(view, sl, units)
+        c2 = self.s2.centroid(view, sl, units)
+        if c1 is None or c2 is None:
+            return [None, None]
+        return [x1 - x2 for x1, x2 in zip(c1, c2)]
 
     def dice(self, view="x-y", sl=None, force=False):
         """Get dice score on a given slice."""
