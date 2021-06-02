@@ -49,12 +49,12 @@ def test_area():
 
 
 def test_length():
-    assert cube1.get_full_extent() == [10, 10, 10]
+    assert cube1.struct_extent() == [10, 10, 10]
 
 
 def test_extent_slice():
     for view in ["x-y", "y-z", "x-z"]:
-        assert cube1.get_extents(view, cube1.mid_slice(view)) == [10, 10]
+        assert cube1.struct_extent(view, cube1.mid_slice(view)) == [10, 10]
 
 
 def test_centre():

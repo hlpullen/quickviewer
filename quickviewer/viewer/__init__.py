@@ -2318,8 +2318,8 @@ class SingleViewer:
                 # Get metrics
                 volume = s.get_volume(self.vol_units)
                 area = s.get_area(self.view, self.slice[self.view], self.area_units)
-                full_extents = s.get_full_extent(self.length_units)
-                extents = s.get_extents(
+                full_extents = s.struct_extent(units=self.length_units)
+                extents = s.struct_extent(
                     self.view, self.slice[self.view], self.length_units
                 )
                 centre_units = "mm" if self.im.scale_in_mm else "voxels"

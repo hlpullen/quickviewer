@@ -608,48 +608,42 @@ class Struct(Image):
             area *= abs(self.voxel_sizes[x] * self.voxel_sizes[y])
         return area
 
-    def get_full_extent(self, units="mm"):
-        """Get the full extent along x, y, z."""
+    def struct_extent(self, view="x-y", sl=None, units="mm"):
+        """Get extent of structure. If <sl> is not given, the extents in all
+        3 directions will be returned; otherwise, only the two extents on a 
+        given slice will be returned."""
 
-        if not self.loaded or self.empty:
-            return [0, 0, 0]
-
-        if not hasattr(self, "full_extent"):
-            non_zero = np.argwhere(self.data)
-            mins = non_zero.min(0)
-            maxes = non_zero.max(0)
-            x_len = abs(maxes[1] - mins[1]) + 1
-            y_len = abs(maxes[0] - mins[0]) + 1
-            z_len = abs(maxes[2] - mins[2]) + 1
-            self.full_extent = {"voxels": [x_len, y_len, z_len]}
-            self.full_extent["mm"] = [
-                x_len * abs(self.voxel_sizes["x"]),
-                y_len * abs(self.voxel_sizes["y"]),
-                z_len * abs(self.voxel_sizes["z"]),
-            ]
-
-        return self.full_extent[units]
-
-    def get_extents(self, view, sl, units="mm"):
-        """Get extents along the x/y axes in a given view on a given slice."""
-
-        if not self.on_slice(view, sl):
-            return None, None
-
-        self.set_slice(view, sl)
-        non_zero = np.argwhere(self.current_slice)
-        x, y = _plot_axes[view]
-        if len(non_zero):
-            mins = non_zero.min(0)
-            maxes = non_zero.max(0)
-            x_len = abs(maxes[1] - mins[1]) + 1
-            y_len = abs(maxes[0] - mins[0]) + 1
-            if units == "mm":
-                x_len *= abs(self.voxel_sizes[x])
-                y_len *= abs(self.voxel_sizes[y])
-            return [x_len, y_len]
+        if sl is not None:
+            if not self.on_slice(view, sl):
+                return [None, None]
+            data = self.get_slice(view, sl)
+            axes = _plot_axes[view]
         else:
-            return [0, 0]
+            if not hasattr(self, "global_extent"):
+                self.global_extent = {}
+            if units in self.global_extent:
+                return self.global_extent[units]
+            data = self.data
+            axes = ["x", "y", "z"]
+
+        non_zero = np.argwhere(data)
+        if not len(non_zero):
+            if sl is None:
+                extents = [0, 0, 0]
+            else:
+                extents = [0, 0]
+        else:
+            mins = non_zero.min(0)
+            maxes = non_zero.max(0)
+            extents = [abs(mx - mn) + 1 for mx, mn in zip(mins, maxes)]
+            extents[0], extents[1] = extents[1], extents[0]
+            if units == "mm":
+                extents = [ex * abs(self.voxel_sizes[ax]) for ex, ax in
+                           zip(extents, axes)]
+
+        if sl is None:
+            self.global_extent[units] = extents
+        return extents
 
     def get_centre(self, view, sl):
         """Get the coordinates of the centre of this structure in a given view
@@ -971,8 +965,8 @@ class StructComparison:
 
         if not self.on_slice(view, sl):
             return
-        x1, y1 = self.s1.get_extents(view, sl)
-        x2, y2 = self.s2.get_extents(view, sl)
+        x1, y1 = self.s1.struct_extent(view, sl)
+        x2, y2 = self.s2.struct_extent(view, sl)
         return [x1 / x2, y1 / y2]
 
     def surface_distances(self, view="x-y", sl=None, connectivity=2):
