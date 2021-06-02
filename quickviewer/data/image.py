@@ -1464,6 +1464,7 @@ def load_image_multiple_files(paths, series_num=None, rescale=True,
     # Get z origin
     func = max if vz >= 0 else min
     affine[2, 3] = -func(list(data_slices.keys()))
+    print("affine:", affine)
 
     return data, affine
 
