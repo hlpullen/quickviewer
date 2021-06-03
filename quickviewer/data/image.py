@@ -30,7 +30,7 @@ class Image:
 
     def __init__(
         self,
-        nii,
+        im,
         affine=None,
         voxel_sizes=(1, 1, 1),
         origin=(0, 0, 0),
@@ -44,7 +44,7 @@ class Image:
 
         Parameters
         ----------
-        nii : str/array/nifti
+        im : str/array/nifti
             Source of the image data to load. This can be either:
                 (a) The path to a NIfTI or DICOM file;
                 (b) A nibabel.nifti1.Nifti1Image object;
@@ -52,18 +52,18 @@ class Image:
                 (d) A NumPy array.
 
         affine : 4x4 array, default=None
-            Affine matrix to be used if <nii> is a NumPy array. If <nii> is a
+            Affine matrix to be used if <im> is a NumPy array. If <im> is a
             file path or a nibabel object, this parameter is ignored. If None,
             the arguments <voxel_sizes> and <origin> will be used to set the
             affine matrix.
 
         voxel_sizes : tuple, default=(1, 1, 1)
             Voxel sizes in mm, given in the order (y, x, z). Only used if
-            <nii> is a numpy array and <affine> is None.
+            <im> is a numpy array and <affine> is None.
 
         origin : tuple, default=(0, 0, 0)
             Origin position in mm, given in the order (y, x, z). Only used if
-            <nii> is a numpy array and <affine> is None.
+            <im> is a numpy array and <affine> is None.
 
         title : str, default=None
             Title to use when plotting. If None and the image was loaded from
@@ -75,20 +75,20 @@ class Image:
 
         orientation : str, default="x-y"
             String specifying the orientation of the image if a 2D array is
-            given for <nii>. Must be "x-y", "y-z", or "x-z".
+            given for <im>. Must be "x-y", "y-z", or "x-z".
         """
 
         # Assign settings
         self.title = title
         self.scale_in_mm = scale_in_mm
         self.data_mask = None
-        if nii is None:
+        if im is None:
             self.valid = False
             return
 
         # Load image
         self.data, voxel_sizes, origin, self.path = load_image(
-            nii, affine, voxel_sizes, origin, rescale
+            im, affine, voxel_sizes, origin, rescale
         )
         if self.data is None:
             self.valid = False
@@ -986,24 +986,24 @@ class Image:
 class ImageComparison(Image):
     """Class for loading data from two arrays and plotting comparison images."""
 
-    def __init__(self, nii1, nii2, title=None, plot_type=None, **kwargs):
-        """Load data from two arrays. <nii1> and <nii2> can either be existing
+    def __init__(self, im1, im2, title=None, plot_type=None, **kwargs):
+        """Load data from two arrays. <im1> and <im2> can either be existing
         Image objects, or objects from which Images can be created.
         """
 
         # Load Images
         self.ims = []
         self.standalone = True
-        for nii in [nii1, nii2]:
+        for im in [im1, im2]:
 
             # Load existing Image
-            if issubclass(type(nii), Image):
-                self.ims.append(nii)
+            if issubclass(type(im), Image):
+                self.ims.append(im)
 
             # Create new Image
             else:
                 self.standalone = False
-                self.ims.append(Image(nii, **kwargs))
+                self.ims.append(Image(im, **kwargs))
 
         self.scale_in_mm = self.ims[0].scale_in_mm
         self.ax_lims = self.ims[0].ax_lims
@@ -1349,7 +1349,7 @@ def load_dicom(path, rescale=True):
         try:
             ds = pydicom.read_file(path)
             if ds.get("ImagesInAcquisition", None) == 1:
-                data, affine = load_image_single_file(ds, rescale=rescale)
+                data, affine = load_dicom_single_file(ds, rescale=rescale)
 
             # Look for other files from same image
             else:
@@ -1360,7 +1360,7 @@ def load_dicom(path, rescale=True):
                     for p in os.listdir(dirname)
                     if not os.path.isdir(os.path.join(dirname, p))
                 ]
-                data, affine = load_image_multiple_files(
+                data, affine = load_dicom_multiple_files(
                     paths, series_num=num, rescale=rescale,
                     orientation=ds.ImageOrientationPatient
                 )
@@ -1375,7 +1375,7 @@ def load_dicom(path, rescale=True):
             for p in os.listdir(path)
             if not os.path.isdir(os.path.join(path, p))
         ]
-        data, affine = load_image_multiple_files(paths, rescale=rescale)
+        data, affine = load_dicom_multiple_files(paths, rescale=rescale)
 
     else:
         raise TypeError("Must provide a valid path to a file or directory!")
@@ -1383,7 +1383,7 @@ def load_dicom(path, rescale=True):
     return data, affine
 
 
-def load_image_single_file(ds, rescale=True):
+def load_dicom_single_file(ds, rescale=True):
     """Load DICOM image from a single DICOM object."""
 
     data = ds.pixel_array
@@ -1428,7 +1428,7 @@ def load_image_single_file(ds, rescale=True):
     return data, affine
 
 
-def load_image_multiple_files(paths, series_num=None, rescale=True, 
+def load_dicom_multiple_files(paths, series_num=None, rescale=True, 
                               orientation=[1, 0, 0, 0, 1, 0]):
     """Load a single dicom image from multiple files."""
 
@@ -1441,7 +1441,7 @@ def load_image_multiple_files(paths, series_num=None, rescale=True,
             if ds.ImageOrientationPatient != orientation:
                 continue
             slice_num = ds.SliceLocation
-            data, affine = load_image_single_file(ds, rescale=rescale)
+            data, affine = load_dicom_single_file(ds, rescale=rescale)
             data_slices[float(slice_num)] = data
 
         except pydicom.errors.InvalidDicomError:
@@ -1513,7 +1513,7 @@ def load_image(im, affine=None, voxel_sizes=None, origin=None, rescale=True):
                         data = np.load(path)
                     except (IOError, ValueError):
                         raise RuntimeError(
-                            "Input file <nii> must be a valid "
+                            "Input file <im> must be a valid "
                             "NIfTI, DICOM, or NumPy file."
                         )
 
