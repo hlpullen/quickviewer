@@ -18,8 +18,8 @@ import shutil
 import sys
 import time
 
-import quickviewer.data.image
-import quickviewer.data.structures
+from quickviewer.data.image import Image
+from quickviewer.data.structures import StructLoader, Struct
 
 
 # File: quickviewer/data/__init__.py
@@ -28,34 +28,229 @@ import quickviewer.data.structures
 
 defaultStationDict = {"0210167": "LA3", "0210292": "LA4"}
 
+default_opts = {}
+default_opts['print_depth'] = 0
+
+
+class Defaults:
+    '''
+    Singleton class for storing default values of parameters
+    that may be used in object initialisation.
+
+    Implementation of the singleton design pattern is based on:
+    https://python-3-patterns-idioms-test.readthedocs.io
+           /en/latest/Singleton.html
+    '''
+
+    # Define the single instance as a class attribute
+    instance = None
+
+    # Create single instance in inner class
+    class __Defaults:
+
+        # Define instance attributes based on opts dictionary
+        def __init__(self, opts={}):
+            for key, value in opts.items():
+                setattr(self, key, value)
+
+        # Allow for printing instance attributes
+        def __repr__(self):
+            out_list = []
+            for key, value in sorted(self.__dict__.items()):
+                out_list.append(f'{key}: {value}')
+            out_string = '\n'.join(out_list)
+            return out_string
+
+    def __init__(self, opts={}, reset=False):
+        '''
+        Constructor of Defaults singleton class.
+
+        Parameters
+        ----------
+        opts : dict, default={}
+            Dictionary of attribute-value pairs.
+
+        reset : bool, default=False
+            If True, delete all pre-existing instance attributes before
+            adding attributes and values from opts dictionary.
+            If False, don't delete pre-existing instance attributes,
+            but add to them, or modify values, from opts dictionary.
+        '''
+
+        if not Defaults.instance:
+            Defaults.instance = Defaults.__Defaults(opts)
+        else:
+            if reset:
+                Defaults.instance.__dict__ = {}
+            for key, value in opts.items():
+                setattr(Defaults.instance, key, value)
+
+    # Allow for getting instance attributes
+    def __getattr__(self, name):
+        return getattr(self.instance, name)
+
+    # Allow for setting instance attributes
+    def __setattr__(self, name, value):
+        return setattr(self.instance, name, value)
+
+    # Allow for printing instance attributes
+    def __repr__(self):
+        return self.instance.__repr__()
+
+
+Defaults(default_opts)
+
 
 class DataObject:
-    """Base class for any data object. Can have further DataObjects as its 
-    attributes, and has the ability to print all of these nicely and return a 
-    nested dict of owned DataObjects and their DataObjects."""
+    '''
+    Base class for objects serving as data containers.
+    An object has user-defined data attributes, which may include
+    other DataObject objects and lists of DataObject objects.
 
-    def __init__(self):
+    The class provides for printing attribute values recursively, to
+    a chosen depth, and for obtaining nested dictionaries of
+    attributes and values.
+    '''
+
+    def __init__(self, opts={}, **kwargs):
+        '''
+        Constructor of DataObject class, allowing initialisation of an 
+        arbitrary set of attributes.
+
+        Parameters
+        ----------
+        opts : dict, default={}
+            Dictionary to be used in setting instance attributes
+            (dictionary keys) and their initial values.
+
+        **kwargs
+            Keyword-value pairs to be used in setting instance attributes
+            and their initial values.
+        '''
+
+        for key, value in opts.items():
+            setattr(self, key, value)
+        for key, value in kwargs.items():
+            setattr(self, key, value)
         return None
 
-    def __repr__(self):
-        """Print all attributes, as well as their attributes."""
+    def __repr__(self, depth=None):
+        '''
+        Create string recursively listing attributes and values.
 
-        out = [f"\n{self.__class__.__name__}", "{"]
-        for key in sorted(self.__dict__.keys()):
-            out.append(f"  {key} : {self.__dict__[key]} ")
-        out.append("}")
-        return "\n".join(out)
+        Parameters
+        ----------
 
-    def get_objects(self):
-        """Get dictionary of all attributes."""
+        depth : integer/None, default=None
+            Depth to which recursion is performed.
+            If the value is None, depth is set to the value
+            of the object's print_depth property, if defined,
+            or otherwise to the value of Defaults().print_depth.
+        '''
 
-        objs = {}
+        if depth is None:
+            depth = self.get_print_depth()
+
+        out_list = [f'\n{self.__class__.__name__}', '{']
+
+        # Loop over attributes, with different treatment
+        # depending on whether attribute value is a list.
+        # Where an attribute value of list item is
+        # an instance of DataObject or a subclass
+        # it's string representation is obtained by calling
+        # the instance's __repr__() method with depth decreased
+        # by 1, or (depth less than 1) is the class representation.
+        for key in sorted(self.__dict__):
+            item = self.__dict__[key]
+            if isinstance(item, list):
+                items = item
+                n = len(items)
+                if n:
+                    if depth > 0:
+                        value_string = '['
+                        for i, item in enumerate(items):
+                            item_string = item.__repr__(depth=(depth - 1))
+                            comma = "," if (i + 1 < n) else ''
+                            value_string = \
+                                f'{value_string} {item_string}{comma}'
+                        value_string = f'{value_string}]'
+                    else:
+                        value_string = f'[{n} * {item[0].__class__}]'
+                else:
+                    value_string = '[]'
+            else:
+                if issubclass(item.__class__, DataObject):
+                    if depth > 0:
+                        value_string = item.__repr__(depth=(depth - 1))
+                    else:
+                        value_string = f'{item.__class__}'
+                else:
+                    value_string = item.__repr__()
+            out_list.append(f'  {key} : {value_string} ')
+        out_list.append('}')
+        out_string = '\n'.join(out_list)
+        return out_string
+
+    def get_dict(self):
+        '''
+        Return a nested dictionary of object attributes (dictionary keys)
+        and their values.
+        '''
+
+        objects = {}
         for key in self.__dict__:
             try:
-                objs[key] = self.__dict__[key].get_dict()
+                objects[key] = self.__dict__[key].get_dict()
             except AttributeError:
-                objs[key] = self.__dict__[key]
-        return objs
+                objects[key] = self.__dict__[key]
+
+        return objects
+
+    def get_print_depth(self):
+        '''
+        Retrieve the value of the object's print depth,
+        setting an initial value if not previously defined.
+        '''
+
+        if not hasattr(self, 'print_depth'):
+            self.set_print_depth()
+        return self.print_depth
+
+    def print(self, depth=None):
+        '''
+        Convenience method for recursively printing
+        object attributes and values, with recursion
+        to a specified depth.
+
+        Parameters
+        ----------
+
+        depth : integer/None, default=None
+            Depth to which recursion is performed.
+            If the value is None, depth is set in the
+            __repr__() method.
+        '''
+
+        print(self.__repr__(depth))
+        return None
+
+    def set_print_depth(self, depth=None):
+        '''
+        Set the object's print depth.
+
+        Parameters
+        ----------
+
+        depth : integer/None, default=None
+            Depth to which recursion is performed.
+            If the value is None, the object's print depth is
+            set to the value of Defaults().print_depth.
+        '''
+
+        if depth is None:
+            depth = Defaults().print_depth
+        self.print_depth = depth
+        return None
 
 
 class PathObject(DataObject):
@@ -177,7 +372,9 @@ class ArchiveObject(DatedObject):
         self.files.sort()
 
 
-class CT(ArchiveObject):
+class Scan(ArchiveObject, Image):
+    """Object associated with a list of dicom files that are combined into 
+    a single scan image."""
 
     def __init__(self, path=""):
 
@@ -187,6 +384,7 @@ class CT(ArchiveObject):
             files = glob.glob(f"{path}/*.dcm")
             if files:
                 scan_path = files[0]
+                Image.__init__(self, scan_path)
 
         self.couch_translation, self.couch_rotation = get_couch_shift(scan_path)
         self.scanPosition = self.getScanPosition()
@@ -198,15 +396,16 @@ class CT(ArchiveObject):
         self.structList = []
         self.machine = self.getMachine()
 
-    def getClone(self, imageStack=None):
+    def clone(self, image_stack=None):
+        """Create a copy of this Scan object with the image stack replaced
+        with <image_stack>."""
 
-        ct = CT()
-        ct.imageStack = imageStack
-        ct.scanPosition = tuple(self.scanPosition)
-        ct.voxelSize = tuple(self.voxelSize)
-        ct.transformIjkToXyz = getTransformIjkToXyz(ct)
-
-        return ct
+        clone = Scan()
+        clone.imageStack = image_stack
+        clone.scanPosition = tuple(self.scanPosition)
+        clone.voxelSize = tuple(self.voxelSize)
+        clone.transformIjkToXyz = getTransformIjkToXyz(ct)
+        return clone
 
     def getMachine(self, stationDict=defaultStationDict):
 
@@ -297,7 +496,7 @@ class CT(ArchiveObject):
         elif len(fileDict2.keys()) == len(self.files):
             fileDict = fileDict2
         else:
-            print(f"Problem CT scan: {self.path}")
+            print(f"Problem scan: {self.path}")
             print(f"Number of file items: {len(self.files)}")
             print(
                 f"Number of values for ImagePositionPatient:" f"{len(fileDict1.keys())}"
@@ -614,7 +813,7 @@ class RtStruct(ArchiveObject):
 
     def set_scan(self, scans=[]):
 
-        self.scan = CT()
+        self.scan = Scan()
         structScanDir = os.path.basename(self.path)
         scanSet = False
         # Try matching on path
@@ -826,8 +1025,8 @@ class Study(DatedObject):
 
         # Load RT plans, CT and MR scans, all doses, and CT structure sets
         self.plans = self.get_plan_data(dtype="RtPlan", subdir="RTPLAN")
-        self.ct_scans = self.get_dated_objects(dtype="CT", subdir="CT")
-        self.mr_scans = self.get_dated_objects(dtype="CT", subdir="MR")
+        self.ct_scans = self.get_dated_objects(dtype="Scan", subdir="CT")
+        self.mr_scans = self.get_dated_objects(dtype="Scan", subdir="MR")
         self.doses = self.get_plan_data(
             dtype="RtDose",
             subdir="RTDOSE",
@@ -854,7 +1053,7 @@ class Study(DatedObject):
         self.ct_doses = self.correct_dose_scan_position(self.ct_doses)
 
         # Load MVCT images, doses, and structs
-        self.mvct_scans = self.get_dated_objects(dtype="CT", subdir="MVCT")
+        self.mvct_scans = self.get_dated_objects(dtype="Scan", subdir="MVCT")
         self.mvct_doses = self.get_plan_data(
             dtype="RtDose", subdir="RTDOSE/MVCT", scans=self.mvct_scans
         )

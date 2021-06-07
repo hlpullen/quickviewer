@@ -1448,10 +1448,9 @@ def load_dicom_multiple_files(paths, series_num=None, rescale=True,
             continue
 
     # Sort and stack image slices
-    vz = affine[2, 2]
-    data_list = [
-        data_slices[sl] for sl in sorted(list(data_slices.keys()), reverse=(vz >= 0))
-    ]
+    vz = float(affine[2, 2])
+    sorted_slices = sorted(list(data_slices.keys()), reverse=(vz >= 0))
+    data_list = [data_slices[sl] for sl in sorted_slices]
     data = np.stack(data_list, axis=-1)
 
     # Adjust orientation
@@ -1464,8 +1463,6 @@ def load_dicom_multiple_files(paths, series_num=None, rescale=True,
     # Get z origin
     func = max if vz >= 0 else min
     affine[2, 3] = -func(list(data_slices.keys()))
-    print("affine:", affine)
-
     return data, affine
 
 
