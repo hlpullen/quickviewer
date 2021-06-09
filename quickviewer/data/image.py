@@ -20,7 +20,7 @@ from matplotlib.ticker import MultipleLocator, AutoMinorLocator, FormatStrFormat
 _axes = {"x": 0, "y": 1, "z": 2}
 _slider_axes = {"x-y": "z", "x-z": "y", "y-z": "x"}
 _plot_axes = {"x-y": ("x", "y"), "x-z": ("z", "x"), "y-z": ("z", "y")}
-_orient = {"y-z": [1, 2, 0], "x-z": [0, 2, 1], "x-y": [1, 0, 2]}
+_orient = {"y-z": [0, 2, 1], "x-z": [1, 2, 0], "x-y": [0, 1, 2]}
 _n_rot = {"y-z": 2, "x-z": 2, "x-y": 1}
 _default_figsize = 6
 
@@ -637,11 +637,9 @@ class Image:
                 )
                 return
 
-        # Get 2D slice and adjust orientation
+        # Get 2D slice
         im_slice = np.transpose(data, _orient[view])[:, :, idx]
         x, y = _plot_axes[view]
-        if y != "x":
-            im_slice = im_slice[::-1, :]
 
         # Apply 2D translation
         shift_x = self.shift[x]
@@ -1387,10 +1385,6 @@ def load_dicom_single_file(ds, rescale=True):
     """Load DICOM image from a single DICOM object."""
 
     data = ds.pixel_array
-    if data.ndim == 3:
-        data = data.transpose(2, 1, 0)[:, ::-1, ::-1]
-    else:
-        data = data.transpose(1, 0)[:, ::-1]
 
     # Rescale data values
     rescale_intercept = (
@@ -1494,7 +1488,7 @@ def load_image(im, affine=None, voxel_sizes=None, origin=None, rescale=True):
             path = os.path.expanduser(im)
             try:
                 nii = nibabel.load(path)
-                data = nii.get_fdata()
+                data = nii.get_fdata().transpose(1, 0, 2)[::-1, :, ::-1]
                 affine = nii.affine
 
             except FileNotFoundError:
@@ -1516,7 +1510,7 @@ def load_image(im, affine=None, voxel_sizes=None, origin=None, rescale=True):
 
         # Load nibabel object
         elif isinstance(im, nibabel.nifti1.Nifti1Image):
-            data = im.get_fdata()
+            data = im.get_fdata().transpose(1, 0, 2)[::-1, :, ::-1]
             affine = im.affine
 
         else:
