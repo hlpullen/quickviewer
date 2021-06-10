@@ -19,7 +19,7 @@ import sys
 import time
 
 from quickviewer.data.image import Image
-from quickviewer.data.structures import StructLoader, Struct
+from quickviewer.data.structures import StructureSet, Struct
 
 
 # File: quickviewer/data/__init__.py
@@ -393,7 +393,7 @@ class Scan(ArchiveObject, Image):
 
         self.transform_ijk_to_xyz = get_transform_ijk_to_xyz(self)
         self.image_stack = None
-        self.structList = []
+        self.structs = []
         self.machine = self.get_machine()
 
     def clone(self, image_stack=None):
@@ -761,76 +761,80 @@ class RtPlan(MachineObject):
 
 
 class RtStruct(ArchiveObject):
+    """Class for loading a structure set associated with a specific scan."""
+
     def __init__(self, path="", scans=[]):
+
         ArchiveObject.__init__(self, path)
 
         self.set_scan(scans=scans)
-        self.structDict = {}
-        self.fileIndex = -1
-        self.structureSetLabel = ""
-        self.seriesDescription = ""
+        self.structs = {}
+        self.file_index = -1
+        self.structure_set_label = ""
+        self.series_description = ""
 
-    def getStructDict(self, fileIndex=None):
+    def get_structs(self, file_index=None):
 
         renew = False
-        structDict = {}
+        structs = {}
 
-        if not self.structDict:
+        if not self.structs:
             renew = True
 
-        if fileIndex is not None:
-            if self.fileIndex != fileIndex:
-                self.fileIndex = fileIndex
+        if file_index is not None:
+            if self.file_index != file_index:
+                self.file_index = file_index
                 renew = True
         if renew:
             try:
-                filename = self.files[self.fileIndex].path
+                filename = self.files[self.file_index].path
             except IndexError:
                 filename = ""
-                structDict = self.structDict
+                structs = self.structs
             if filename:
-                structDict = getStructDict(filename)
-                self.structDict = structDict
+                structs = get_structs(filename)
+                self.structs = structs
                 ds = pydicom.read_file(fp=filename, force=True)
-                self.structureSetLabel = ds.StructureSetLabel
+                self.structure_set_label = ds.StructureSetLabel
                 if hasattr(ds, "SeriesDescription"):
-                    self.seriesDescription = ds.SeriesDescription
+                    self.series_description = ds.SeriesDescription
                 else:
-                    self.seriesDescription = ""
+                    self.series_description = ""
         else:
-            structDict = self.structDict
+            structs = self.structs
 
-        return structDict
+        return structs
 
     def set_scan(self, scans=[]):
 
         self.scan = Scan()
-        structScanDir = os.path.basename(self.path)
-        scanSet = False
+        structs_scan_dir = os.path.basename(self.path)
+        scan_set = False
+
         # Try matching on path
         for scan in scans:
-            if structScanDir == os.path.basename(scan.path):
+            if structs_scan_dir == os.path.basename(scan.path):
                 self.scan = scan
-                addStruct = True
-                for struct in scan.structList:
+                add_struct = True
+                for struct in scan.structs:
                     if self.path == struct.path:
-                        addStruct = False
-                if addStruct:
-                    scan.structList.append(self)
-                scanSet = True
+                        add_struct = False
+                if add_struct:
+                    scan.structs.append(self)
+                scan_set = True
                 break
 
         # If no path match, try matching on timestamp
-        if not scanSet:
+        if not scan_set:
             for scan in scans:
                 if (self.date == scan.date) and (self.time == scan.time):
                     self.scan = scan
-                    addStruct = True
-                    for struct in scan.structList:
+                    add_struct = True
+                    for struct in scan.structs:
                         if self.path == struct.path:
-                            addStruct = False
-                    if addStruct:
-                        scan.structList.append(self)
+                            add_struct = False
+                    if add_struct:
+                        scan.structs.append(self)
                     break
 
 
@@ -943,12 +947,12 @@ class Patient(PathObject):
             study = self.studies[-1]
             if study.ct_scans:
                 im = study.ct_scans[-1]
-            elif study.mvctList:
-                obj = study.mvctList[-1]
-            elif study.ctStructList:
-                obj = study.ctStructList[-1]
-            elif study.mvctStructList:
-                obj = study.mvctStructList[-1]
+            elif study.mvct_scans:
+                obj = study.mvct_scans[-1]
+            elif study.ct_scans:
+                obj = study.ct_scans[-1]
+            elif study.mvct_scans:
+                obj = study.mvct_scans[-1]
 
         # Read demographic info from the object
         if obj and obj.files:
@@ -1702,7 +1706,7 @@ def getDatedObjectList(objectList=[], timestamp=""):
     return datedObjectList
 
 
-def getDicomSequence(ds=None, basename=""):
+def get_dicom_sequence(ds=None, basename=""):
 
     sequence = []
 
@@ -2103,7 +2107,7 @@ def is_timestamp(testString=""):
     return timestamp
 
 
-def getStructDict(filename="", roiList=None, firstOnly=False):
+def get_structs(filename="", rois=None, first_only=False):
     """Returns a dictionary of structures (ROIs)."""
 
     # Load contents of input DICOM file
@@ -2118,7 +2122,7 @@ def getStructDict(filename="", roiList=None, firstOnly=False):
         return structures
 
     # Locate the name and number of each ROI
-    structure_set_roi_sequence = getDicomSequence(ds, "StructureSetROI")
+    structure_set_roi_sequence = get_dicom_sequence(ds, "StructureSetROI")
     for item in structure_set_roi_sequence:
         data = {}
         number = int(item.ROINumber)
@@ -2127,14 +2131,14 @@ def getStructDict(filename="", roiList=None, firstOnly=False):
         structures[number] = data
 
     # Determine the type of each structure (PTV, organ, external, etc)
-    rt_roi_observations_sequence = getDicomSequence(ds, "RTROIObservations")
+    rt_roi_observations_sequence = get_dicom_sequence(ds, "RTROIObservations")
     for item in rt_roi_observations_sequence:
         number = item.ReferencedROINumber
         if number in structures:
             structures[number]["type"] = item.RTROIInterpretedType
 
     # Coordinate data of each ROI is stored within ROIContourSequence
-    roi_contour_sequence = getDicomSequence(ds, "ROIContour")
+    roi_contour_sequence = get_dicom_sequence(ds, "ROIContour")
     for roi in roi_contour_sequence:
         number = roi.ReferencedROINumber
 
@@ -2160,7 +2164,7 @@ def getStructDict(filename="", roiList=None, firstOnly=False):
                 pass
 
         # Determine whether the ROI has any contours present
-        contour_sequence = getDicomSequence(roi, "Contour")
+        contour_sequence = get_dicom_sequence(roi, "Contour")
         if contour_sequence:
             structures[number]["empty"] = False
 
@@ -2173,10 +2177,10 @@ def getStructDict(filename="", roiList=None, firstOnly=False):
                 # Determine all the plane properties
                 plane["type"] = c.ContourGeometricType
                 try:
-                    numberOfContourPoints = c.NumberOfContourPoints
+                    n_contour_points = c.NumberOfContourPoints
                 except AttributeError:
-                    numberOfContourPoints = c.NumberofContourPoints
-                plane["num_points"] = int(numberOfContourPoints)
+                    n_contour_points = c.NumberofContourPoints
+                plane["num_points"] = int(n_contour_points)
                 plane["data"] = [
                     c.ContourData[i : i + 3] for i in range(0, len(c.ContourData), 3)
                 ]
@@ -2205,9 +2209,9 @@ def getStructDict(filename="", roiList=None, firstOnly=False):
             thickness = 10000
             for n in range(0, len(planes_list)):
                 if n > 0:
-                    newThickness = planes_list[n] - planes_list[n - 1]
-                    if newThickness < thickness:
-                        thickness = newThickness
+                    new_thickness = planes_list[n] - planes_list[n - 1]
+                    if new_thickness < thickness:
+                        thickness = new_thickness
 
             # If the thickness was not detected, set it to 0
             if thickness == 10000:
@@ -2219,44 +2223,42 @@ def getStructDict(filename="", roiList=None, firstOnly=False):
         else:
             structures[number]["empty"] = True
 
-    if roiList is not None:
-        structures = getStructDictSelection(roiList, structures, firstOnly)
+    if rois is not None:
+        structures = get_struct_dict_selection(rois, structures, first_only)
 
     return structures
 
 
-def getStructDictSelection(structName="", structDict={}, firstOnly=False):
+def get_struct_dict_selection(struct_names="", structs={}, first_only=False):
     """Returns structures in a list of ROIs."""
 
-    structDictSelection = {}
+    selection = {}
 
-    if isinstance(structName, str):
-        structList = [structName]
+    # Process structure names into lowercase list
+    if isinstance(struct_names, str):
+        struct_names = [struct_names]
     else:
-        structList = list(structName)
+        struct_names = list(struct_names)
+    struct_names  = [s.lower() for s in struct_names]
 
-    structList2 = []
-    for struct in structList:
-        structList2.append(struct.lower())
-
-    iFirst = 1 + len(structList2)
-    keyFirst = None
-    if structDict:
-        for key in list(structDict.keys()):
-            actualName = structDict[key]["name"]
-            if actualName.lower() in structList2:
-                if firstOnly:
-                    jFirst = structList2.index(actualName.lower())
-                    if jFirst < iFirst:
-                        iFirst = jFirst
-                        keyFirst = key
+    i_first = 1 + len(struct_names)
+    key_first = None
+    if structs:
+        for key, struct in structs.items():
+            actual_name = struct["name"]
+            if actual_name.lower() in struct_names:
+                if first_only:
+                    j_first = struct_names.index(actual_name.lower())
+                    if j_first < i_first:
+                        i_first = j_first
+                        key_first = key
                 else:
-                    structDictSelection[key] = structDict[key]
+                    selection[key] = structs[key]
 
-    if keyFirst is not None:
-        structDictSelection[keyFirst] = structDict[keyFirst]
+    if key_first is not None:
+        selection[key_first] = structs[key_first]
 
-    return structDictSelection
+    return selection
 
 
 def get_timestamp_difference_days(timestamp1="", timestamp2=""):

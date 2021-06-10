@@ -1028,7 +1028,7 @@ class StructComparison:
         return sds.max()
 
 
-class StructLoader:
+class StructureSet:
     """Class for loading and storing multiple Structs."""
 
     def __init__(
@@ -1317,7 +1317,7 @@ class StructLoader:
         if self.image is None:
             raise RuntimeError(
                 "In order to load structs from NumPy array,"
-                " StructLoader class must be created with the "
+                " StructureSet class must be created with the "
                 "<image> argument!"
             )
 
@@ -1413,7 +1413,7 @@ class StructLoader:
         if not self.image:
             raise RuntimeError(
                 "Must provide the <image> argument to "
-                "StructLoader in order to load from DICOM!"
+                "StructureSet in order to load from DICOM!"
             )
 
         # Load each structure

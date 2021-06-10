@@ -17,7 +17,7 @@ from quickviewer.data.image import (
     _slider_axes,
     _orient
 )
-from quickviewer.data.structures import Struct, StructComparison, StructLoader
+from quickviewer.data.structures import Struct, StructComparison, StructureSet
 
 
 # Shared parameters
@@ -227,7 +227,7 @@ class MultiImage(Image):
 
         # No timeseries: load single set of structs
         if not self.struct_timeseries:
-            loader = StructLoader(
+            loader = StructureSet(
                 structs,
                 multi_structs,
                 names,
@@ -263,7 +263,7 @@ class MultiImage(Image):
                 if date not in self.dates:
                     continue
 
-                loader = StructLoader(
+                loader = StructureSet(
                     structs,
                     names=names,
                     colors=colors,
