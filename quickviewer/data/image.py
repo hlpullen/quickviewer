@@ -1460,17 +1460,27 @@ def load_dicom_single_file(ds, rescale=True):
 
 
 def load_dicom_multiple_files(paths, series_num=None, rescale=True, 
-                              orientation=[1, 0, 0, 0, 1, 0]):
+                              orientation=None):
     """Load a single dicom image from multiple files."""
 
     data_slices = {}
-    for path in paths:
+    for path in sorted(paths):
         try:
             ds = pydicom.read_file(path)
-            if series_num is not None and ds.SeriesNumber != series_num:
+
+            # Set series num and orientation to match first file loaded
+            if series_num is None:
+                series_num = ds.SeriesNumber
+            if orientation is None:
+                orientation = ds.ImageOrientationPatient
+
+            # Check this image is part of the same series as the others
+            if ds.SeriesNumber != series_num:
                 continue
             if ds.ImageOrientationPatient != orientation:
                 continue
+
+            # Get array and affine matrix
             slice_num = ds.SliceLocation
             data, affine = load_dicom_single_file(ds, rescale=rescale)
             data_slices[float(slice_num)] = data
