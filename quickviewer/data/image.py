@@ -39,6 +39,7 @@ class Image:
         downsample=None,
         orientation="x-y",
         rescale=True,
+        load=True
     ):
         """Initialise from a NIfTI file, NIfTI object, or numpy array.
 
@@ -76,19 +77,47 @@ class Image:
         orientation : str, default="x-y"
             String specifying the orientation of the image if a 2D array is
             given for <im>. Must be "x-y", "y-z", or "x-z".
+
+        load : bool, default=True
+            If True, the image data will be loaded immediately. Otherwise, it
+            can be loaded later using the get_data() function.
         """
 
         # Assign settings
         self.title = title
         self.scale_in_mm = scale_in_mm
         self.data_mask = None
+        self.set_plotting_defaults()
+
+        # Check an image input was provided
         if im is None:
             self.valid = False
             return
 
-        # Load image
+        # Load data 
+        self.data = None
+        self.input = im
+        self.affine = affine
+        self.input_voxel_sizes = voxel_sizes
+        self.input_origin = origin
+        self.rescale = rescale
+        self.input_orientation = orientation
+        self.downsample_amount = downsample
+        if load:
+            Image.get_data(self)
+
+    def get_data(self):
+        """Load image data if not already loaded, and return it. Also load
+        geometrical settings."""
+
+        if self.data is not None:
+            return self.data
+        if self.input is None:
+            return
+
         self.data, voxel_sizes, origin, self.path = load_image(
-            im, affine, voxel_sizes, origin, rescale
+            self.input, self.affine, self.input_voxel_sizes, self.input_origin, 
+            self.rescale
         )
         if self.data is None:
             self.valid = False
@@ -102,18 +131,20 @@ class Image:
         # Convert 2D image to 3D
         self.dim2 = self.data.ndim == 2
         if self.dim2:
-            voxel_sizes, origin = self.convert_to_3d(voxel_sizes, origin, orientation)
+            voxel_sizes, origin = self.convert_to_3d(voxel_sizes, origin, 
+                                                     self.input_orientation)
 
         # Assign geometric properties
         self.voxel_sizes = {ax: voxel_sizes[n] for ax, n in _axes.items()}
         self.origin = {ax: origin[n] for ax, n in _axes.items()}
         self.set_geom()
         self.set_shift(0, 0, 0)
-        self.set_plotting_defaults()
 
         # Apply downsampling
-        if downsample is not None:
-            self.downsample(downsample)
+        if self.downsample_amount is not None:
+            self.downsample(self.downsample_amount)
+
+        return self.data
 
     def convert_to_3d(self, voxel_sizes, origin, orientation):
         """Convert own image array to 3D and fill voxel sizes/origin."""

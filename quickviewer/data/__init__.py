@@ -26,7 +26,7 @@ from quickviewer.data.structures import StructLoader, Struct
 # Based on voxtox/utility/__init__.py, created by K. Harrison on 130906
 
 
-defaultStationDict = {"0210167": "LA3", "0210292": "LA4"}
+default_stations = {"0210167": "LA3", "0210292": "LA4"}
 
 default_opts = {}
 default_opts['print_depth'] = 0
@@ -384,17 +384,17 @@ class Scan(ArchiveObject, Image):
             files = glob.glob(f"{path}/*.dcm")
             if files:
                 scan_path = files[0]
-                Image.__init__(self, scan_path)
+                Image.__init__(self, scan_path, load=False)
 
         self.couch_translation, self.couch_rotation = get_couch_shift(scan_path)
-        self.scanPosition = self.getScanPosition()
-        self.voxelSize = getVoxelSize(scan_path)
-        self.sliceThickness = self.voxelSize[2]
+        self.scan_position = self.get_scan_position()
+        self.voxel_size = get_voxel_size(scan_path)
+        self.slice_thickness = self.voxel_size[2]
 
-        self.transformIjkToXyz = getTransformIjkToXyz(self)
-        self.imageStack = None
+        self.transform_ijk_to_xyz = get_transform_ijk_to_xyz(self)
+        self.image_stack = None
         self.structList = []
-        self.machine = self.getMachine()
+        self.machine = self.get_machine()
 
     def clone(self, image_stack=None):
         """Create a copy of this Scan object with the image stack replaced
@@ -402,205 +402,206 @@ class Scan(ArchiveObject, Image):
 
         clone = Scan()
         clone.imageStack = image_stack
-        clone.scanPosition = tuple(self.scanPosition)
-        clone.voxelSize = tuple(self.voxelSize)
-        clone.transformIjkToXyz = getTransformIjkToXyz(ct)
+        clone.scan_position = tuple(self.scan_position)
+        clone.voxel_size = tuple(self.voxel_size)
+        clone.transform_ijk_to_xyz = get_transform_ijk_to_xyz(ct)
         return clone
 
-    def getMachine(self, stationDict=defaultStationDict):
+    def get_machine(self, stations=default_stations):
 
         machine = None
 
         if self.files:
             ds = pydicom.read_file(self.files[0].path, force=True)
             try:
-                stationName = ds.StationName
+                station = ds.StationName
             except BaseException:
-                stationName = None
-            if stationName in stationDict:
-                machine = stationDict[stationName]
+                station = None
+            if station in stations:
+                machine = stations[station]
 
         return machine
 
-    def getScanCentre(self):
+    def get_scan_centre(self):
 
-        self.imageStack = self.getImageStack()
-        nx, ny, nz = self.imageStack.shape
+        self.image_stack = self.get_image_stack()
+        nx, ny, nz = self.image_stack.shape
 
         ijk1 = (0, 0, 0)
         ijk2 = (nx - 1, ny - 1, nz - 1)
-        xyz1 = pointIjkToXyz(ijk1, self.transformIjkToXyz)
-        xyz2 = pointIjkToXyz(ijk2, self.transformIjkToXyz)
+        xyz1 = point_ijk_to_xyz(ijk1, self.transform_ijk_to_xyz)
+        xyz2 = point_ijk_to_xyz(ijk2, self.transform_ijk_to_xyz)
         xyzc = tuple(0.5 * (xyz1[i] + xyz2[i]) for i in range(3))
 
         return xyzc
 
-    def getScanPosition(self):
+    def get_scan_position(self):
+
         x0, y0, z0 = (0.0, 0.0, 0.0)
-        zList = []
-        for fileItem in self.files:
-            ds = pydicom.read_file(fp=fileItem.path, force=True)
+        zs = []
+        for file in self.files:
+            ds = pydicom.read_file(fp=file.path, force=True)
             try:
                 x0, y0, z = [float(xyz) for xyz in ds.ImagePositionPatient]
             except AttributeError:
                 continue
-            zList.append(z)
+            zs.append(z)
 
-        if zList:
-            z0 = min(zList)
+        if zs:
+            z0 = min(zs)
 
         return (x0, y0, z0)
 
-    def getScanRange(self):
+    def get_scan_range(self):
         z1, z2 = (0.0, 0.0)
-        zList = []
+        zs = []
         for fileItem in self.files:
             ds = pydicom.read_file(fp=fileItem.path, force=True)
             try:
                 x0, y0, z = [float(xyz) for xyz in ds.ImagePositionPatient]
             except AttributeError:
                 continue
-            zList.append(z)
+            zs.append(z)
 
-        if zList:
-            z1 = min(zList)
-            z2 = max(zList)
+        if zs:
+            z1 = min(zs)
+            z2 = max(zs)
 
         return (z1, z2)
 
-    def getImageStack(self, rescale=True, renew=False, resetVoxelSize=True):
+    def get_image_stack(self, rescale=True, renew=False, reset_voxel_size=True):
 
-        if not (self.imageStack is None or renew):
-            return self.imageStack
+        if not (self.image_stack is None or renew):
+            return self.image_stack
 
-        fileDict1 = {}
-        fileDict2 = {}
-        for fileItem in self.files:
-            ds = pydicom.read_file(fileItem.path, force=True)
+        # Load pixel array from each file
+        files1 = {}
+        files2 = {}
+        for file in self.files:
+            ds = pydicom.read_file(file.path, force=True)
 
-            x0, y0, z0 = self.scanPosition
-            dx, dy, dz = self.voxelSize
+            x0, y0, z0 = self.scan_position
+            dx, dy, dz = self.voxel_size
             x1, y1, z1 = [float(v) for v in ds.ImagePositionPatient]
             if rescale and hasattr(ds, "RescaleSlope"):
-                fileDict1[z1] = ds.pixel_array * float(ds.RescaleSlope) + float(
+                files1[z1] = ds.pixel_array * float(ds.RescaleSlope) + float(
                     ds.RescaleIntercept
                 )
             else:
-                fileDict1[z1] = ds.pixel_array
+                files1[z1] = ds.pixel_array
             if hasattr(ds, "InstanceNumber"):
                 z2 = x0 + ds.InstanceNumber * dz
-                fileDict2[z2] = fileDict1[z1]
+                files2[z2] = files1[z1]
 
-        if len(fileDict1.keys()) == len(self.files):
-            fileDict = fileDict1
-        elif len(fileDict2.keys()) == len(self.files):
-            fileDict = fileDict2
+        if len(files1.keys()) == len(self.files):
+            files = files1
+        elif len(files2.keys()) == len(self.files):
+            files = files2
         else:
             print(f"Problem scan: {self.path}")
             print(f"Number of file items: {len(self.files)}")
             print(
-                f"Number of values for ImagePositionPatient:" f"{len(fileDict1.keys())}"
+                f"Number of values for ImagePositionPatient:" f"{len(files1.keys())}"
             )
-            print(f"Number of values for InstanceNumber:" f"{len(fileDict1.keys())}")
+            print(f"Number of values for InstanceNumber:" f"{len(files2.keys())}")
 
-        keyList = sorted(fileDict.keys())
-
-        shapeDict = {}
-        for key in keyList:
-            shape = fileDict[key].shape
-            if not shape in shapeDict:
-                shapeDict[shape] = []
-            shapeDict[shape].append(key)
+        # Find the shape of each slice
+        shapes = {}
+        for z, data in files.items():
+            shape = data.shape
+            if shape not in shapes:
+                shapes[shape] = []
+            shapes[shape].append(z)
 
         # Ensure that all slices considered have the same shape
-        if len(shapeDict.keys()) > 1:
-            lenMax = 0
-            n1 = len(keyList)
-            keyList = []
-            for shape in shapeDict:
-                lenNow = len(shapeDict[shape])
-                if lenNow > lenMax:
-                    lenMax = lenNow
-                    keyList = shapeDict[shape]
+        # Find the shape with the most slices
+        if len(shapes) > 1:
+            max_len = 0
+            n1 = len(files)
+            zs_to_use = []
+            for shape, z_list in shapes.items:
+                current_len = len(z_list)
+                if current_len > max_len:
+                    max_len = current_len
+                    zs_to_use = z_list
 
-            keyList.sort()
-            n2 = len(keyList)
-            print(f"WARNING: '{self.path}' - dropping {n2 - n1} slices")
+            zs_to_use.sort()
+            n2 = len(zs_to_use)
+            print(f"WARNING: '{self.path}' - dropping {n1 - n2} slices")
 
-        if resetVoxelSize:
-            nSlice = len(keyList)
-            if nSlice > 1:
-                dx, dy, dz = self.voxelSize
-                dz = abs(keyList[-1] - keyList[0]) / float(nSlice - 1)
-                """
-        if dz < 2.5:
-          dz = 1.15
-          print "WARNING: utility.__init__.py setting dz = 1.15"
-        """
-                self.voxelSize = (dx, dy, dz)
-                self.transformIjkToXyz = getTransformIjkToXyz(self)
+        # Reset voxel size based on difference between slice positions
+        if reset_voxel_size:
+            n_slices = len(zs_to_use)
+            if n_slices > 1:
+                dx, dy, dz = self.voxel_size
+                dz = abs(zs_to_use[-1] - zs_to_use[0]) / float(n_slices - 1)
+                self.voxel_size = (dx, dy, dz)
+                self.transform_ijk_to_xyz = get_transform_ijk_to_xyz(self)
 
-        arrayList = []
-        for key in keyList:
-            arrayList.append(fileDict[key])
-
-        if arrayList:
-            imageArray = np.dstack(arrayList)
+        # Combine arrays for each slice
+        arrays = [files[z] for z in zs_to_use]
+        if arrays:
+            image = np.dstack(arrays)
         else:
-            imageArray = None
+            image = None
 
-        return imageArray
+        return image
 
-    def getBandedImageStack(
+    def get_banded_image_stack(
         self,
         rescale=True,
         renew=False,
-        resetVoxelSize=True,
-        bandDict={-100: -1024, 100: 0, 1e10: 1024},
+        reset_voxel_size=True,
+        bands={-100: -1024, 100: 0, 1e10: 1024},
     ):
+        """Return image array with voxel values quantised based on user-defined
+        bands."""
 
-        imageArray = self.getImageStack(rescale, renew, resetVoxelSize)
-        valueList = sorted(bandDict.keys())
-        vBand = bandDict[valueList[0]]
-        bandedArray = np.ones(imageArray.shape) * vBand
-        nBand = len(valueList)
-        for i in range(1, nBand):
-            v1 = valueList[i - 1]
-            v2 = valueList[i]
-            vBand = bandDict[v2]
-            bandedArray[(imageArray > v1) & (imageArray <= v2)] = vBand
+        image = self.get_image_stack(rescale, renew, reset_voxel_size)
+        vals = sorted(bands.keys())
+        v_band = bands[vals[0]]  # Value for lowest band
+        banded_array = np.ones(image.shape) * v_band
+        n_bands = len(bands)
+        for i in range(1, n_bands):
+            v1 = vals[i - 1]
+            v2 = vals[i]
+            v_band = bands[v2]
+            banded_array[(image > v1) & (image <= v2)] = v_band
 
-        return bandedArray
+        return banded_array
 
-    def setImageStack(self, rescale=True):
+    def set_image_stack(self, rescale=True):
+        """Set own image_stack parameter by loading the image stack."""
 
-        self.imageStack = self.getImageStack(rescale, renew=True)
+        self.image_stack = self.get_image_stack(rescale, renew=True)
 
         return None
 
     def write(self, outDir=".", rescale=True):
+        """Write to a dicom file."""
 
-        imageArray = self.getImageStack()[:, :, ::-1]
+        image = self.get_image_stack()[:, :, ::-1]
 
-        dcmList = glob.glob(f"{self.path}/*.dcm")
-        dcmList.sort(key=alphanumeric)
+        # Get list of the dicom files used to load this scan
+        dcm_list = glob.glob(f"{self.path}/*.dcm")
+        dcm_list.sort(key=alphanumeric)
 
-        outDir = fullpath(outDir)
-        if os.path.exists(outDir):
-            shutil.rmtree(outDir)
-        distutils.dir_util.mkpath(outDir)
+        # Create empty output directory
+        outdir = fullpath(outdir)
+        if os.path.exists(outdir):
+            shutil.rmtree(outdir)
+        distutils.dir_util.mkpath(outdir)
 
-        for i in range(len(dcmList)):
-            inPath = dcmList[i]
-            ds = pydicom.read_file(inPath)
-            pixelArray = imageArray[:, :, i]
+        # Write each slice to a dicom file
+        for i, dcm in enumerate(dcm_list):
+            ds = pydicom.read_file(dcm)
+            pixel_array = image[:, :, i]
             if rescale:
-                pixelArray = (pixelArray - float(ds.RescaleIntercept)) / float(
-                    ds.RescaleSlope
-                )
-            ds.PixelData = pixelArray.astype(np.uint16).byteswap().tobytes()
-            outPath = os.path.join(outDir, os.path.basename(inPath))
-            ds.save_as(outPath)
+                pixel_array = (pixel_array - float(ds.RescaleIntercept)) \
+                        / float(ds.RescaleSlope)
+            ds.PixelData = pixel_array.astype(np.uint16).byteswap().tobytes()
+            out_path = os.path.join(outdir, os.path.basename(dcm))
+            ds.save_as(out_path)
 
         return
 
@@ -654,119 +655,109 @@ class File(DatedObject):
 
 
 class RtDose(MachineObject):
+
     def __init__(self, path=""):
+
         MachineObject.__init__(self, path)
 
         if not os.path.exists(path):
             return
 
         ds = pydicom.read_file(path, force=True)
-        """
+
+        # Get dose summation type
         try:
-            numberOfFrames = ds.NumberOfFrames
+            self.summation_type = ds.DoseSummationType
         except AttributeError:
-            numberOfFrames = ds.NumberofFrames
-        """
-        try:
-            self.summationType = ds.DoseSummationType
-        except AttributeError:
-            self.summationType = ds.DoseSummationType
+            self.summation_type = None
+
+        # Get slice thickness
         if ds.SliceThickness:
-            sliceThickness = float(ds.SliceThickness)
+            slice_thickness = float(ds.SliceThickness)
         else:
-            sliceThickness = None
-        """
-    if ( float( ds.ImagePositionPatient[ 2 ] ) > 0. ) and ( sliceThickness ):
-      self.scanPosition = ( float( ds.ImagePositionPatient[ 0 ] ), \
-        float( ds.ImagePositionPatient[ 1 ] ),  \
-        float( ds.ImagePositionPatient[ 2 ] ) - \
-        sliceThickness * float( numberOfFrames - 1 ) )
-      self.reverse = True
-    else:
-      self.scanPosition = ( float( ds.ImagePositionPatient[ 0 ] ), \
-        float( ds.ImagePositionPatient[ 1 ] ),  \
-        float( ds.ImagePositionPatient[ 2 ] ) )
-      self.reverse = False
-    self.scanPosition = ( float( ds.ImagePositionPatient[ 0 ] ), \
-      float( ds.ImagePositionPatient[ 1 ] ),  \
-      float( ds.ImagePositionPatient[ 2 ] + ds.GridFrameOffsetVector[ -1 ] ) )
-    """
+            slice_thickness = None
+
+        # Get scan position and voxel sizes
         if ds.GridFrameOffsetVector[-1] > ds.GridFrameOffsetVector[0]:
             self.reverse = False
-            self.scanPosition = (
+            self.scan_position = (
                 float(ds.ImagePositionPatient[0]),
                 float(ds.ImagePositionPatient[1]),
                 float(ds.ImagePositionPatient[2] + ds.GridFrameOffsetVector[0]),
             )
         else:
             self.reverse = True
-            self.scanPosition = (
+            self.scan_position = (
                 float(ds.ImagePositionPatient[0]),
                 float(ds.ImagePositionPatient[1]),
                 float(ds.ImagePositionPatient[2] + ds.GridFrameOffsetVector[-1]),
             )
-        self.voxelSize = (
+        self.voxel_size = (
             float(ds.PixelSpacing[0]),
             float(ds.PixelSpacing[1]),
-            sliceThickness,
+            slice_thickness,
         )
-        self.transformIjkToXyz = getTransformIjkToXyz(self)
-        self.imageStack = None
+        self.transform_ijk_to_xyz = get_transform_ijk_to_xyz(self)
+        self.image_stack = None
 
-    def getImageStack(self, rescale=True, renew=False):
+    def get_image_stack(self, rescale=True, renew=False):
 
-        if not (self.imageStack is None or renew):
-            return self.imageStack
+        if self.image_stack is not None and not renew:
+            return self.image_stack
 
+        # Load dose array from dicom
         ds = pydicom.read_file(self.path, force=True)
-        self.imageStack = np.transpose(ds.pixel_array, (1, 2, 0))
+        self.image_stack = np.transpose(ds.pixel_array, (1, 2, 0))
 
+        # Rescale voxel values
         if rescale:
             try:
-                rescaleIntercept = ds.RescaleIntercept
+                rescale_intercept = ds.RescaleIntercept
             except AttributeError:
-                rescaleIntercept = 0
-            self.imageStack = self.imageStack * float(ds.DoseGridScaling) + float(
-                rescaleIntercept
-            )
+                rescale_intercept = 0
+            self.image_stack = self.image_stack * float(ds.DoseGridScaling) \
+                    + float(rescale_intercept)
 
         if self.reverse:
-            self.imageStack[:, :, :] = self.imageStack[:, :, ::-1]
+            self.image_stack[:, :, :] = self.image_stack[:, :, ::-1]
 
-        return self.imageStack
+        return self.image_stack
 
 
 class RtPlan(MachineObject):
+
     def __init__(self, path=""):
+
         MachineObject.__init__(self, path)
 
         ds = pydicom.read_file(path, force=True)
-        try:
-            self.approvalStatus = ds.ApprovalStatus
-        except AttributeError:
-            self.approvalStatus = None
 
         try:
-            self.nFractionGroup = len(ds.FractionGroupSequence)
+            self.approval_status = ds.ApprovalStatus
         except AttributeError:
-            self.nFractionGroup = None
+            self.approval_status = None
 
         try:
-            self.nBeamSequence = len(ds.BeamSequence)
+            self.n_fraction_group = len(ds.FractionGroupSequence)
         except AttributeError:
-            self.nBeamSequence = None
+            self.n_fraction_group = None
 
-        self.nFraction = None
-        self.targetDose = None
-        if self.nFractionGroup is not None:
-            self.nFraction = 0
+        try:
+            self.n_beam_seq = len(ds.BeamSequence)
+        except AttributeError:
+            self.n_beam_seq = None
+
+        self.n_fraction = None
+        self.target_dose = None
+        if self.n_fraction_group is not None:
+            self.n_fraction = 0
             for fraction in ds.FractionGroupSequence:
-                self.nFraction += fraction.NumberOfFractionsPlanned
+                self.n_fraction += fraction.NumberOfFractionsPlanned
                 if hasattr(fraction, "ReferencedDoseReferenceSequence"):
-                    if self.targetDose is None:
-                        self.targetDose = 0.0
+                    if self.target_dose is None:
+                        self.target_dose = 0.0
                     for dose in fraction.ReferencedDoseReferenceSequence:
-                        self.targetDose += dose.TargetPrescriptionDose
+                        self.target_dose += dose.TargetPrescriptionDose
 
 
 class RtStruct(ArchiveObject):
@@ -848,6 +839,8 @@ class Patient(PathObject):
     a patient ID, and whose subdirectories contain studies."""
 
     def __init__(self, path=None, exclude=["logfiles"]):
+
+        start = time.time()
 
         # Set path and patient ID
         if path is None:
@@ -1070,9 +1063,9 @@ class Study(DatedObject):
         relative to scan positions."""
 
         for dose in doses:
-            dx, dy, dz = dose.voxelSize
-            x0, y0, z0 = dose.scanPosition
-            dose.scanPosition = (x0, y0, z0 + dz)
+            dx, dy, dz = dose.voxel_size
+            x0, y0, z0 = dose.scan_position
+            dose.scan_position = (x0, y0, z0 + dz)
         return doses
 
     def get_machine_sublist(self, dtype="", machine="", ignore_case=True):
@@ -1332,7 +1325,7 @@ class Study(DatedObject):
             plan_dose.scanPosition = dose.scanPosition
             plan_dose.reverse = dose.reverse
             plan_dose.voxelSize = dose.voxelSize
-            plan_dose.transformIjkToXyz = dose.transformIjkToXyz
+            plan_dose.transform_ijk_to_xyz = dose.transform_ijk_to_xyz
             plan_dose.imageStack = dose.getImageStack()
             for dose in dose_dict[sum_type]:
                 plan_dose.imageStack += dose.getImageStack()
@@ -1988,12 +1981,14 @@ def get_time_separated_objects(in_list=[], min_delta_hours=4.0):
     return sorted(separated_timestamps.values())
 
 
-def getTransformIjkToXyz(object=None):
-    x0, y0, z0 = object.scanPosition
-    dx, dy, dz = object.voxelSize
-    if not (
-        x0 is None or y0 is None or z0 is None or dx is None or dy is None or dz is None
-    ):
+def get_transform_ijk_to_xyz(obj=None):
+    """Get a matrix for transforming a set of indices (ijk) to a spatial 
+    position (xyz) for a given object that has a scan position and voxel 
+    size."""
+
+    x0, y0, z0 = obj.scan_position
+    dx, dy, dz = obj.voxel_size
+    if not any([var is None for var in [x0, y0, z0, dx, dy, dz]]):
         transform = np.array(
             [
                 [dx, 0.0, 0.0, x0],
@@ -2030,15 +2025,16 @@ def getTransformixPointDict(filepath=""):
     return pointDict
 
 
-def getVoxelSize(inData=""):
+def get_voxel_size(in_data=""):
+    """Find voxel size from a path/list of paths to dicom file(s)."""
 
     dx, dy, dz = (None, None, None)
-    if isinstance(inData, list):
-        filePath = inData[0]
+    if isinstance(in_data, list):
+        path = in_data[0]
     else:
-        filePath = inData
-    if os.path.exists(filePath):
-        ds = pydicom.read_file(filePath, force=True)
+        path = in_data
+    if os.path.exists(path):
+        ds = pydicom.read_file(path, force=True)
         if hasattr(ds, "PixelSpacing"):
             dx, dy = ds.PixelSpacing
             dx = float(dx)
@@ -2354,7 +2350,7 @@ def matchSize(ct1=None, ct2=None, fillValue=-1024):
             ct3.imageStack = interpolant(pointArray)
             ct3.voxelSize = ct2.voxelSize
             ct3.scanPosition = ct2.scanPosition
-            ct3.transformIjkToXyz = ct2.transformIjkToXyz
+            ct3.transform_ijk_to_xyz = ct2.transform_ijk_to_xyz
         else:
             ct3 = None
         print(f"interpolation end time: {time.strftime('%c')}")
@@ -2385,7 +2381,7 @@ def matchSlices(ct1=None, ct2=None, fill_value=-1024):
     x0 = xc2 + 0.5 * nx1 * dx1
     y0 = yc2 - 0.5 * ny1 * dy1
     ref_ct.scanPosition = (x0, y0, z02)
-    ref_ct.transformIjkToXyz = getTransformIjkToXyz(ref_ct)
+    ref_ct.transform_ijk_to_xyz = get_transform_ijk_to_xyz(ref_ct)
     ref_ct = matchSize(ct1, ref_ct, fill_value)
 
     return ref_ct
@@ -2418,49 +2414,49 @@ def matchSliceThickness(ct=None, ref_dz=None, fill_value=-1024):
     ref_ct.imageStack = np.zeros((nx, ny, ref_nz))
     ref_ct.scanPosition = (x0, y0, ref_z0)
     ref_ct.voxelSize = (dx, dy, ref_dz)
-    ref_ct.transformIjkToXyz = getTransformIjkToXyz(ref_ct)
+    ref_ct.transform_ijk_to_xyz = get_transform_ijk_to_xyz(ref_ct)
     ref_ct = matchSize(ct, ref_ct, fill_value)
 
     return ref_ct
 
 
-def pointIjkToXyz(
-    ijk=None, affineTransform=None, translation=None, rotation=None, reverse=False
-):
+def point_ijk_to_xyz(ijk=None, affine=None, translation=None, 
+                     rotation=None, reverse=False):
+    """Convert a set of indices (ijk) to a spatial position (xyz) using a 
+    given affine tranform matrix. Can additionally apply a translation,
+    rotation, and reverse direction."""
 
-    if (ijk is None) or (affineTransform is None):
+    if (ijk is None) or (affine is None):
         xyz = (None, None, None)
     else:
         i, j, k = ijk
-        ijkVector = np.array([i, j, k, 1])
-        xyzVector = affineTransform.dot(ijkVector)
-        x, y, z, u = xyzVector[0], xyzVector[1], xyzVector[2], xyzVector[3]
-        xyz = applyCouchShifts((x, y, z), translation, rotation, reverse)
+        ijk_vec = np.array([i, j, k, 1])
+        xyz_vec = affine.dot(ijk_vec)
+        x, y, z, u = xyz_vec[0], xyz_vec[1], xyz_vec[2], xyz_vec[3]
+        xyz = apply_couch_shifts((x, y, z), translation, rotation, reverse)
 
     return xyz
 
 
-def pointXyzToIjk(
-    xyz=None,
-    affineTransform=None,
-    translation=None,
-    rotation=None,
-    reverse=False,
-    outFloat=False,
-):
+def point_xyz_to_ijk(xyz=None, affine=None, translation=None, rotation=None,
+                     reverse=False, outFloat=False):
+    """Convert a spatial position (xyz) to a set of indices (ijk) using a 
+    given affine tranform matrix. Can additionally apply a translation,
+    rotation, and reverse direction. If out_float is True, the output will
+    not be rounded to an integer."""
 
-    if xyz is None or affineTransform is None:
+    if xyz is None or affine is None:
         return (None, None, None)
 
-    x, y, z = applyCouchShifts(xyz, translation, rotation, reverse)
+    x, y, z = apply_couch_shifts(xyz, translation, rotation, reverse)
 
-    affineTransformInverse = np.linalg.inv(affineTransform)
-    xyzVector = np.array([x, y, z, 1.0])
-    ijkVector = affineTransformInverse.dot(xyzVector)
-    if outFloat:
-        i, j, k, ll = (m for m in ijkVector)
+    affine_inv = np.linalg.inv(affine)
+    xyz_vec = np.array([x, y, z, 1.0])
+    ijk_vec = affine_inv.dot(xyz_vec)
+    if out_float:
+        i, j, k, ll = (m for m in ijk_vec)
     else:
-        i, j, k, ll = (iround(m) for m in ijkVector)
+        i, j, k, ll = (iround(m) for m in ijk_vec)
 
     return (i, j, k)
 
