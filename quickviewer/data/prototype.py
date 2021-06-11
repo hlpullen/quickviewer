@@ -71,11 +71,25 @@ class Image:
         if load:
             self.load_data()
 
+        self.mask = None
+        self.mask_per_view = None
+        self.shift = None
+
     def get_data(self):
         '''Return image array.'''
 
         if self.data is None:
             self.load_data()
+        return self.data
+
+    def get_masked_data(self, view=None):
+        '''Return image array with mask applied, if self.mask is not None.'''
+
+        self.load_data()
+        if self.mask:
+            return self.data * self.mask
+        elif self.mask_per_view and view in self.mask_per_view:
+            return self.data * self.mask_per_view[view]
         return self.data
 
     def load_data(self, force=False):
@@ -146,7 +160,14 @@ class Image:
         else:
             self.default_window = [-300, 200] 
 
-    def plot(self, view='x-y', sl=None, idx=None, pos=None):
+    def plot(
+        self, 
+        view='x-y', 
+        sl=None, 
+        idx=None, 
+        pos=None,
+        scale_in_mm=True,
+    ):
         '''Plot a 2D slice of the image.
 
         Parameters
@@ -167,6 +188,10 @@ class Image:
         pos : float, default=None
             Position in mm of the slice to plot. Will be rounded to the nearest
             slice. Only used if <sl> and <idx> are both None.
+
+        scale_in_mm : bool, default=True
+            If True, axis labels will be in mm; otherwise, they will be slice 
+            numbers.
         '''
 
         # Get index of the slice to plot
@@ -184,13 +209,24 @@ class Image:
         transpose = list(_plot_axes[view]) + [_slice_axes[view]]
         image_slice = np.transpose(self.data, transpose)[:, :, idx]
 
+        # Get image extent and aspect ratio
+        x_ax = _plot_axes[view][1]
+        y_ax = _plot_axes[view][0]
+        if scale_in_mm:
+            extent = self.image_extent[x_ax] + self.image_extent[y_ax][::-1]
+            aspect = 1
+        else:
+            extent = [
+                0.5, self.shape[x_ax] + 0.5, self.shape[y_ax] + 0.5, 0.5
+            ]
+            aspect = abs(self.voxel_size[y_ax] / self.voxel_size[x_ax])
+
         # Plot the slice
-        extent = self.image_extent[_plot_axes[view][1]] \
-                + self.image_extent[_plot_axes[view][0]]
         plt.imshow(
             image_slice, 
             cmap='gray', 
             extent=extent,
+            aspect=aspect,
             vmin=self.default_window[0],
             vmax=self.default_window[1]
         )
@@ -220,20 +256,12 @@ class Image:
     def idx_to_slice(self, idx, ax):
         '''Convert an array index to a slice number along a given axis.'''
         
-        i_ax = ax if isinstance(ax, int) else _axes.index(ax)
-        if i_ax == 2:
-            return self.shape[i_ax] - idx
-        else:
-            return idx + 1
+        return idx + 1
 
     def slice_to_idx(self, sl, ax):
         '''Convert a slice number to an array index along a given axis.'''
 
-        i_ax = ax if isinstance(ax, int) else _axes.index(ax)
-        if i_ax == 2:
-            return self.shape[i_ax] - sl
-        else:
-            return sl - 1
+        return sl - 1
 
     def pos_to_slice(self, pos, ax):
         '''Convert a position in mm to a slice number along a given axis.'''
@@ -249,6 +277,67 @@ class Image:
         '''Get position in mm of the centre of the image.'''
 
         return [np.mean(self.lims[i]) for i in range(3)]
+
+    def get_voxel_coords(self):
+        '''Get arrays of voxel coordinates in each direction.'''
+
+        return
+
+    def get_plot_aspect_ratio(self, view, zoom=None, n_colorbars=0,
+                              figsize=None):
+        '''Estimate the ideal width/height ratio for a plot of this image 
+        in a given orientation.'''
+
+    def translate(self, dx=0, dy=0, dz=0):
+        '''Apply a translation to the image data.'''
+
+        return
+
+    def rotate(self, yaw=0, pitch=0, roll=0):
+        '''Apply a rotation to the image data.'''
+
+        return
+
+    def reset(self):
+        '''Return image data to its original state before any translations or
+        rotations.'''
+
+        return
+
+    def set_shift(self, nx, ny, nz):
+        '''Set a shift amount in voxels to apply to the image before plotting.
+        (Faster than translating the entire 3D image).
+        '''
+
+        return
+
+    def set_mask(self, mask, threshold=0.5):
+        '''Set a mask that can be applied to the image at plotting time.
+        Can be either a single array, list of arrays to stack, or dict of 
+        arrays for different orientations.'''
+ 
+        # Get single mask or list of masks
+        single_mask = None
+        mask_per_view = None
+        if isinstance(mask, np.ndarray):
+            single_mask = mask
+        elif is_list(mask):
+            single_mask = mask[0]
+            for m in mask[1:]:
+                single_mask += m
+        elif isinstance(mask, dict):
+            mask_per_view = mask
+
+        # Convert mask(s) to boolean
+        if single_mask:
+            single_mask = single_mask > threshold
+        if mask_per_view:
+            for view, m in mask_per_view.items():
+                mask_per_view[view] = m > threshold
+
+        # Assign to class properties
+        self.mask = single_mask
+        self.mask_per_view = mask_per_view
 
     def write(self, outname):
         '''Write image data to a file.'''
@@ -306,6 +395,7 @@ def load_dicom(path):
     # Load image arrays from all files
     study_uid = None
     series_num = None
+    modality = None
     slice_thickness = None
     pixel_size = None
     origin = None
@@ -323,11 +413,15 @@ def load_dicom(path):
                 study_uid = ds.StudyInstanceUID
             if series_num is None:
                 series_num = ds.SeriesNumber
-            if ds.StudyInstanceUID != study_uid or ds.SeriesNumber != series_num:
+            if modality is None:
+                modality = ds.Modality
+            if (ds.StudyInstanceUID != study_uid 
+                or ds.SeriesNumber != series_num
+                or ds.Modality != modality):
                 continue
 
             # Get data 
-            z = getattr(ds, 'SliceLocation', None)
+            z = getattr(ds, 'ImagePositionPatient', [0, 0, 0])[2]
             data_slices[z] = ds.pixel_array
 
             # Get voxel spacings
@@ -351,9 +445,9 @@ def load_dicom(path):
 
             # Get HU window defaults
             if window_centre is None:
-                window_centre = getattr(ds, "WindowCenter", None)
+                window_centre = getattr(ds, 'WindowCenter', None)
             if window_width is None:
-                window_width = getattr(ds, "WindowWidth", None)
+                window_width = getattr(ds, 'WindowWidth', None)
 
         # Skip any invalid dicom files
         except pydicom.errors.InvalidDicomError:
@@ -370,8 +464,10 @@ def load_dicom(path):
 
     # Combine arrays
     else:
+
+        # Sort by slice position
         sorted_slices = sorted(list(data_slices.keys()))
-        sorted_data = [data_slices[sl] for sl in sorted_slices]
+        sorted_data = [data_slices[z] for z in sorted_slices]
         data = np.stack(sorted_data, axis=-1)
 
         # Recalculate slice thickness from spacing
@@ -397,3 +493,13 @@ def load_npy(path):
 
     except (IOError, ValueError):
         return
+
+
+def is_list(var):
+    '''Check whether a variable is a list, tuple, or array.'''
+
+    is_a_list = False
+    for t in [list, tuple, np.ndarray]:
+        if isinstance(var, t):
+            is_a_list = True
+    return is_a_list
