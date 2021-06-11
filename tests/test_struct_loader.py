@@ -1,13 +1,13 @@
-"""Test the StructLoader class."""
+"""Test the StructureSet class."""
 
 import os
-from quickviewer.data.structures import StructLoader
+from quickviewer.data.structures import StructureSet
 from matplotlib.colors import to_rgba
 
 
 # Load single structure from single file
 def test_single():
-    s = StructLoader("data/structs/my_structs/cube.nii")
+    s = StructureSet("data/structs/my_structs/cube.nii")
     assert len(s.get_structs()) == 1
     assert not len(s.get_comparisons())
     #  assert not len(s.get_structs(ignore_unpaired=True))
@@ -15,7 +15,7 @@ def test_single():
 
 #  # Default colour
 #  def test_default_color():
-    #  s = StructLoader("data/structs/my_structs/cube.nii",
+    #  s = StructureSet("data/structs/my_structs/cube.nii",
                      #  names={"*cube*": "right parotid"})
     #  struct = s.get_structs()[0]
     #  assert struct.color == to_rgba("red")
@@ -24,7 +24,7 @@ def test_single():
 def test_custom_name():
     names = {"custom": "*cube.nii"}
     colors = {"custom": "purple"}
-    s = StructLoader("data/structs/my_structs/cube.nii", names=names,
+    s = StructureSet("data/structs/my_structs/cube.nii", names=names,
                      colors=colors)
     struct = s.get_structs()[0]
     assert struct.name == "custom"
@@ -35,7 +35,7 @@ def test_custom_name():
 # Load multiple structures from directory
 def test_dir():
     colors = {"cube": "red", "sphere": "green"}
-    s = StructLoader(structs="data/structs/my_structs/", colors=colors)
+    s = StructureSet(structs="data/structs/my_structs/", colors=colors)
     structs = s.get_structs()
     assert(len(structs) == 3)
     names_colors = {s.name: s.color for s in structs}
@@ -45,14 +45,14 @@ def test_dir():
 # Load structures using wildcard filename
 def test_wildcard():
     names = {"with_cube": "*cube*", "sphere_only": "*"}
-    s = StructLoader("data/structs/my_structs/sphere*", names=names)
+    s = StructureSet("data/structs/my_structs/sphere*", names=names)
     snames = [s.name for s in s.get_structs()]
     assert len(snames) == 2
     assert sorted(snames) == sorted(list(names.keys()))
 
 # Load multiple structure masks from one file
 def test_multi_structs():
-    s = StructLoader(
+    s = StructureSet(
         multi_structs="data/structs/my_structs/sphere_and_cube.nii")
     structs = s.get_structs()
     assert(len(structs) == 2)
@@ -62,7 +62,7 @@ def test_multi_structs():
 def test_many_names():
     names = ["cube", "sphere"]
     colors = {"cube": "green"}
-    s = StructLoader(
+    s = StructureSet(
         multi_structs="data/structs/my_structs/sphere_and_cube.nii",
         names=names, colors=colors)
     snames = [s.name for s in s.get_structs()]
@@ -72,7 +72,7 @@ def test_many_names():
 
 # Load structures from list of files
 def test_list():
-    s = StructLoader(["data/structs/my_structs", 
+    s = StructureSet(["data/structs/my_structs", 
                       "data/structs/my_structs/subdir"])
     assert len(s.get_structs()) == 5
 
@@ -85,7 +85,7 @@ def test_labels():
     names = {"set1": ["Sphere", "Cube"]}
     colors = {"set1": {"*": "green"}, 
               "set2": {"cube": "yellow", "sphere": "black"}}
-    s = StructLoader(structs, multi, names=names, colors=colors)
+    s = StructureSet(structs, multi, names=names, colors=colors)
 
     # Test structure properties
     structs = s.get_structs()
@@ -117,7 +117,7 @@ def test_standalone():
     multi = {"set1": "data/structs/my_structs/sphere_and_cube.nii"}
     structs = {"set2": "data/structs/my_structs/subdir"}
     names = {"set1": ["Sphere"]}
-    s = StructLoader(structs=structs, multi_structs=multi, names=names)
+    s = StructureSet(structs=structs, multi_structs=multi, names=names)
     assert len(s.get_structs()) == 4
     assert len(s.get_structs(True)) == 2
     assert len(s.get_comparisons()) == 1
@@ -130,7 +130,7 @@ def test_pairs():
          "data/structs/my_structs/cube.nii"],
         ["data/structs/my_structs/sphere_and_cube.nii",
          "data/structs/my_structs/subdir/sphere.nii"]]
-    s = StructLoader(pairs)
+    s = StructureSet(pairs)
     assert len(s.get_structs()) == 4
     assert len(s.get_comparisons()) == 2
     assert len(s.get_structs(True)) == 4
@@ -138,7 +138,7 @@ def test_pairs():
 
 # Comparison of two structs
 def test_two_comparison():
-    s = StructLoader("data/structs/my_structs/sphere*")
+    s = StructureSet("data/structs/my_structs/sphere*")
     assert not len(s.get_standalone_structs())
     assert len(s.get_structs(True)) == 2
     assert len(s.get_comparisons()) == 1
