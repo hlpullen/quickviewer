@@ -1485,7 +1485,7 @@ def load_dicom_multiple_files(paths, series_num=None, rescale=True,
             data, affine = load_dicom_single_file(ds, rescale=rescale)
             data_slices[float(slice_num)] = data
 
-        except pydicom.errors.InvalidDicomError:
+        except pydicom.errors.InvalieD§icomError:
             continue
 
     # Sort and stack image slices

@@ -1,23 +1,29 @@
 '''Prototype classes for core data functionality.'''
 
+import copy
+import matplotlib as mpl
+import matplotlib.cm
+import matplotlib.colors
 import matplotlib.pyplot as plt
+from matplotlib.ticker import MultipleLocator, AutoMinorLocator, FormatStrFormatter
 import nibabel
 import numpy as np
 import os
 import pydicom
 
 
-_axes = ['y', 'x', 'z']
+_axes = ['x', 'y', 'z']
 _slice_axes = {
     'x-y': 2,
-    'y-z': 1,
-    'x-z': 0
+    'y-z': 0,
+    'x-z': 1
 }
 _plot_axes = {
     'x-y': [0, 1],
-    'y-z': [0, 2],
-    'x-z': [1, 2]
+    'y-z': [2, 1],
+    'x-z': [2, 0]
 }
+_default_figsize = 6
 
 
 class Image:
@@ -28,9 +34,11 @@ class Image:
         self,
         source,
         load=True,
+        title=None,
         affine=None,
         voxel_size=(1, 1, 1),
         origin=(0, 0, 0),
+        downsample=None
     ):
         '''
         Initialise from a medical image source.
@@ -49,25 +57,31 @@ class Image:
             If True, the image data will be immediately loaded. Otherwise, it
             can be loaded later with the load_data() method.
 
+        title : str, default=None
+            Title to use when plotting the image. If None and <source> is a 
+            path, a title will be automatically generated from the filename.
+
         affine : 4x4 array, default=None
             Array containing the affine matrix to use if <source> is a numpy
             array or path to a numpy file. If not None, this takes precendence 
             over <voxel_size> and <origin>.
 
         voxel_size : tuple, default=(1, 1, 1)
-            Voxel sizes in mm in order (y, x, z) to use if <source> is a numpy
+            Voxel sizes in mm in order (x, y, z) to use if <source> is a numpy
             array or path to a numpy file and <affine> is not provided.
 
         origin : tuple, default=(0, 0, 0)
-            Origin position in mm in order (y, x, z) to use if <source> is a 
+            Origin position in mm in order (x, y, z) to use if <source> is a 
             numpy array or path to a numpy file and <affine> is not provided.
         '''
 
         self.data = None
+        self.title = title
         self.source = source
         self.affine = affine
         self.voxel_size = voxel_size
         self.origin = origin
+        self.downsampling = downsample
         if load:
             self.load_data()
 
@@ -125,6 +139,29 @@ class Image:
         # Ensure array is 3D
         if self.data.ndim == 2:
             self.data = self.data[..., np.newaxis]
+
+        # Apply downsampling
+        if self.downsampling:
+            self.downsample(self.downsampling)
+        else:
+            self.set_geometry()
+
+        # Set default grayscale range
+        if window_width and window_centre:
+            self.default_window = [
+                window_centre - window_width / 2,
+                window_centre + window_width / 2
+            ]
+        else:
+            self.default_window = [-300, 200] 
+
+        # Set title from filename
+        if self.title is None:
+            if os.path.exists(self.source):
+                self.title = os.path.basename(self.source)
+
+    def set_geometry(self):
+        '''Set geometric properties.'''
     
         # Set affine matrix, voxel sizes, and origin
         if self.affine is None:
@@ -139,10 +176,10 @@ class Image:
             self.origin = list(self.affine[:-1, -1])
 
         # Set other geometric properties
-        self.shape = self.data.shape
+        self.n_voxels = self.data.shape
         self.lims = [
             (self.origin[i], 
-             self.origin[i] + (self.shape[i] - 1) * self.voxel_size[i])
+             self.origin[i] + (self.n_voxels[i] - 1) * self.voxel_size[i])
             for i in range(3)
         ]
         self.image_extent = [
@@ -151,15 +188,6 @@ class Image:
             for i in range(3)
         ]
 
-        # Set default grayscale range
-        if window_width and window_centre:
-            self.default_window = [
-                window_centre - window_width / 2,
-                window_centre + window_width / 2
-            ]
-        else:
-            self.default_window = [-300, 200] 
-
     def plot(
         self, 
         view='x-y', 
@@ -167,6 +195,24 @@ class Image:
         idx=None, 
         pos=None,
         scale_in_mm=True,
+        ax=None,
+        gs=None,
+        figsize=_default_figsize,
+        zoom=None,
+        zoom_centre=None,
+        mpl_kwargs=None,
+        show=True,
+        colorbar=False,
+        colorbar_label='HU',
+        masked=False,
+        invert_mask=False,
+        mask_color='black',
+        no_title=False,
+        no_ylabel=False,
+        annotate_slice=False,
+        major_ticks=None,
+        minor_ticks=None,
+        ticks_all_sides=False
     ):
         '''Plot a 2D slice of the image.
 
@@ -192,7 +238,89 @@ class Image:
         scale_in_mm : bool, default=True
             If True, axis labels will be in mm; otherwise, they will be slice 
             numbers.
+
+        ax : matplotlib.pyplot.Axes, default=None
+            Axes on which to plot. If None, new axes will be created.
+
+        gs : matplotlib.gridspec.GridSpec, default=None
+            If not None and <ax> is None, new axes will be created on the
+            current matplotlib figure with this gridspec.
+
+        figsize : float, default=None
+            Figure height in inches; only used if <ax> and <gs> are None.
+
+        zoom : int/float/tuple, default=None
+            Factor by which to zoom in. If a single int or float is given,
+            the same zoom factor will be applied in all directions. If a tuple
+            of three values is given, these will be used as the zoom factors
+            in each direction in the order (x, y, z). If None, the image will
+            not be zoomed in.
+
+        zoom_centre : tuple, default=None
+            Position around which zooming is applied. If None, the centre of
+            the image will be used.
+
+        colorbar : bool, default=True
+            If True, a colorbar will be drawn alongside the plot.
+
+        colorbar_label : str, default='HU'
+            Label for the colorbar, if drawn.
+
+        masked : bool, default=False
+            If True and this object has attribute self.data_mask assigned,
+            the image will be masked with the array in self.data_mask.
+
+        invert_mask : bool, default=True
+            If True and a mask is applied, the mask will be inverted.
+
+        mask_color : matplotlib color, default='black'
+            color in which to plot masked areas.
+
+        mpl_kwargs : dict, default=None
+            Dictionary of keyword arguments to pass to matplotlib.imshow().
+
+        show : bool, default=True
+            If True, the plotted figure will be shown via
+            matplotlib.pyplot.show().
+
+        no_title : bool, default=False
+            If True, the plot will not be given a title.
+
+        no_ylabel : bool, default=False
+            If True, the y axis will not be labelled.
+
+        annotate_slice : bool/str, default=False
+            Color for annotation of slice number. If False, no annotation will
+            be added. If True, the default color (white) will be used.
+
+        major_ticks : float, default=None
+            If not None, this value will be used as the interval between major
+            tick marks. Otherwise, automatic matplotlib axis tick spacing will
+            be used.
+
+        minor_ticks : int, default=None
+            If None, no minor ticks will be plotted. Otherwise, this value will
+            be the number of minor tick divisions per major tick interval.
+
+        ticks_all_sides : bool, default=False
+            If True, major (and minor if using) tick marks will be shown above
+            and to the right hand side of the plot as well as below and to the
+            left. The top/right ticks will not be labelled.
         '''
+
+        # Set up figure/axes
+        if ax is None and  gs is not None:
+            ax = plt.gcf().add_subplot(gs)
+        if ax is not None:
+            self.ax = ax
+            self.fig = ax.figure
+        else:
+            figsize = to_inches(figsize)
+            aspect = self.get_plot_aspect_ratio(
+                view, zoom, colorbar, figsize
+            )
+            self.fig = plt.figure(figsize=(figsize * aspect, figsize))
+            self.ax = self.fig.add_subplot()
 
         # Get index of the slice to plot
         self.load_data()
@@ -206,39 +334,111 @@ class Image:
                 idx = self.pos_to_idx(centre_pos, _slice_axes[view])
 
         # Get image slice
-        transpose = list(_plot_axes[view]) + [_slice_axes[view]]
+        transpose = {
+            'x-y': (0, 1, 2),
+            'y-z': (0, 2, 1),
+            'x-z': (1, 2, 0)
+        }[view]
+        list(_plot_axes[view]) + [_slice_axes[view]]
         image_slice = np.transpose(self.data, transpose)[:, :, idx]
 
+        # Apply masking if needed
+        if masked and self.mask:
+            mask = self.mask if isinstance(self.mask, np.ndarray) \
+                    else self.mask[view]
+            mask_slice = np.transpose(mask, transpose)[:, :, idx]
+            if invert_mask:
+                mask_slice = ~mask_slice
+            image_slice *= mask_slice
+
+        # Get colormap
+        mpl_kwargs = {} if mpl_kwargs is None else mpl_kwargs
+        if 'cmap' in mpl_kwargs:
+            cmap = mpl_kwargs.pop('cmap')
+        else:
+            cmap = 'gray'
+        cmap = copy.copy(matplotlib.cm.get_cmap(cmap))
+        if masked:
+            cmap.set_bad(color=mask_color)
+
         # Get image extent and aspect ratio
-        x_ax = _plot_axes[view][1]
-        y_ax = _plot_axes[view][0]
+        x_ax, y_ax = _plot_axes[view]
         if scale_in_mm:
             extent = self.image_extent[x_ax] + self.image_extent[y_ax][::-1]
             aspect = 1
         else:
             extent = [
-                0.5, self.shape[x_ax] + 0.5, self.shape[y_ax] + 0.5, 0.5
+                0.5, self.n_voxels[x_ax] + 0.5, self.n_voxels[y_ax] + 0.5, 0.5
             ]
             aspect = abs(self.voxel_size[y_ax] / self.voxel_size[x_ax])
 
         # Plot the slice
-        plt.imshow(
+        mesh = self.ax.imshow(
             image_slice, 
-            cmap='gray', 
+            cmap=cmap,
             extent=extent,
             aspect=aspect,
             vmin=self.default_window[0],
-            vmax=self.default_window[1]
+            vmax=self.default_window[1],
+            **mpl_kwargs
         )
 
-        # Set title and axis labels
+        # Set title 
+        if self.title and not no_title:
+            self.ax.set_title(self.title, pad=8)
+
+        # Set axis labels
+        units = ' (mm)' if scale_in_mm else ''
+        self.ax.set_xlabel(_axes[x_ax] + units, labelpad=0)
+        if not no_ylabel:
+            self.ax.set_xlabel(_axes[x_ax] + units, labelpad=0)
+        else:
+            self.ax.set_yticks([])
+
+        # Annotate with slice position
+        if annotate_slice:
+            z_ax = _axes[_slice_axes[view]]
+            if scale_in_mm:
+                z_str = '{} = {:.1f} mm'.format(z_ax, self.idx_to_pos(idx, z_ax))
+            else:
+                z_str = '{} = {}'.format(z_ax, self.idx_to_slice(idx, z_ax))
+            if matplotlib.colors.is_color_like(annotate_slice):
+                color = annotate_slice
+            else:
+                color = 'white'
+            self.ax.annotate(z_str, xy=(0.05, 0.93), xycoords='axes fraction',
+                             color=color, fontsize='large')
+
+        # Adjust tick marks
+        if major_ticks:
+            self.ax.xaxis.set_major_locator(MultipleLocator(major_ticks))
+            self.ax.yaxis.set_major_locator(MultipleLocator(major_ticks))
+        if minor_ticks:
+            self.ax.xaxis.set_minor_locator(AutoMinorLocator(minor_ticks))
+            self.ax.yaxis.set_minor_locator(AutoMinorLocator(minor_ticks))
+        if ticks_all_sides:
+            self.ax.tick_params(bottom=True, top=True, left=True, right=True)
+            if minor_ticks:
+                self.ax.tick_params(
+                    which='minor', bottom=True, top=True, left=True, right=True
+                )
+
+        # Add colorbar
+        if colorbar and mpl_kwargs.get('alpha', 1) > 0:
+            clb = self.fig.colorbar(mesh, ax=self.ax, label=colorbar_label)
+            clb.solids.set_edgecolor('face')
+
+        # Display image
+        if show:
+            plt.tight_layout()
+            plt.show()
 
     def idx_to_pos(self, idx, ax):
         '''Convert an array index to a position in mm along a given axis.'''
 
         self.load_data()
         i_ax = ax if isinstance(ax, int) else _axes.index(ax)
-        return self.origin[i_ax] + (self.shape[i_ax] - 1 - idx) \
+        return self.origin[i_ax] + (self.n_voxels[i_ax] - 1 - idx) \
                 * self.voxel_size[i_ax]
 
     def pos_to_idx(self, pos, ax, return_int=True):
@@ -246,7 +446,7 @@ class Image:
 
         self.load_data()
         i_ax = ax if isinstance(ax, int) else _axes.index(ax)
-        idx = self.shape[i_ax] - 1 + (self.origin[i_ax] - pos) \
+        idx = self.n_voxels[i_ax] - 1 + (self.origin[i_ax] - pos) \
                 / self.voxel_size[i_ax]
         if return_int:
             return round(idx)
@@ -284,9 +484,61 @@ class Image:
         return
 
     def get_plot_aspect_ratio(self, view, zoom=None, n_colorbars=0,
-                              figsize=None):
+                              figsize=_default_figsize):
         '''Estimate the ideal width/height ratio for a plot of this image 
         in a given orientation.'''
+
+        # Get length of the image in the plot axis directions
+        x_ax, y_ax = _plot_axes[view]
+        x_len = abs(self.lims[x_ax][1] - self.lims[x_ax][0])
+        y_len = abs(self.lims[y_ax][1] - self.lims[y_ax][0])
+
+        # Add padding for axis labels and title
+        font = mpl.rcParams['font.size'] / 72
+        y_pad = 2 * font
+        if self.title:
+            y_pad += 1.5 * font
+        max_y_digits = np.floor(np.log10(
+            max([abs(lim) for lim in self.lims[y_ax]])
+        ))
+        minus_sign = any([lim < 0 for lim in self.lims[y_ax]])
+        x_pad = (0.7 * max_y_digits + 1.2 * minus_sign + 1) * font
+
+        # Account for zoom
+
+        # Add padding for colorbar(s)
+        colorbar_frac = 0.4 * 5 / figsize
+        x_len *= 1 + (n_colorbars * colorbar_frac)
+
+        # Return estimated width ratio
+        total_y = figsize + y_pad
+        total_x = figsize * x_len / y_len + x_pad
+        return total_x / total_y
+
+    def downsample(self, downsampling):
+        '''Apply downsampling to the image array. Can be either a single
+        value (to downsampling equally in all directions) or a list of 3 
+        values.'''
+
+        # Get downsampling in each direction
+        if is_list(downsampling):
+            if len(downsampling) != 3:
+                raise TypeError('<downsample> must contain 3 elements!')
+            dx, dy, dz = downsampling
+        else:
+            dx = dy = dz = downsampling
+
+        # Apply to image array
+        self.data = downsample(self.data, dx, dy, dz)
+
+        # Adjust voxel sizes
+        self.voxel_size = [
+            v * d for v, d in zip(self.voxel_size, [dx, dy, dz])
+        ]
+        self.affine = None
+
+        # Reset geometric properties of this image
+        self.set_geometry()
 
     def translate(self, dx=0, dy=0, dz=0):
         '''Apply a translation to the image data.'''
@@ -342,12 +594,13 @@ class Image:
     def write(self, outname):
         '''Write image data to a file.'''
 
-        # Detect output filetype based on outname
+        # Write to nifti file
+        if outname.endswith('.nii') or outname.endswith('.nii.gz'):
+            pass
 
-        # Write to file
-
-        pass
-
+        # Write to numpy file
+        elif outname.endswith('.npy'):
+            pass
 
 
 def load_nifti(path):
@@ -355,7 +608,7 @@ def load_nifti(path):
 
     try:
         nii = nibabel.load(path)
-        data = nii.get_fdata()
+        data = nii.get_fdata().transpose(1, 0, 2)[::-1, :, :]
         affine = nii.affine
         return data, affine
 
@@ -473,6 +726,9 @@ def load_dicom(path):
         # Recalculate slice thickness from spacing
         slice_thickness = sorted_slices[1] - sorted_slices[0]
 
+        # Recalculate z origin
+        # origin[2] = min(sorted_slices)
+
     # Make affine matrix
     affine =  np.array([
         [pixel_size[0], 0, 0, origin[0]],
@@ -503,3 +759,44 @@ def is_list(var):
         if isinstance(var, t):
             is_a_list = True
     return is_a_list
+
+
+def downsample(data, dx=None, dy=None, dz=None):
+    '''Downsample an array by the factors specified in <dx>, <dy>, and <dz>.
+    '''
+
+    if dx is None:
+        dx = 1
+    if dy is None:
+        dy = 1
+    if dx is None:
+        dz = 1
+
+    return data[::round(dy), ::round(dx), ::round(dz)]
+
+
+def to_inches(size):
+    '''Convert a size string to a size in inches. If a float is given, it will
+    be returned. If a string is given, the last two characters will be used to
+    determine the units:
+        - 'in': inches
+        - 'cm': cm
+        - 'mm': mm
+        - 'px': pixels
+    '''
+
+    if not isinstance(size, str):
+        return size
+
+    val = float(size[:-2])
+    units = size[-2:]
+    inches_per_cm = 0.394
+    if units == 'in':
+        return val
+    elif units == 'cm':
+        return inches_per_cm * val
+    elif units == 'mm':
+        return inches_per_cm * val / 10
+    elif units == 'px':
+        return val / mpl.rcParams['figure.dpi']
+
