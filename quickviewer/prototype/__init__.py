@@ -621,6 +621,24 @@ class Image:
         elif outname.endswith('.npy'):
             pass
 
+    def get_coords(self):
+        '''Get grids of x, y, and z coordinates for each voxel in the image.'''
+
+        if not hasattr(self, 'coords'):
+
+            # Make coordinates
+            coords_1d = {}
+            for i, ax in enumerate(_axes):
+                coords_1d[ax] = np.arange(*self.lims[i], self.voxel_size[i])
+            X, Y, Z = np.meshgrid(coords_1['x'], coords_1d['y'], 
+                                  coords_1d['z'])
+
+            # Set coords
+            self.coords = (X, Y, Z)
+
+        # Apply transformations
+        return self.coords
+
 
 def load_nifti(path):
     '''Load an image from a nifti file.'''
