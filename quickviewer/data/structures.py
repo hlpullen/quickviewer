@@ -18,12 +18,12 @@ from quickviewer.data.image import (
     load_image,
     _axes,
     _slider_axes,
-    _plot_axes
 )
 from quickviewer.data.image import Image
 
 
 # Standard list of colours for structures
+_plot_axes = {"x-y": ("x", "y"), "x-z": ("z", "x"), "y-z": ("z", "y")}
 _standard_colors = (
     list(matplotlib.cm.Set1.colors)[:-1]
     + list(matplotlib.cm.Set2.colors)[:-1]

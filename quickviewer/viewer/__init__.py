@@ -15,7 +15,6 @@ from quickviewer.data.image import (
     _slider_axes,
     _orient,
     _default_figsize,
-    _plot_axes,
     _axes,
 )
 from quickviewer.data.structures import standard_str
@@ -30,6 +29,7 @@ mpl.rcParams["font.size"] = 14.0
 
 
 # ipywidgets settings
+_plot_axes = {"x-y": ("x", "y"), "x-z": ("z", "x"), "y-z": ("z", "y")}
 _style = {"description_width": "initial"}
 
 
@@ -699,7 +699,7 @@ class QuickViewer:
                 jacobian=self.jacobian[i],
                 df=self.df[i],
                 standalone=False,
-                scale_in_mm=scale_in_mm,
+                #  scale_in_mm=scale_in_mm,
                 legend_loc=legend_loc,
                 **kwargs,
             )

@@ -13,7 +13,6 @@ from quickviewer.data.image import (
     find_date, 
     to_inches,
     _axes,
-    _plot_axes,
     _slider_axes,
     _orient
 )
@@ -23,6 +22,7 @@ from quickviewer.data.structures import Struct, StructComparison, StructureSet
 # Shared parameters
 _orthog = {"x-y": "y-z", "y-z": "x-z", "x-z": "y-z"}
 _default_spacing = 30
+_plot_axes = {"x-y": ("x", "y"), "x-z": ("z", "x"), "y-z": ("z", "y")}
 
 
 class MultiImage(Image):
@@ -170,11 +170,13 @@ class MultiImage(Image):
         # Load single image
         rescale = "dose" if attr == "dose" else True
         if not isinstance(nii, dict):
-            data = Image(nii, rescale=rescale, **kwargs)
+            #  data = Image(nii, rescale=rescale, **kwargs)
+            data = Image(nii, **kwargs)
             data.match_size(self, 0)
             valid = data.valid
         else:
-            data = {view: Image(nii[view], rescale=rescale, **kwargs) for view in nii}
+            #  data = {view: Image(nii[view], rescale=rescale, **kwargs) for view in nii}
+            data = {view: Image(nii[view], **kwargs) for view in nii}
             for view in _orient:
                 if view not in data or not data[view].valid:
                     data[view] = None
