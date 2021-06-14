@@ -363,12 +363,15 @@ class Image:
 
         # Get image extent and aspect ratio
         x_ax, y_ax = _plot_axes[view]
+        extent = self.image_extent[x_ax] + self.image_extent[y_ax][::-1]
         if scale_in_mm:
-            extent = self.image_extent[x_ax] + self.image_extent[y_ax][::-1]
             aspect = 1
         else:
             extent = [
-                0.5, self.n_voxels[x_ax] + 0.5, self.n_voxels[y_ax] + 0.5, 0.5
+                self.pos_to_slice(extent[0], x_ax, False),
+                self.pos_to_slice(extent[1], x_ax, False),
+                self.pos_to_slice(extent[2], y_ax, False),
+                self.pos_to_slice(extent[3], y_ax, False)
             ]
             aspect = abs(self.voxel_size[y_ax] / self.voxel_size[x_ax])
 
@@ -438,16 +441,18 @@ class Image:
 
         self.load_data()
         i_ax = ax if isinstance(ax, int) else _axes.index(ax)
-        return self.origin[i_ax] + (self.n_voxels[i_ax] - 1 - idx) \
-                * self.voxel_size[i_ax]
+        return self.origin[i_ax] + idx * self.voxel_size[i_ax]
+        #  return self.origin[i_ax] + (self.n_voxels[i_ax] - 1 - idx) \
+                #  * self.voxel_size[i_ax]
 
     def pos_to_idx(self, pos, ax, return_int=True):
         '''Convert a position in mm to an array index along a given axis.'''
 
         self.load_data()
         i_ax = ax if isinstance(ax, int) else _axes.index(ax)
-        idx = self.n_voxels[i_ax] - 1 + (self.origin[i_ax] - pos) \
-                / self.voxel_size[i_ax]
+        #  idx = self.n_voxels[i_ax] - 1 + (self.origin[i_ax] - pos) \
+                #  / self.voxel_size[i_ax]
+        idx = (pos - self.origin[i_ax]) / self.voxel_size[i_ax]
         if return_int:
             return round(idx)
         else:
@@ -456,22 +461,36 @@ class Image:
     def idx_to_slice(self, idx, ax):
         '''Convert an array index to a slice number along a given axis.'''
         
-        return idx + 1
+        self.load_data()
+        i_ax = ax if isinstance(ax, int) else _axes.index(ax)
+        if i_ax == 2:
+            return self.n_voxels[i_ax] - idx
+        else:
+            return idx + 1
 
     def slice_to_idx(self, sl, ax):
         '''Convert a slice number to an array index along a given axis.'''
 
-        return sl - 1
+        self.load_data()
+        i_ax = ax if isinstance(ax, int) else _axes.index(ax)
+        if i_ax == 2:
+            return self.n_voxels[i_ax] - sl
+        else:
+            return sl - 1
 
-    def pos_to_slice(self, pos, ax):
+    def pos_to_slice(self, pos, ax, return_int=True):
         '''Convert a position in mm to a slice number along a given axis.'''
 
-        return idx_to_slice(pos_to_idx(pos, ax), ax)
+        sl = self.idx_to_slice(self.pos_to_idx(pos, ax, return_int), ax)
+        if return_int:
+            return round(sl)
+        else:
+            return sl
 
     def slice_to_pos(self, sl, ax):
         '''Convert a slice number to a position in mm along a given axis.'''
 
-        return idx_to_pos(slice_to_idx(sl, ax), ax)
+        return self.idx_to_pos(self.slice_to_idx(sl, ax), ax)
 
     def get_image_centre(self):
         '''Get position in mm of the centre of the image.'''
@@ -726,8 +745,8 @@ def load_dicom(path):
         # Recalculate slice thickness from spacing
         slice_thickness = sorted_slices[1] - sorted_slices[0]
 
-        # Recalculate z origin
-        # origin[2] = min(sorted_slices)
+        # z origin = lowest z (idx=0)
+        origin[2] = sorted_slices[0]
 
     # Make affine matrix
     affine =  np.array([
