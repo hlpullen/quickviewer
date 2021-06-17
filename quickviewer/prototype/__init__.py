@@ -361,6 +361,10 @@ class Image:
         if masked:
             cmap.set_bad(color=mask_color)
 
+        # Get colour range
+        vmin = mpl_kwargs.pop("vmin", self.default_window[0])
+        vmax = mpl_kwargs.pop("vmax", self.default_window[1])
+
         # Get image extent and aspect ratio
         x_ax, y_ax = _plot_axes[view]
         extent = self.image_extent[x_ax] + self.image_extent[y_ax][::-1]
@@ -381,8 +385,8 @@ class Image:
             cmap=cmap,
             extent=extent,
             aspect=aspect,
-            vmin=self.default_window[0],
-            vmax=self.default_window[1],
+            vmin=vmin,
+            vmax=vmax,
             **mpl_kwargs
         )
 
