@@ -648,9 +648,18 @@ def load_nifti(path):
     '''Load an image from a nifti file.'''
 
     try:
-        nii = nibabel.load(path)
-        data = nii.get_fdata().transpose(1, 0, 2)[::-1, :, :]
+        nii = nibabel.as_closest_canonical(nibabel.load(path))
+        data = nii.get_fdata().transpose(1, 0, 2)[::-1, ::-1, :]
         affine = nii.affine
+
+        # Switch row and column in affine matrix
+        affine[[0, 1], :] = affine[[1, 0], :]
+        affine[:, [0, 1]] = affine[:, [1, 0]]
+
+        # Switch x and y directions
+        affine[0, 3] = -(affine[0, 3] + (data.shape[0] - 1) * affine[0, 0])
+        affine[1, 3] = -(affine[1, 3] + (data.shape[1] - 1) * affine[1, 1])
+
         return data, affine
 
     except FileNotFoundError:
@@ -690,14 +699,15 @@ def load_dicom(path):
     study_uid = None
     series_num = None
     modality = None
+    orientation = None
     slice_thickness = None
     pixel_size = None
-    origin = None
     rescale_slope = None
     rescale_intercept = None
     window_centre = None
     window_width = None
     data_slices = {}
+    image_position = {}
     for dcm in paths:
         try:
             
@@ -709,14 +719,20 @@ def load_dicom(path):
                 series_num = ds.SeriesNumber
             if modality is None:
                 modality = ds.Modality
+            if orientation is None:
+                orientation = ds.ImageOrientationPatient
             if (ds.StudyInstanceUID != study_uid 
                 or ds.SeriesNumber != series_num
-                or ds.Modality != modality):
+                or ds.Modality != modality
+                or ds.ImageOrientationPatient != orientation
+               ):
                 continue
 
             # Get data 
-            z = getattr(ds, 'ImagePositionPatient', [0, 0, 0])[2]
+            pos = getattr(ds, 'ImagePositionPatient', [0, 0, 0])
+            z = getattr(ds, "SliceLocation", pos[2])
             data_slices[z] = ds.pixel_array
+            image_position[z] = pos
 
             # Get voxel spacings
             if pixel_size is None:
@@ -726,10 +742,6 @@ def load_dicom(path):
                         break
             if slice_thickness is None:
                 slice_thickness = getattr(ds, 'SliceThickness', None)
-
-            # Get origin
-            if origin is None:
-                origin = ds.ImagePositionPatient
 
             # Get rescale settings
             if rescale_slope is None:
@@ -765,16 +777,33 @@ def load_dicom(path):
         data = np.stack(sorted_data, axis=-1)
 
         # Recalculate slice thickness from spacing
-        slice_thickness = sorted_slices[1] - sorted_slices[0]
-
-        # z origin = lowest z (idx=0)
-        origin[2] = sorted_slices[0]
+        slice_thickness = (sorted_slices[-1] - sorted_slices[0]) \
+                / (len(sorted_slices) - 1)
 
     # Make affine matrix
+    orient = np.array(orientation).reshape(2, 3)
+    zmin = sorted_slices[0]
+    zmax = sorted_slices[-1]
+    n = len(sorted_slices)
     affine =  np.array([
-        [pixel_size[0], 0, 0, origin[0]],
-        [0, pixel_size[1], 0, origin[1]],
-        [0, 0, slice_thickness, origin[2]],
+        [
+            orient[0, 0] * pixel_size[0], 
+            orient[1, 0] * pixel_size[1],
+            (image_position[zmax][0] - image_position[zmin][0]) / (n - 1),
+            image_position[zmin][0]
+        ],
+        [
+            orient[0, 1] * pixel_size[0], 
+            orient[1, 1] * pixel_size[1],
+            (image_position[zmax][1] - image_position[zmin][1]) / (n - 1),
+            image_position[zmin][1]
+        ],
+        [
+            orient[0, 2] * pixel_size[0], 
+            orient[1, 2] * pixel_size[1],
+            (image_position[zmax][2] - image_position[zmin][2]) / (n - 1),
+            image_position[zmin][2]
+        ],
         [0, 0, 0, 1]
     ])
 
