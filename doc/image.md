@@ -12,7 +12,7 @@ In the standard dicom-style configuration (Left, Posterior, Superior):
 - The y-axis increase down each column, and points from the patient's front to back (posterior).
 - The z-axis increases along the slice index, and points from the patient's feet to head (superior).
 
-A canonical nifti-style array and affine can be obtained by running `Image.get_nifti_array_and_affine()`. By convention, this points in the same z direction but has x and y axes reversed (Right, Anterior, Superior). In the affine matrix, the x and y origins will therefore be flipped to refer to the opposite end of the scale.
+A canonical nifti-style array and affine can be obtained by running `Image.get_nifti_array_and_affine()`. By convention, this points in the same z direction but has x and y axes reversed (Right, Anterior, Superior). In the affine matrix, the x and y origins are therefore defined as being at the opposite end of the scale.
 
 Note that positions can also be specified in terms of slice number:
 - For x and y, slice number is just numpy array index + 1 (slice number ranges from 1 - n_voxels, whereas array index ranges from 0 - n_voxels-1)
