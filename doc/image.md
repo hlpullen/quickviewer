@@ -17,3 +17,23 @@ A canonical nifti-style array and affine can be obtained by running `Image.get_n
 Note that positions can also be specified in terms of slice number:
 - For x and y, slice number is just numpy array index + 1 (slice number ranges from 1 - n_voxels, whereas array index ranges from 0 - n_voxels-1)
 - For z, by convention the slice numbers increases from 1 at the head to n_voxels at the feet, so it is in the opposite direction to the array index (convert as n_voxels[2] - idx).
+
+## Loading Images
+
+### Loading from dicom
+
+### Loading from nifti
+
+### Loading from a numpy array
+
+
+## Plotting
+
+
+## Writing out image data
+
+### Writing to dicom
+
+### Writing to nifti
+
+### Writing to a numpy array
