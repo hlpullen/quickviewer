@@ -366,8 +366,8 @@ class Image:
             cmap.set_bad(color=mask_color)
 
         # Get colour range
-        vmin = mpl_kwargs.pop("vmin", self.default_window[0])
-        vmax = mpl_kwargs.pop("vmax", self.default_window[1])
+        vmin = mpl_kwargs.pop('vmin', self.default_window[0])
+        vmax = mpl_kwargs.pop('vmax', self.default_window[1])
 
         # Get image extent and aspect ratio
         x_ax, y_ax = _plot_axes[view]
@@ -618,16 +618,88 @@ class Image:
         self.mask = single_mask
         self.mask_per_view = mask_per_view
 
-    def write(self, outname):
-        '''Write image data to a file.'''
+    def get_nifti_array_and_affine(self):
+        '''Get image array and affine matrix in canonical nifti 
+        configuration.'''
+
+        data = self.data.transpose(1, 0, 2)[::-1, ::-1, :]
+        affine = self.affine.copy()
+        affine[0, 3] = -(affine[0, 3] + (data.shape[1] - 1) * affine[0, 0])
+        affine[1, 3] = -(affine[1, 3] + (data.shape[0] - 1) * affine[1, 1])
+        return data, affine
+
+    def write(self, outname, write_geometry=True, nifti_array=False,
+              header_source=None):
+        '''Write image data to a file. The filetype will automatically be 
+        set based on the extension of <outname>:
+
+            (a) *.nii or *.nii.gz: Will write to a nifti file with 
+            canonical nifti array and affine matrix.
+
+            (b) *.npy: Will write the dicom-style numpy array to a binary filem
+            unless <nifti_array> is True, in which case the canonical 
+            nifti-style array will be written. If <write_geometry> is True,
+            a text file containing the voxel sizes and origin position will 
+            also be written in the same directory.
+
+            (c) *.dcm: Will write to dicom file(s) (1 file per x-y slice) in 
+            the directory of the filename given, named by slice number.
+
+            (d) No extension: Will create a directory at <outname> and write 
+            to dicom file(s) in that directory (1 file per x-y slice), named 
+            by slice number.
+
+        If (c) or (d) (i.e. writing to dicom), the header data will be set in
+        one of three ways:
+            - If the input source was not a dicom, <dicom_for_header> is None,
+            or <force_new_dicom> is True, a brand new dicom with freshly
+            generated UIDs will be created.
+            - If <dicom_for_header> is set to the path to a dicom file, that 
+            dicom file will be used as the header.
+            - Otherwise, if the input source was a dicom or directory 
+            containing dicoms, the header information will be taken from the
+            input dicom file.
+        '''
+
+        outname = os.path.expanduser(outname)
 
         # Write to nifti file
         if outname.endswith('.nii') or outname.endswith('.nii.gz'):
-            pass
+            write_to_nifti(outname, *self.get_nifti_array_and_affine())
+            print('Wrote to NIfTI file:', outname)
 
         # Write to numpy file
         elif outname.endswith('.npy'):
-            pass
+            if nifti_array:
+                data, affine = self.get_nifti_array_and_affine()
+            else:
+                data = self.data
+                affine = self.affine
+            if not write_geometry:
+                affine = None
+            write_to_npy(outname, data, affine)
+            print('Wrote to numpy file:', outname)
+
+        # Write to dicom
+        else:
+
+            # Get name of dicom directory
+            if outname.endswith('.dcm'):
+                outdir = os.path.dirname(outname)
+            else:
+                basename_split = os.path.basename(outname).split('.')
+                if len(basename_split) == 1:
+                    outdir = outname
+                else:
+                    raise RuntimeError(
+                        'Unrecognised file extension: ' +
+                        '.'.join(basename_split[1:])
+                    )
+
+            # Get header source
+            if header_source is None and isinstance(self.source, str):
+                header_source = self.source
+            write_to_dicom(outdir, self.data, self.affine, header_source)
 
     def get_coords(self):
         '''Get grids of x, y, and z coordinates for each voxel in the image.'''
@@ -681,7 +753,7 @@ def load_dicom(path):
             if ds.get('ImagesInAcquisition', None) == 1:
                 paths = [path]
         except pydicom.errors.InvalidDicomError:
-            return None, None
+            return None, None, None, None
 
     # Case where there are multiple dicom files for this image
     if not paths:
@@ -816,7 +888,6 @@ def load_dicom(path):
     # Transform array to be in order (row, col, slice) = (x, y, z)
     transpose = [axes_colrow.index(i) for i in (1, 0, 2)]
     data = np.transpose(data, transpose)
-    #  print("orient:", orient)
 
     # Adjust affine matrix
     for i in range(3):
@@ -897,4 +968,51 @@ def to_inches(size):
         return inches_per_cm * val / 10
     elif units == 'px':
         return val / mpl.rcParams['figure.dpi']
+
+
+def write_to_nifti(outname, data, affine):
+    '''Create a nifti file at <outname> containing <data> and <affine>.'''
+
+    nii = nibabel.Nifti1Image(data, affine)
+    nii.to_filename(outname)
+
+
+def write_to_npy(outname, data, affine=None):
+    '''Create numpy file containing data. If <affine> is not None, voxel
+    sizes and origin will be written to a text file.'''
+
+    np.save(outname, data)
+    if affine is not None:
+        voxel_size = np.diag(affine)[:-1]
+        origin = affine[:-1, -1]
+        geom_file = outname.replace('.npy', '.txt')
+        with open(geom_file, 'w') as f:
+            f.write('voxel_size')
+            for vx in voxel_size:
+                f.write(' ' + str(vx))
+            f.write('\norigin')
+            for p in origin:
+                f.write(' ' + str(p))
+            f.write('\n')
+
+
+def write_to_dicom(outdir, data, affine, header_source=None):
+    '''Write image data to dicom file(s) inside <outdir>. <header_source> can
+    be:
+        (a) A path to a dicom file, which will be used as the header;
+        (b) A path to a directory containing dicom files; the first file
+        alphabetically will be used as the header;
+        (c) None, in which case a brand new dicom file with new UIDs will be
+        created.
+    '''
+
+    # Create directory if it doesn't exist
+
+    # Try loading from header
+
+    # If not, make a new header (make separate function to do this)
+
+    # Set voxel sizes etc from affine matrix
+
+    # Loop through x-y slices and make dicom files for each
 
