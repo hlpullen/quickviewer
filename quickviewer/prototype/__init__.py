@@ -82,7 +82,6 @@ class Image:
         self.voxel_size = voxel_size
         self.origin = origin
         self.downsampling = downsample
-        self.axes_rowcol = [0, 1, 2]
         if load:
             self.load_data()
 
@@ -130,8 +129,8 @@ class Image:
 
         # Try loading from dicom file
         if self.data is None:
-            self.data, self.affine, self.axes_rowcol, window_centre, \
-                    window_width = load_dicom(self.source)
+            self.data, self.affine, window_centre, window_width \
+                    = load_dicom(self.source)
 
         # Try loading from numpy file
         if self.data is None:
@@ -164,13 +163,6 @@ class Image:
     def set_geometry(self):
         '''Set geometric properties.'''
 
-        # List of axes in order column, row, slice
-        self.axes_colrow = [
-            self.axes_rowcol[1],
-            self.axes_rowcol[0],
-            self.axes_rowcol[2]
-        ]
-    
         # Set affine matrix, voxel sizes, and origin
         if self.affine is None:
             self.affine = np.array([
@@ -180,13 +172,14 @@ class Image:
                 [0, 0, 0, 1]
             ])
         else:
-            self.voxel_size = [self.affine[i, self.axes_rowcol.index(i)] 
-                               for i in range(3)]
+            self.voxel_size = list(np.diag(self.affine))[:-1]
             self.origin = list(self.affine[:-1, -1])
 
         # Set other geometric properties
         self.n_voxels = [
-            self.data.shape[self.axes_colrow.index(i)] for i in range(3)
+            self.data.shape[1],
+            self.data.shape[0],
+            self.data.shape[2]
         ]
         self.lims = [
             (self.origin[i], 
@@ -345,12 +338,11 @@ class Image:
                 idx = self.pos_to_idx(centre_pos, _slice_axes[view])
 
         # Get image slice
-        orientation = {
-            'x-y': (1, 0, 2),
-            'y-z': (1, 2, 0),
-            'x-z': (0, 2, 1)
+        transpose = {
+            'x-y': (0, 1, 2),
+            'y-z': (0, 2, 1),
+            'x-z': (1, 2, 0)
         }[view]
-        transpose = [self.axes_colrow.index(a) for a in orientation]
         list(_plot_axes[view]) + [_slice_axes[view]]
         image_slice = np.transpose(self.data, transpose)[:, :, idx]
 
@@ -664,10 +656,6 @@ def load_nifti(path):
         data = nii.get_fdata().transpose(1, 0, 2)[::-1, ::-1, :]
         affine = nii.affine
 
-        #  # Switch row and column in affine matrix
-        #  affine[[0, 1], :] = affine[[1, 0], :]
-        #  affine[:, [0, 1]] = affine[:, [1, 0]]
-
         # Reverse x and y directions
         affine[0, 3] = -(affine[0, 3] + (data.shape[1] - 1) * affine[0, 0])
         affine[1, 3] = -(affine[1, 3] + (data.shape[0] - 1) * affine[1, 1])
@@ -733,6 +721,13 @@ def load_dicom(path):
                 modality = ds.Modality
             if orientation is None:
                 orientation = ds.ImageOrientationPatient
+                orient = np.array(orientation).reshape(2, 3)
+                axes = [
+                    sum([abs(int(orient[i, j] * j)) for j in range(3)]) 
+                    for i in range(2)
+                ]
+                axes.append(3 - sum(axes))
+                axes_colrow = [axes[1], axes[0], axes[2]]
             if (ds.StudyInstanceUID != study_uid 
                 or ds.SeriesNumber != series_num
                 or ds.Modality != modality
@@ -742,7 +737,7 @@ def load_dicom(path):
 
             # Get data 
             pos = getattr(ds, 'ImagePositionPatient', [0, 0, 0])
-            z = getattr(ds, "SliceLocation", pos[2])
+            z = pos[axes[2]]
             data_slices[z] = ds.pixel_array
             image_position[z] = pos
 
@@ -793,7 +788,6 @@ def load_dicom(path):
                 / (len(sorted_slices) - 1)
 
     # Make affine matrix
-    orient = np.array(orientation).reshape(2, 3)
     zmin = sorted_slices[0]
     zmax = sorted_slices[-1]
     n = len(sorted_slices)
@@ -819,14 +813,29 @@ def load_dicom(path):
         [0, 0, 0, 1]
     ])
 
+    # Transform array to be in order (row, col, slice) = (x, y, z)
+    transpose = [axes_colrow.index(i) for i in (1, 0, 2)]
+    data = np.transpose(data, transpose)
+    #  print("orient:", orient)
 
-    # Make map of (row, column, slice) to (x, y, z) axes
-    axes = [
-        sum([abs(int(orient[i, j] * j)) for j in range(3)]) for i in range(2)
-    ]
-    axes.append(3 - sum(axes))
+    # Adjust affine matrix
+    for i in range(3):
 
-    return data, affine, axes, window_centre, window_width
+        # Voxel sizes
+        if i != axes.index(i):
+            voxel_size = affine[i, axes.index(i)].copy()
+            affine[i, i] = voxel_size
+            affine[i, axes.index(i)] = 0
+
+        # Invert axis direction if negative
+        if axes.index(i) < 2 and orient[axes.index(i), i] < 0:
+            affine[i, i] *= -1
+            to_flip = [1, 0, 2][i]
+            data = np.flip(data, axis=to_flip)
+            n_voxels = data.shape[to_flip]
+            affine[i, 3] = affine[i, 3] - (n_voxels - 1) * affine[i, i]
+
+    return data, affine, window_centre, window_width
 
 
 def load_npy(path):
