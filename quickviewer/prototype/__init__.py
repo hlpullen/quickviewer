@@ -1,6 +1,7 @@
 '''Prototype classes for core data functionality.'''
 
 import copy
+import glob
 import matplotlib as mpl
 import matplotlib.cm
 import matplotlib.colors
@@ -10,6 +11,11 @@ import nibabel
 import numpy as np
 import os
 import pydicom
+from pydicom.dataset import Dataset, FileDataset, FileMetaDataset
+import datetime
+import tempfile
+import uuid
+import time
 
 
 _axes = ['x', 'y', 'z']
@@ -450,16 +456,12 @@ class Image:
         self.load_data()
         i_ax = ax if isinstance(ax, int) else _axes.index(ax)
         return self.origin[i_ax] + idx * self.voxel_size[i_ax]
-        #  return self.origin[i_ax] + (self.n_voxels[i_ax] - 1 - idx) \
-                #  * self.voxel_size[i_ax]
 
     def pos_to_idx(self, pos, ax, return_int=True):
         '''Convert a position in mm to an array index along a given axis.'''
 
         self.load_data()
         i_ax = ax if isinstance(ax, int) else _axes.index(ax)
-        #  idx = self.n_voxels[i_ax] - 1 + (self.origin[i_ax] - pos) \
-                #  / self.voxel_size[i_ax]
         idx = (pos - self.origin[i_ax]) / self.voxel_size[i_ax]
         if return_int:
             return round(idx)
@@ -628,8 +630,16 @@ class Image:
         affine[1, 3] = -(affine[1, 3] + (data.shape[0] - 1) * affine[1, 1])
         return data, affine
 
-    def write(self, outname, write_geometry=True, nifti_array=False,
-              header_source=None):
+    def write(
+        self, 
+        outname, 
+        write_geometry=True, 
+        nifti_array=False,
+        header_source=None,
+        patient_id=None,
+        modality=None,
+        root_uid=None
+    ):
         '''Write image data to a file. The filetype will automatically be 
         set based on the extension of <outname>:
 
@@ -665,7 +675,7 @@ class Image:
 
         # Write to nifti file
         if outname.endswith('.nii') or outname.endswith('.nii.gz'):
-            write_to_nifti(outname, *self.get_nifti_array_and_affine())
+            write_nifti(outname, *self.get_nifti_array_and_affine())
             print('Wrote to NIfTI file:', outname)
 
         # Write to numpy file
@@ -677,7 +687,7 @@ class Image:
                 affine = self.affine
             if not write_geometry:
                 affine = None
-            write_to_npy(outname, data, affine)
+            write_npy(outname, data, affine)
             print('Wrote to numpy file:', outname)
 
         # Write to dicom
@@ -699,7 +709,9 @@ class Image:
             # Get header source
             if header_source is None and isinstance(self.source, str):
                 header_source = self.source
-            write_to_dicom(outdir, self.data, self.affine, header_source)
+            write_dicom(outdir, self.data, self.affine, header_source,
+                        patient_id, modality, root_uid)
+            print('Wrote dicom file(s) to directory:', outdir)
 
     def get_coords(self):
         '''Get grids of x, y, and z coordinates for each voxel in the image.'''
@@ -859,6 +871,12 @@ def load_dicom(path):
         slice_thickness = (sorted_slices[-1] - sorted_slices[0]) \
                 / (len(sorted_slices) - 1)
 
+    # Apply rescaling
+    if rescale_slope:
+        data = data * rescale_slope
+    if rescale_intercept:
+        data = data + rescale_intercept
+
     # Make affine matrix
     zmin = sorted_slices[0]
     zmax = sorted_slices[-1]
@@ -970,14 +988,14 @@ def to_inches(size):
         return val / mpl.rcParams['figure.dpi']
 
 
-def write_to_nifti(outname, data, affine):
+def write_nifti(outname, data, affine):
     '''Create a nifti file at <outname> containing <data> and <affine>.'''
 
     nii = nibabel.Nifti1Image(data, affine)
     nii.to_filename(outname)
 
 
-def write_to_npy(outname, data, affine=None):
+def write_npy(outname, data, affine=None):
     '''Create numpy file containing data. If <affine> is not None, voxel
     sizes and origin will be written to a text file.'''
 
@@ -996,7 +1014,15 @@ def write_to_npy(outname, data, affine=None):
             f.write('\n')
 
 
-def write_to_dicom(outdir, data, affine, header_source=None):
+def write_dicom(
+    outdir, 
+    data, 
+    affine, 
+    header_source=None,
+    patient_id=None,
+    modality=None,
+    root_uid=None
+):
     '''Write image data to dicom file(s) inside <outdir>. <header_source> can
     be:
         (a) A path to a dicom file, which will be used as the header;
@@ -1004,15 +1030,134 @@ def write_to_dicom(outdir, data, affine, header_source=None):
         alphabetically will be used as the header;
         (c) None, in which case a brand new dicom file with new UIDs will be
         created.
-    '''
+        '''
 
     # Create directory if it doesn't exist
+    if not os.path.exists(outdir):
+        os.makedirs(outdir)
+    else:
+        # Clear out any dicoms in the directory
+        dcms = glob.glob(f'{outdir}/*.dcm')
+        for dcm in dcms:
+            os.remove(dcm)
 
     # Try loading from header
+    ds = None
+    if header_source:
+        dcm_path = None
+        if os.path.isfile(header_source):
+            dcm_path = header_source
+        elif os.path.isdir(header_source):
+            dcms = glob.glob(f'{header_source}/*.dcm')
+            if dcms:
+                dcm_path = dcms[0]
+        if dcm_path:
+            try:
+                ds = pydicom.read_file(dcm_path)
+            except pydicom.errors.InvalidDicomError:
+                pass
 
-    # If not, make a new header (make separate function to do this)
+    # Make fresh header if needed
+    if ds is None:
+        ds = create_dicom(patient_id, modality, root_uid)
 
     # Set voxel sizes etc from affine matrix
+    ds.ImageOrientationPatient = [1, 0, 0, 0, 1, 0]
+    ds.PixelSpacing = [affine[0, 0], affine[1, 1]]
+    ds.SliceThickness = affine[2, 2]
+    ds.ImagePositionPatient = list(affine[:-1, 3])
+    ds.Columns = data.shape[0]
+    ds.Rows = data.shape[1]
 
-    # Loop through x-y slices and make dicom files for each
+    # Rescale data
+    slope = getattr(ds, 'RescaleSlope', 1)
+    intercept = getattr(ds, 'RescaleIntercept', 0)
 
+    # Save each x-y slice to a dicom file
+    for i in range(data.shape[2]):
+        sl = data.shape[2] - i
+        pos = affine[2, 3] + i * affine[2, 2]
+        xy_slice = data[:, :, i].copy()
+        xy_slice = ((xy_slice - intercept) / slope).astype(np.int16)
+        ds.PixelData = xy_slice.byteswap().tobytes()
+        ds.SliceLocation = pos
+        ds.ImagePositionPatient[2] = pos
+        outname = f'{outdir}/{sl}.dcm'
+        ds.save_as(outname)
+
+
+def create_dicom(patient_id=None, modality=None, root_uid=None):
+    '''Create a fresh dicom dataset. Taken from https://pydicom.github.io/pydicom/dev/auto_examples/input_output/plot_write_dicom.html#sphx-glr-auto-examples-input-output-plot-write-dicom-py.'''
+
+    # Create some temporary filenames
+    suffix = '.dcm'
+    filename_little_endian = tempfile.NamedTemporaryFile(suffix=suffix).name
+    filename_big_endian = tempfile.NamedTemporaryFile(suffix=suffix).name
+
+    # Populate required values for file meta information
+    file_meta = FileMetaDataset()
+    file_meta.MediaStorageSOPClassUID = '1.2.840.10008.5.1.4.1.1.2'
+    file_meta.MediaStorageSOPInstanceUID = "1.2.3"
+    file_meta.ImplementationClassUID = "1.2.3.4"
+
+    # Create the FileDataset instance (initially no data elements, but file_meta
+    # supplied)
+    ds = FileDataset(filename_little_endian, {},
+                     file_meta=file_meta, preamble=b"\0" * 128)
+
+    # Add data elements
+    ds.PatientID = patient_id if patient_id is not None else '123456'
+    ds.PatientName = ds.PatientID
+    ds.Modality = modality if modality is not None else 'CT'
+    ds.BitsAllocated = 16
+    ds.SeriesInstanceUID = get_new_uid(root_uid)
+    ds.StudyInstanceUID = get_new_uid(root_uid)
+    ds.SeriesNumber = '123456'
+    ds.SamplesPerPixel = 1
+    ds.PhotometricInterpretation = 'MONOCHROME2'
+    ds.PixelRepresentation = 0
+
+    # Set the transfer syntax
+    ds.is_little_endian = True
+    ds.is_implicit_VR = True
+
+    # Set creation date/time
+    dt = datetime.datetime.now()
+    ds.ContentDate = dt.strftime('%Y%m%d')
+    timeStr = dt.strftime('%H%M%S.%f')  # long format with micro seconds
+    ds.ContentTime = timeStr
+
+    # Write as a different transfer syntax XXX shouldn't need this but pydicom
+    # 0.9.5 bug not recognizing transfer syntax
+    ds.file_meta.TransferSyntaxUID = pydicom.uid.ExplicitVRBigEndian
+    ds.is_little_endian = False
+    ds.is_implicit_VR = False
+
+    return ds
+
+
+def get_new_uid(root=None):
+    '''Generate a globally unique identifier (GUID). Credit: Karl Harrison.
+
+    <root> should uniquely identify the group generating the GUID. A unique
+    root identifier can be obtained free of charge from Medical Connections:
+        https://www.medicalconnections.co.uk/FreeUID/
+    '''
+
+    if root is None:
+        print('Warning: using generic root UID 1.2.3.4. You should use a root '
+              'UID unique to your institution. A unique root ID can be '
+              'obtained free of charge from: '
+              'https://www.medicalconnections.co.uk/FreeUID/')
+        root = '1.2.3.4'
+
+    id1 = uuid.uuid1()
+    id2 = uuid.uuid4().int & (1 << 24) - 1
+    date = time.strftime('%Y%m%d')
+    new_id = f'{root}.{date}.{id1.time_low}.{id2}'
+    
+    if not len(new_id) % 2:
+        new_id = '.'.join([new_id, str(np.random.randint(1, 9))])
+    else:
+        new_id = '.'.join([new_id, str(np.random.randint(10, 99))])
+    return new_id
