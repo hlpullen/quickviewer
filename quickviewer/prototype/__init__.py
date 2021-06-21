@@ -198,6 +198,28 @@ class Image:
             for i in range(3)
         ]
 
+    def get_slice(self, view, sl=None, idx=None, pos=None):
+        '''Get a slice of the data in the correct orientation for plotting.'''
+
+        # Get index of the slice to plot
+        if sl is not None:
+            idx = self.slice_to_idx(sl, _slice_axes[view])
+        elif idx is None:
+            if pos is not None:
+                idx = self.pos_to_idx(pos, _slice_axes[view])
+            else:
+                centre_pos = self.get_image_centre()[_slice_axes[view]]
+                idx = self.pos_to_idx(centre_pos, _slice_axes[view])
+
+        # Get image slice
+        transpose = {
+            'x-y': (0, 1, 2),
+            'y-z': (0, 2, 1),
+            'x-z': (1, 2, 0)
+        }[view]
+        list(_plot_axes[view]) + [_slice_axes[view]]
+        return np.transpose(self.data, transpose)[:, :, idx]
+
     def plot(
         self, 
         view='x-y', 
@@ -332,25 +354,9 @@ class Image:
             self.fig = plt.figure(figsize=(figsize * aspect, figsize))
             self.ax = self.fig.add_subplot()
 
-        # Get index of the slice to plot
-        self.load_data()
-        if sl is not None:
-            idx = self.slice_to_idx(sl, _slice_axes[view])
-        elif idx is None:
-            if pos is not None:
-                idx = self.pos_to_idx(pos, _slice_axes[view])
-            else:
-                centre_pos = self.get_image_centre()[_slice_axes[view]]
-                idx = self.pos_to_idx(centre_pos, _slice_axes[view])
-
         # Get image slice
-        transpose = {
-            'x-y': (0, 1, 2),
-            'y-z': (0, 2, 1),
-            'x-z': (1, 2, 0)
-        }[view]
-        list(_plot_axes[view]) + [_slice_axes[view]]
-        image_slice = np.transpose(self.data, transpose)[:, :, idx]
+        self.load_data()
+        image_slice = self.get_slice(view, sl=sl, idx=idx, pos=pos)
 
         # Apply masking if needed
         if masked and self.mask:
@@ -454,14 +460,14 @@ class Image:
         '''Convert an array index to a position in mm along a given axis.'''
 
         self.load_data()
-        i_ax = ax if isinstance(ax, int) else _axes.index(ax)
+        i_ax = _axes.index(ax) if ax in _axes else ax
         return self.origin[i_ax] + idx * self.voxel_size[i_ax]
 
     def pos_to_idx(self, pos, ax, return_int=True):
         '''Convert a position in mm to an array index along a given axis.'''
 
         self.load_data()
-        i_ax = ax if isinstance(ax, int) else _axes.index(ax)
+        i_ax = _axes.index(ax) if ax in _axes else ax
         idx = (pos - self.origin[i_ax]) / self.voxel_size[i_ax]
         if return_int:
             return round(idx)
@@ -472,7 +478,7 @@ class Image:
         '''Convert an array index to a slice number along a given axis.'''
         
         self.load_data()
-        i_ax = ax if isinstance(ax, int) else _axes.index(ax)
+        i_ax = _axes.index(ax) if ax in _axes else ax
         if i_ax == 2:
             return self.n_voxels[i_ax] - idx
         else:
@@ -482,7 +488,7 @@ class Image:
         '''Convert a slice number to an array index along a given axis.'''
 
         self.load_data()
-        i_ax = ax if isinstance(ax, int) else _axes.index(ax)
+        i_ax = _axes.index(ax) if ax in _axes else ax
         if i_ax == 2:
             return self.n_voxels[i_ax] - sl
         else:
