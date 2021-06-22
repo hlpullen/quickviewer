@@ -180,6 +180,7 @@ class Image:
         # Number of voxels in each direction
         self.n_voxels = {ax: self.data.shape[n] for ax, n in _axes.items()}
         self.centre = [n / 2 for n in self.n_voxels.values()]
+        self.shape = self.data.shape
 
         # Min and max voxel position
         self.lims = {
@@ -241,7 +242,7 @@ class Image:
         points = stack.reshape(3, -1).T.reshape(*im.shape, 3)
 
         self.data = interpolant(points)[::-1, :, :]
-        self.shape = im.shape
+        self.shape = im.data.shape
         self.voxel_sizes = im.voxel_sizes
         self.origin = im.origin
         self.set_geom()

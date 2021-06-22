@@ -23,7 +23,7 @@ for i in [9, 10]:  # Remove greys
     del _standard_colors[i]
 
 
-class Struct(Image):
+class Structure(Image):
     '''Single structure.'''
 
     def __init__(
@@ -91,6 +91,8 @@ class Struct(Image):
         self.set_color(color)
         self.input_contours = contours
         self.image = image
+        if not isinstance(image, Image):
+            self.image = Image(image)
         self.shape = shape
         self.mask_level = mask_level
         self.kwargs = kwargs
@@ -142,8 +144,6 @@ class Struct(Image):
         if self.input_contours is not None:
 
             # Create Image object
-            if not isinstance(self.image, Image):
-                self.image = Image(self.image)
             self.kwargs['voxel_size'] = self.image.voxel_size
             self.kwargs['origin'] = self.image.origin
             self.shape = self.image.data.shape
@@ -341,6 +341,47 @@ class Struct(Image):
 
     def plot_contour():
         pass
+
+
+class StructureSet:
+    '''Structure set.'''
+
+    def __init__(
+        self,
+        sources,
+        name=None,
+        image=None
+    ):
+        '''Load structures from sources.'''
+
+        self.name = name
+        self.sources = sources
+        if not is_list(sources):
+            self.sources = [sources]
+        self.structs = []
+        self.image = image
+        if not isinstance(image, Image):
+            self.image = Image(image)
+
+        for source in self.sources:
+
+            # Attempt to load from dicom
+            structs = load_structs_dicom(source)
+            if len(structs):
+                for struct in structs.values():
+                    self.structs.append(Struct(
+                        name=struct['name'],
+                        color=struct['color'],
+                        contours=struct['contours'],
+                        image=self.image
+                    ))
+
+            # Load from struct mask
+            else:
+                self.structs.append(Struct(
+                    source, image=self.image
+                ))
+
 
 
 def load_structs_dicom(path, names=None):

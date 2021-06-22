@@ -907,7 +907,7 @@ class StructComparison:
 
         c1 = self.s1.centroid(view, sl, units)
         c2 = self.s2.centroid(view, sl, units)
-        if c1 is None or c2 is None:
+        if None in c1 or None in c2:
             return [None, None]
         return [x1 - x2 for x1, x2 in zip(c1, c2)]
 

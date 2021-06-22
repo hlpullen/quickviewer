@@ -198,7 +198,7 @@ class Image:
             for i in range(3)
         ]
 
-    def get_slice(self, view, sl=None, idx=None, pos=None):
+    def get_slice(self, view='x-y', sl=None, idx=None, pos=None):
         '''Get a slice of the data in the correct orientation for plotting.'''
 
         # Get index of the slice to plot
