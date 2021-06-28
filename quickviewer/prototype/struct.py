@@ -9,7 +9,13 @@ import skimage.measure
 from scipy.ndimage import morphology
 from shapely import geometry
 
-from quickviewer.prototype import Image, is_list, _slice_axes, _plot_axes
+from quickviewer.prototype import Image
+from quickviewer.prototype import (
+    is_list, 
+    _slice_axes, 
+    _plot_axes,
+    _default_figsize
+)
 
 
 # Standard list of colours for structures
@@ -240,7 +246,7 @@ class Structure(Image):
             # Create mask on each z layer
             for z, contours in self.input_contours.items():
 
-                # Convert z position
+                # Convert z position to index
                 iz = self.pos_to_idx(z, 'z')
 
                 # Loop over each contour on the z slice
@@ -250,7 +256,10 @@ class Structure(Image):
                     # Convert (x, y) positions to array indices
                     points_idx = np.zeros((points.shape[0], 2))
                     for i in range(2):
-                        points_idx[:, i] = pos_to_idx_vec(points[:, i], i)
+                        points_idx[:, i] = pos_to_idx_vec(points[:, i], i,
+                                                          return_int=False)
+                    if iz == 63:
+                        print(points_idx)
 
                     # Create polygon
                     polygon = geometry.Polygon(points_idx)
@@ -292,13 +301,29 @@ class Structure(Image):
 
         self.loaded_mask = True
 
+    def get_slice(self, *args, **kwargs):
+
+        self.create_mask()
+        return Image.get_slice(self, *args, **kwargs)
+
     def get_slices(self, view='x-y'):
         '''Get list of slices on which this structure exists.'''
-        pass
+
+        if not hasattr(self, 'contours') or view not in self.contours:
+            self.create_contours()
+        return list(self.contours[view].keys())
 
     def get_mid_slice(self, view='x-y'):
         '''Get central slice of this structure in a given orientation.'''
-        pass
+        
+        return round(np.mean(self.get_slices(view)))
+
+    def on_slice(self, view, sl=None, pos=None, idx=None):
+        '''Check whether this structure exists on a given slice.'''
+
+        idx = self.get_idx(view, sl, idx, pos)
+        sl = self.idx_to_slice(idx, _slice_axes[view])
+        return sl in self.get_slices(view)
 
     def get_centroid(self, view='x-y', sl=None, idx=None, pos=None, units='mm'):
         '''Get centroid position in 2D or 3D.'''
@@ -322,25 +347,107 @@ class Structure(Image):
 
     def set_color(self, color):
         '''Set plotting color.'''
-        pass
+        
+        if color is None:
+            self.color = _standard_colors[0]
+        elif matplotlib.colors.is_color_like(color):
+            self.color = matplotlib.colors.to_rgba(color)
+        else:
+            print(f'Warning: {color} not a valid color!')
 
     def plot(
         self, 
+        view='x-y',
+        plot_type='contour',
+        sl=None,
+        idx=None,
+        pos=None,
+        **kwargs
+    ):
+        '''Plot this structure as either a mask or a contour.'''
+
+        if plot_type == 'mask':
+            self.plot_mask(view, sl, idx, pos, **kwargs)
+        else:
+            self.plot_contour(view, sl, idx, pos, **kwargs)
+
+    def plot_mask(
+        self,
         view='x-y',
         sl=None,
         idx=None,
         pos=None,
         ax=None,
+        gs=None,
+        figsize=_default_figsize,
         mpl_kwargs=None,
-        plot_type='contour'
+        include_image=False,
+        **kwargs
     ):
-        pass
+        '''Plot the structure as a mask.'''
 
-    def plot_mask():
-        pass
+        if sl is None and idx is None and pos is None:
+            sl = self.get_mid_slice(view)
+        self.create_mask()
+        self.set_ax(view, ax, gs, figsize)
+        mask_slice = self.get_slice(view, sl, idx, pos)
 
-    def plot_contour():
-        pass
+        # Make colormap
+        norm = matplotlib.colors.Normalize()
+        cmap = matplotlib.cm.hsv
+        s_colors = cmap(norm(mask_slice))
+        s_colors[mask_slice > 0, :] = self.color
+        s_colors[mask_slice == 0, :] = (0, 0,  0, 0)
+
+        # Make plot
+        if include_image:
+            self.image.plot(view, sl, idx, pos, ax=self.ax, show=False)
+        mpl_kwargs = {} if mpl_kwargs is None else mpl_kwargs
+        self.ax.imshow(s_colors, extent=self.plot_extent[view], **mpl_kwargs)
+        self.label_ax(view, idx, **kwargs)
+
+    def plot_contour(
+        self,
+        view='x-y',
+        sl=None,
+        idx=None,
+        pos=None,
+        ax=None,
+        gs=None,
+        figsize=_default_figsize,
+        mpl_kwargs=None,
+        include_image=False,
+        **kwargs
+    ):
+        '''Plot the structure as a contour.'''
+
+        if not hasattr(self, 'contours') or view not in self.contours:
+            self.create_contours()
+
+        if sl is None and idx is None and pos is None:
+            sl = self.get_mid_slice(view)
+        idx = self.get_idx(view, sl, idx, pos)
+        sl = self.idx_to_slice(idx, _slice_axes[view])
+        print('trying slice:', sl)
+        if not self.on_slice(view, sl):
+            return
+
+        self.set_ax(view, ax, gs, figsize)
+        mpl_kwargs = {} if mpl_kwargs is None else mpl_kwargs
+        mpl_kwargs.setdefault('color', self.color)
+
+        # Plot
+        if include_image:
+            self.image.plot(view, sl, idx, pos, ax=self.ax, show=False)
+        for points in self.contours[view][sl]:
+            points_x = [p[0] for p in points]
+            points_y = [p[1] for p in points]
+            points_x.append(points_x[0])
+            points_y.append(points_y[0])
+            self.ax.plot(points_x, points_y, **mpl_kwargs)
+        if not include_image:
+            self.ax.invert_yaxis()
+        self.label_ax(view, idx, **kwargs)
 
 
 class StructureSet:

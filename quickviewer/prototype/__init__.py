@@ -82,34 +82,23 @@ class Image:
         '''
 
         self.data = None
+        self.sdata = None  # Standardised data array
         self.title = title
         self.source = source
+        self.source_type = None
         self.affine = affine
+        self.saffine = None  # Standardised affine matrix
         self.voxel_size = voxel_size
         self.origin = origin
         self.downsampling = downsample
         if load:
             self.load_data()
 
-        self.mask = None
-        self.mask_per_view = None
-        self.shift = None
-
     def get_data(self):
         '''Return image array.'''
 
         if self.data is None:
             self.load_data()
-        return self.data
-
-    def get_masked_data(self, view=None):
-        '''Return image array with mask applied, if self.mask is not None.'''
-
-        self.load_data()
-        if self.mask:
-            return self.data * self.mask
-        elif self.mask_per_view and view in self.mask_per_view:
-            return self.data * self.mask_per_view[view]
         return self.data
 
     def load_data(self, force=False):
@@ -125,6 +114,7 @@ class Image:
         # Numpy array
         if isinstance(self.source, np.ndarray):
             self.data = self.source
+            self.source_type = 'array'
 
         # Try loading from nifti file
         else:
@@ -132,15 +122,18 @@ class Image:
                 raise RuntimeError(f'Image input {self.source} does not exist!')
             if os.path.isfile(self.source):
                 self.data, self.affine = load_nifti(self.source)
+                self.source_type = 'nifti'
 
         # Try loading from dicom file
         if self.data is None:
             self.data, self.affine, window_centre, window_width \
                     = load_dicom(self.source)
+            self.source_type = 'dicom'
 
         # Try loading from numpy file
         if self.data is None:
             self.data = load_npy(self.source)
+            self.source_type = 'array'
 
         # Ensure array is 3D
         if self.data.ndim == 2:
@@ -165,6 +158,62 @@ class Image:
         if self.title is None:
             if os.path.exists(self.source):
                 self.title = os.path.basename(self.source)
+
+    def get_standardised_data(self):
+        '''Return standardised image array.'''
+
+        self.standardise_data()
+        return self.sdata
+
+    def standardise_data(self):
+        '''Manipulate data array and affine matrix into a standard 
+        configuration.'''
+
+    def get_orientation_codes(self):
+        '''Get image orientation codes in order (row, column, slice) for
+        dicom or (column, row, slice) for nifti.
+
+        L = Left (x axis)
+        R = Right (x axis)
+        P = Posterior (y axis)
+        A = Anterior (y axis)
+        I = Inferior (z axis)
+        S = Superior (z axis)
+        '''
+
+        self.load_data()
+        codes = list(nibabel.aff2axcodes(self.affine))
+        
+        # Reverse codes for row and column of a dicom
+        pairs = [
+            ('L', 'R'),
+            ('P', 'A'),
+            ('I', 'S')
+        ]
+        if self.source_type == 'dicom':
+            for i in range(2):
+                switched = False
+                for p in pairs:
+                    for j in range(2):
+                        if codes[i] == p[j] and not switched:
+                            codes[i] = p[1 - j]
+                            switched = True
+        
+        return codes 
+
+    def get_orientation_vector(self):
+        '''Get image orientation as a row and column vector.'''
+        
+        codes = self.get_orientation_codes()
+        vecs = {
+            'R': [1, 0, 0],
+            'L': [-1, 0, 0],
+            'P': [0, 1, 0],
+            'A': [0, -1, 0],
+            'S': [0, 0, 1],
+            'I': [0, 0, -1]
+        }
+        return vecs[codes[0]] + vecs[codes[1]]
 
     def set_geometry(self):
         '''Set geometric properties.'''
@@ -197,11 +246,15 @@ class Image:
              self.lims[i][1] + self.voxel_size[i] / 2)
             for i in range(3)
         ]
+        self.plot_extent = {
+            view: self.image_extent[x_ax] + self.image_extent[y_ax][::-1]
+            for view, (x_ax, y_ax) in _plot_axes.items()
+        }
 
-    def get_slice(self, view='x-y', sl=None, idx=None, pos=None):
-        '''Get a slice of the data in the correct orientation for plotting.'''
+    def get_idx(self, view, sl=None, idx=None, pos=None):
+        '''Get an array index from either a slice number, index, or 
+        position.'''
 
-        # Get index of the slice to plot
         if sl is not None:
             idx = self.slice_to_idx(sl, _slice_axes[view])
         elif idx is None:
@@ -210,8 +263,13 @@ class Image:
             else:
                 centre_pos = self.get_image_centre()[_slice_axes[view]]
                 idx = self.pos_to_idx(centre_pos, _slice_axes[view])
+        return idx
+
+    def get_slice(self, view='x-y', sl=None, idx=None, pos=None):
+        '''Get a slice of the data in the correct orientation for plotting.'''
 
         # Get image slice
+        idx = self.get_idx(view, sl, idx, pos)
         transpose = {
             'x-y': (0, 1, 2),
             'y-z': (0, 2, 1),
@@ -219,6 +277,25 @@ class Image:
         }[view]
         list(_plot_axes[view]) + [_slice_axes[view]]
         return np.transpose(self.data, transpose)[:, :, idx]
+
+    def set_ax(self, view=None, ax=None, gs=None, figsize=_default_figsize,
+               zoom=None, colorbar=False):
+        '''Set up axes for plotting this image, either from a given exes or
+        gridspec, or by creating new axes.'''
+
+        # Set up figure/axes
+        if ax is None and  gs is not None:
+            ax = plt.gcf().add_subplot(gs)
+        if ax is not None:
+            self.ax = ax
+            self.fig = ax.figure
+        else:
+            figsize = to_inches(figsize)
+            aspect = self.get_plot_aspect_ratio(
+                view, zoom, colorbar, figsize
+            )
+            self.fig = plt.figure(figsize=(figsize * aspect, figsize))
+            self.ax = self.fig.add_subplot()
 
     def plot(
         self, 
@@ -236,9 +313,6 @@ class Image:
         show=True,
         colorbar=False,
         colorbar_label='HU',
-        masked=False,
-        invert_mask=False,
-        mask_color='black',
         no_title=False,
         no_ylabel=False,
         annotate_slice=False,
@@ -298,16 +372,6 @@ class Image:
         colorbar_label : str, default='HU'
             Label for the colorbar, if drawn.
 
-        masked : bool, default=False
-            If True and this object has attribute self.data_mask assigned,
-            the image will be masked with the array in self.data_mask.
-
-        invert_mask : bool, default=True
-            If True and a mask is applied, the mask will be inverted.
-
-        mask_color : matplotlib color, default='black'
-            color in which to plot masked areas.
-
         mpl_kwargs : dict, default=None
             Dictionary of keyword arguments to pass to matplotlib.imshow().
 
@@ -340,32 +404,13 @@ class Image:
             left. The top/right ticks will not be labelled.
         '''
 
-        # Set up figure/axes
-        if ax is None and  gs is not None:
-            ax = plt.gcf().add_subplot(gs)
-        if ax is not None:
-            self.ax = ax
-            self.fig = ax.figure
-        else:
-            figsize = to_inches(figsize)
-            aspect = self.get_plot_aspect_ratio(
-                view, zoom, colorbar, figsize
-            )
-            self.fig = plt.figure(figsize=(figsize * aspect, figsize))
-            self.ax = self.fig.add_subplot()
+        # Set up axes
+        self.set_ax(view, ax, gs, figsize, zoom, colorbar)
 
         # Get image slice
         self.load_data()
+        idx = self.get_idx(view, sl, idx, pos)
         image_slice = self.get_slice(view, sl=sl, idx=idx, pos=pos)
-
-        # Apply masking if needed
-        if masked and self.mask:
-            mask = self.mask if isinstance(self.mask, np.ndarray) \
-                    else self.mask[view]
-            mask_slice = np.transpose(mask, transpose)[:, :, idx]
-            if invert_mask:
-                mask_slice = ~mask_slice
-            image_slice *= mask_slice
 
         # Get colormap
         mpl_kwargs = {} if mpl_kwargs is None else mpl_kwargs
@@ -374,19 +419,15 @@ class Image:
         else:
             cmap = 'gray'
         cmap = copy.copy(matplotlib.cm.get_cmap(cmap))
-        if masked:
-            cmap.set_bad(color=mask_color)
 
         # Get colour range
         vmin = mpl_kwargs.pop('vmin', self.default_window[0])
         vmax = mpl_kwargs.pop('vmax', self.default_window[1])
 
         # Get image extent and aspect ratio
-        x_ax, y_ax = _plot_axes[view]
-        extent = self.image_extent[x_ax] + self.image_extent[y_ax][::-1]
-        if scale_in_mm:
-            aspect = 1
-        else:
+        extent = self.plot_extent[view]
+        aspect = 1
+        if not scale_in_mm:
             extent = [
                 self.pos_to_slice(extent[0], x_ax, False),
                 self.pos_to_slice(extent[1], x_ax, False),
@@ -405,6 +446,27 @@ class Image:
             vmax=vmax,
             **mpl_kwargs
         )
+
+        # Label axes
+        self.label_ax(view, idx, scale_in_mm, no_title, no_ylabel,
+                      annotate_slice, major_ticks, minor_ticks, 
+                      ticks_all_sides)
+
+        # Add colorbar
+        if colorbar and mpl_kwargs.get('alpha', 1) > 0:
+            clb = self.fig.colorbar(mesh, ax=self.ax, label=colorbar_label)
+            clb.solids.set_edgecolor('face')
+
+        # Display image
+        if show:
+            plt.tight_layout()
+            plt.show()
+
+    def label_ax(self, view, idx, scale_in_mm=True, no_title=False,
+                 no_ylabel=False, annotate_slice=False, major_ticks=None,
+                 minor_ticks=None, ticks_all_sides=False):
+
+        x_ax, y_ax = _plot_axes[view]
 
         # Set title 
         if self.title and not no_title:
@@ -446,15 +508,6 @@ class Image:
                     which='minor', bottom=True, top=True, left=True, right=True
                 )
 
-        # Add colorbar
-        if colorbar and mpl_kwargs.get('alpha', 1) > 0:
-            clb = self.fig.colorbar(mesh, ax=self.ax, label=colorbar_label)
-            clb.solids.set_edgecolor('face')
-
-        # Display image
-        if show:
-            plt.tight_layout()
-            plt.show()
 
     def idx_to_pos(self, idx, ax):
         '''Convert an array index to a position in mm along a given axis.'''
@@ -575,57 +628,6 @@ class Image:
         # Reset geometric properties of this image
         self.set_geometry()
 
-    def translate(self, dx=0, dy=0, dz=0):
-        '''Apply a translation to the image data.'''
-
-        return
-
-    def rotate(self, yaw=0, pitch=0, roll=0):
-        '''Apply a rotation to the image data.'''
-
-        return
-
-    def reset(self):
-        '''Return image data to its original state before any translations or
-        rotations.'''
-
-        return
-
-    def set_shift(self, nx, ny, nz):
-        '''Set a shift amount in voxels to apply to the image before plotting.
-        (Faster than translating the entire 3D image).
-        '''
-
-        return
-
-    def set_mask(self, mask, threshold=0.5):
-        '''Set a mask that can be applied to the image at plotting time.
-        Can be either a single array, list of arrays to stack, or dict of 
-        arrays for different orientations.'''
- 
-        # Get single mask or list of masks
-        single_mask = None
-        mask_per_view = None
-        if isinstance(mask, np.ndarray):
-            single_mask = mask
-        elif is_list(mask):
-            single_mask = mask[0]
-            for m in mask[1:]:
-                single_mask += m
-        elif isinstance(mask, dict):
-            mask_per_view = mask
-
-        # Convert mask(s) to boolean
-        if single_mask:
-            single_mask = single_mask > threshold
-        if mask_per_view:
-            for view, m in mask_per_view.items():
-                mask_per_view[view] = m > threshold
-
-        # Assign to class properties
-        self.mask = single_mask
-        self.mask_per_view = mask_per_view
-
     def get_nifti_array_and_affine(self):
         '''Get image array and affine matrix in canonical nifti 
         configuration.'''
@@ -668,8 +670,7 @@ class Image:
         If (c) or (d) (i.e. writing to dicom), the header data will be set in
         one of three ways:
             - If the input source was not a dicom, <dicom_for_header> is None,
-            or <force_new_dicom> is True, a brand new dicom with freshly
-            generated UIDs will be created.
+            a brand new dicom with freshly generated UIDs will be created.
             - If <dicom_for_header> is set to the path to a dicom file, that 
             dicom file will be used as the header.
             - Otherwise, if the input source was a dicom or directory 
@@ -1084,8 +1085,8 @@ def write_dicom(
         sl = data.shape[2] - i
         pos = affine[2, 3] + i * affine[2, 2]
         xy_slice = data[:, :, i].copy()
-        xy_slice = ((xy_slice - intercept) / slope).astype(np.int16)
-        ds.PixelData = xy_slice.byteswap().tobytes()
+        xy_slice = ((xy_slice - intercept) / slope).astype(np.uint16)
+        ds.PixelData = xy_slice.tobytes()
         ds.SliceLocation = pos
         ds.ImagePositionPatient[2] = pos
         outname = f'{outdir}/{sl}.dcm'
@@ -1097,8 +1098,7 @@ def create_dicom(patient_id=None, modality=None, root_uid=None):
 
     # Create some temporary filenames
     suffix = '.dcm'
-    filename_little_endian = tempfile.NamedTemporaryFile(suffix=suffix).name
-    filename_big_endian = tempfile.NamedTemporaryFile(suffix=suffix).name
+    filename = tempfile.NamedTemporaryFile(suffix=suffix).name
 
     # Populate required values for file meta information
     file_meta = FileMetaDataset()
@@ -1108,8 +1108,7 @@ def create_dicom(patient_id=None, modality=None, root_uid=None):
 
     # Create the FileDataset instance (initially no data elements, but file_meta
     # supplied)
-    ds = FileDataset(filename_little_endian, {},
-                     file_meta=file_meta, preamble=b"\0" * 128)
+    ds = FileDataset(filename, {}, file_meta=file_meta, preamble=b"\0" * 128)
 
     # Add data elements
     ds.PatientID = patient_id if patient_id is not None else '123456'
@@ -1124,8 +1123,8 @@ def create_dicom(patient_id=None, modality=None, root_uid=None):
     ds.PixelRepresentation = 0
 
     # Set the transfer syntax
-    ds.is_little_endian = True
-    ds.is_implicit_VR = True
+    ds.is_little_endian = False
+    ds.is_implicit_VR = False
 
     # Set creation date/time
     dt = datetime.datetime.now()
