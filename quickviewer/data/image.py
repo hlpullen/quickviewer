@@ -1392,10 +1392,13 @@ def load_dicom(path, rescale=True):
                     for p in os.listdir(dirname)
                     if not os.path.isdir(os.path.join(dirname, p))
                 ]
-                data, affine = load_dicom_multiple_files(
-                    paths, series_num=num, rescale=rescale,
-                    orientation=ds.ImageOrientationPatient
-                )
+                if len(paths) == 1:
+                    data, affine = load_dicom_single_file(ds, rescale=rescale)
+                else:
+                    data, affine = load_dicom_multiple_files(
+                        paths, series_num=num, rescale=rescale,
+                        orientation=ds.ImageOrientationPatient
+                    )
 
         except pydicom.errors.InvalidDicomError:
             raise TypeError("Not a valid dicom file!")
@@ -1486,7 +1489,7 @@ def load_dicom_multiple_files(paths, series_num=None, rescale=True,
             data, affine = load_dicom_single_file(ds, rescale=rescale)
             data_slices[float(slice_num)] = data
 
-        except pydicom.errors.InvalieDicomError:
+        except pydicom.errors.InvalidDicomError:
             continue
 
     # Sort and stack image slices

@@ -1752,8 +1752,6 @@ def contours_to_indices(contours, origin, voxel_sizes, shape):
             pi[:, 2] = zi
             converted[zi].append(pi)
 
-    print('converted 63:')
-    print(converted[63])
     return converted
 
 
