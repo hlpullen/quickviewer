@@ -248,7 +248,7 @@ class Image:
             ('P', 'A'),
             ('I', 'S')
         ]
-        if source_type == 'dicom':
+        if source_type != 'nifti':
             for i in range(2):
                 switched = False
                 for p in pairs:
@@ -259,11 +259,16 @@ class Image:
         
         return codes 
 
-    def get_orientation_vector(self):
+    def get_orientation_vector(self, affine=None, source_type=None):
         '''Get image orientation as a row and column vector.'''
         
-        codes = self.get_orientation_codes()
-        if self.source_type == 'nifti':
+        if source_type is None:
+            source_type = self.source_type
+        if affine is None:
+            affine = self.affine
+
+        codes = self.get_orientation_codes(affine, source_type)
+        if source_type == 'nifti':
             codes = [codes[1], codes[0], codes[2]]
         vecs = {
             'L': [1, 0, 0],
@@ -837,9 +842,9 @@ class Image:
             if header_source is None and isinstance(self.source, str):
                 header_source = self.source
             data, affine = self.get_dicom_array_and_affine(standardise)
-            write_dicom(outdir, data, affine, header_source, 
-                        self.get_orientation_vector(), patient_id, modality, 
-                        root_uid)
+            orientation = self.get_orientation_vector(affine, 'dicom')
+            write_dicom(outdir, data, affine, header_source, orientation,
+                        patient_id, modality, root_uid)
             print('Wrote dicom file(s) to directory:', outdir)
 
     def get_coords(self):
@@ -1176,8 +1181,8 @@ def write_dicom(
     ds.PixelSpacing = [affine[0, 0], affine[1, 1]]
     ds.SliceThickness = affine[2, 2]
     ds.ImagePositionPatient = list(affine[:-1, 3])
-    ds.Columns = data.shape[0]
-    ds.Rows = data.shape[1]
+    ds.Columns = data.shape[1]
+    ds.Rows = data.shape[0]
 
     # Rescale data
     slope = getattr(ds, 'RescaleSlope', 1)

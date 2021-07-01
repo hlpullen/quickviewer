@@ -8,7 +8,7 @@ from quickviewer.prototype import Image
 
 
 # Create fake data
-data = np.random.rand(40, 50, 20)
+data = (np.random.rand(40, 50, 20) * 1000).astype(np.uint16)
 voxel_size = (1, 2, 3)
 origin = (-40, -50, 20)
 im = Image(data, voxel_size=voxel_size, origin=origin)
@@ -143,8 +143,6 @@ def test_dcm_to_nifti():
     # Check standardised data is the same
     im_dcm.standardise_data()
     im_dcm2nii.standardise_data()
-    print('saffine dcm:', im_dcm.saffine)
-    print('saffine dcm2nii:', im_dcm2nii.saffine)
     assert np.all(im_dcm.saffine == im_dcm2nii.saffine)
     assert np.all(im_dcm.sdata == im_dcm2nii.sdata)
 
@@ -160,18 +158,36 @@ def test_dcm_to_dcm():
     assert np.all(im_dcm.affine == im_dcm2.affine)
     assert np.all(im_dcm.data == im_dcm2.data)
 
+def test_nifti_to_dcm():
+    '''Check that a nifti file can be written to dicom using a fresh header.'''
+
+    # Write nifti to dicom
+    dcm = 'tmp/test_nii2dcm'
+    im_nii.write(dcm)
+    im_nii2dcm = Image(dcm)
+
+    # Check standardised data and affine are the same
+    im_nii.standardise_data()
+    im_nii2dcm.standardise_data()
+    assert np.all(im_nii.saffine == im_dcm.saffine)
+    assert np.all(im_nii.sdata == im_dcm.sdata)
+
+    # Check nifti array and affine are the same
+    ndata, naffine = im_nii2dcm.get_nifti_array_and_affine()
+    assert np.all(im_nii.affine == naffine)
+    assert np.all(im_nii.data == ndata)
+
 def test_dcm_to_nifti_to_dcm():
     '''Check that a nifti file can be written to dicom using the header of 
     the dicom that was used to create that nifti file.'''
 
     pass
 
-#  def test_array_to_dicom():
-    #  '''Check numpy array is correctly saved to dicom.'''
+def test_array_to_dcm():
+    '''check numpy array is correctly saved to dicom.'''
 
-    #  outname = 'tmp/test_dcm'
-    #  im.write(outname)
-    #  im_dcm = Image(outname)
+    # Data and affine should be the same for numpy array and dicom
+    assert im.data.shape == im_dcm.data.shape
+    assert np.all(im.affine == im_dcm.affine)
+    assert np.all(im.data == im_dcm.data)
 
-    #  # Data and affine should be same for both
-    #  assert im.data.shape == im_dcm.data.shape
