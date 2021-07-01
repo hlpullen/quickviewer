@@ -7,7 +7,7 @@ from quickviewer.prototype import Image
 
 Images can be loaded from dicom files, nifti files, or numpy arrays, and will be put into a consistent format. This format is:
 
-- The `Image.data` property contains a numpy array, which stores (x, y, z) in (row, column, slice) respectively. Note that numpy elements are indexed in order (column, row, slice); so if you did `Image.data[i, j, k]`, `i` would correspond to y index, `j` would correspond to x index, `k` would correspond to z index.
+- The `Image.data` property contains a numpy array, which stores (y, x, z) in (row, column, slice) respectively. Note that numpy elements are indexed in order (row, column, slice); so if you did `Image.data[i, j, k]`, `i` would correspond to y index, `j` would correspond to x index, `k` would correspond to z index.
 - The `Image.affine` property contains a 4x4 matric that can convert a (row, column, slice) index to an (x, y, z) position. This will always be diagonal, so (0, 0) contains x voxel size etc, (0, 3) contains x origin.
 - The `voxel_size` and `origin` properties are the diagonal and third column, respectively; they give voxel sizes and origin position in order (x, y, z).
 - The `n_voxels` property containins the number of voxels in the (x, y, z) directions (same as `Image.data.shape`, but with 0 and 1 swapped).
