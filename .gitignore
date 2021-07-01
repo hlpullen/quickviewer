@@ -7,3 +7,4 @@ build
 quickviewer.egg-info/
 *.nii*
 *.dcm
+tests/tmp

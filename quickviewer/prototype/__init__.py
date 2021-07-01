@@ -82,14 +82,12 @@ class Image:
         '''
 
         self.data = None
-        self.sdata = None  # Standardised data array
         self.title = title
         self.source = source
         self.source_type = None
-        self.affine = affine
-        self.saffine = None  # Standardised affine matrix
         self.voxel_size = voxel_size
         self.origin = origin
+        self.affine = affine
         self.downsampling = downsample
         if load:
             self.load_data()
@@ -121,14 +119,18 @@ class Image:
             if not os.path.exists(self.source):
                 raise RuntimeError(f'Image input {self.source} does not exist!')
             if os.path.isfile(self.source):
-                self.data, self.affine = load_nifti(self.source)
+                self.data, affine = load_nifti(self.source)
                 self.source_type = 'nifti'
+            if self.data is not None:
+                self.affine = affine
 
         # Try loading from dicom file
         if self.data is None:
-            self.data, self.affine, window_centre, window_width \
+            self.data, affine, window_centre, window_width \
                     = load_dicom(self.source)
             self.source_type = 'dicom'
+            if self.data is not None:
+                self.affine = affine
 
         # Try loading from numpy file
         if self.data is None:
@@ -156,7 +158,7 @@ class Image:
 
         # Set title from filename
         if self.title is None:
-            if os.path.exists(self.source):
+            if isinstance(self.source, str) and os.path.exists(self.source):
                 self.title = os.path.basename(self.source)
 
     def get_standardised_data(self):
@@ -165,11 +167,62 @@ class Image:
         self.standardise_data()
         return self.sdata
 
-    def standardise_data(self):
+    def standardise_data(self, force=False):
         '''Manipulate data array and affine matrix into a standard 
         configuration.'''
 
-    def get_orientation_codes(self):
+        if hasattr(self, 'sdata') and not force:
+            return
+
+        data = self.data
+        affine = self.affine
+
+        # Adjust dicom
+        if self.source_type == 'dicom':
+
+            # Transform array to be in order (row, col, slice) = (x, y, z)
+            orient = np.array(self.get_orientation_vector()).reshape(2, 3)
+            axes = self.get_axes()
+            axes_colrow = self.get_axes(col_first=True)
+            transpose = [axes_colrow.index(i) for i in (1, 0, 2)]
+            data = np.transpose(self.data, transpose).copy()
+
+            # Adjust affine matrix
+            affine = self.affine.copy()
+            for i in range(3):
+
+                # Voxel sizes
+                if i != axes.index(i):
+                    voxel_size = affine[i, axes.index(i)].copy()
+                    affine[i, i] = voxel_size
+                    affine[i, axes.index(i)] = 0
+
+                # Invert axis direction if negative
+                if axes.index(i) < 2 and orient[axes.index(i), i] < 0:
+                    affine[i, i] *= -1
+                    to_flip = [1, 0, 2][i]
+                    data = np.flip(data, axis=to_flip)
+                    n_voxels = data.shape[to_flip]
+                    affine[i, 3] = affine[i, 3] - (n_voxels - 1) \
+                            * affine[i, i]
+
+        # Adjust nifti
+        elif self.source_type == 'nifti':
+
+            nii = nibabel.as_closest_canonical(nibabel.Nifti1Image(
+                self.get_data(), self.affine))
+            data = nii.get_fdata().transpose(1, 0, 2)[::-1, ::-1, :]
+            affine = nii.affine
+            
+            # Reverse x and y directions
+            affine[0, 3] = -(affine[0, 3] + (data.shape[1] - 1) * affine[0, 0])
+            affine[1, 3] = -(affine[1, 3] + (data.shape[0] - 1) * affine[1, 1])
+
+        # Assign standardised image array and affine matrix
+        self.sdata = data
+        self.saffine = affine
+
+    def get_orientation_codes(self, affine=None, source_type=None):
         '''Get image orientation codes in order (row, column, slice) for
         dicom or (column, row, slice) for nifti.
 
@@ -181,8 +234,13 @@ class Image:
         S = Superior (z axis)
         '''
 
-        self.load_data()
-        codes = list(nibabel.aff2axcodes(self.affine))
+        if affine is None:
+            self.load_data()
+            affine = self.affine
+        codes = list(nibabel.aff2axcodes(affine))
+
+        if source_type is None:
+            source_type = self.source_type
         
         # Reverse codes for row and column of a dicom
         pairs = [
@@ -190,7 +248,7 @@ class Image:
             ('P', 'A'),
             ('I', 'S')
         ]
-        if self.source_type == 'dicom':
+        if source_type == 'dicom':
             for i in range(2):
                 switched = False
                 for p in pairs:
@@ -205,15 +263,33 @@ class Image:
         '''Get image orientation as a row and column vector.'''
         
         codes = self.get_orientation_codes()
+        if self.source_type == 'nifti':
+            codes = [codes[1], codes[0], codes[2]]
         vecs = {
-            'R': [1, 0, 0],
-            'L': [-1, 0, 0],
+            'L': [1, 0, 0],
+            'R': [-1, 0, 0],
             'P': [0, 1, 0],
             'A': [0, -1, 0],
             'S': [0, 0, 1],
             'I': [0, 0, -1]
         }
         return vecs[codes[0]] + vecs[codes[1]]
+
+    def get_axes(self, col_first=False):
+        '''Return list of axis numbers in order (column, row, slice) if 
+        col_first is True, otherwise in order (row, column, slice). The axis 
+        numbers 0, 1, and 2 correspond to x, y, and z, respectively.'''
+
+        orient = np.array(self.get_orientation_vector()).reshape(2, 3)
+        axes = [
+            sum([abs(int(orient[i, j] * j)) for j in range(3)]) 
+            for i in range(2)
+        ]
+        axes.append(3 - sum(axes))
+        if not col_first:
+            return axes
+        else:
+            return [axes[1], axes[0], axes[2]]
 
     def set_geometry(self):
         '''Set geometric properties.'''
@@ -276,7 +352,8 @@ class Image:
             'x-z': (1, 2, 0)
         }[view]
         list(_plot_axes[view]) + [_slice_axes[view]]
-        return np.transpose(self.data, transpose)[:, :, idx]
+        data = self.get_standardised_data()
+        return np.transpose(data, transpose)[:, :, idx]
 
     def set_ax(self, view=None, ax=None, gs=None, figsize=_default_figsize,
                zoom=None, colorbar=False):
@@ -340,6 +417,10 @@ class Image:
         pos : float, default=None
             Position in mm of the slice to plot. Will be rounded to the nearest
             slice. Only used if <sl> and <idx> are both None.
+
+        standardised : bool, default=True
+            If True, a standardised version of the image array will be plotted
+            such that the axis labels are correct.
 
         scale_in_mm : bool, default=True
             If True, axis labels will be in mm; otherwise, they will be slice 
@@ -628,19 +709,58 @@ class Image:
         # Reset geometric properties of this image
         self.set_geometry()
 
-    def get_nifti_array_and_affine(self):
+    def get_nifti_array_and_affine(self, standardise=False):
         '''Get image array and affine matrix in canonical nifti 
         configuration.'''
 
-        data = self.data.transpose(1, 0, 2)[::-1, ::-1, :]
-        affine = self.affine.copy()
-        affine[0, 3] = -(affine[0, 3] + (data.shape[1] - 1) * affine[0, 0])
-        affine[1, 3] = -(affine[1, 3] + (data.shape[0] - 1) * affine[1, 1])
-        return data, affine
+        # Convert dicom-style array to nifti
+        if self.source_type != 'nifti':
+            data = self.get_data().transpose(1, 0, 2)[:, ::-1, :]
+            affine = self.affine.copy()
+            affine[0, :] = -affine[0, :]
+            affine[1, 3] = -(affine[1, 3] + (data.shape[1] - 1)
+                             * self.voxel_size[1])
+
+        # Use existing nifti array
+        else:
+            data = self.get_data()
+            affine = self.affine
+
+        # Convert to canonical if requested
+        if standardise:
+            nii = nibabel.as_closest_canonical(nibabel.Nifti1Image(data, affine))
+            return nii.get_fdata(), nii.affine
+        else:
+            return data, affine
+
+    def get_dicom_array_and_affine(self, standardise=False):
+        '''Get image array and affine matrix in dicom configuration.'''
+
+        # Return standardised dicom array
+        if standardise:
+            return self.get_standardised_data(), self.saffine
+
+        # Convert nifti-style array to dicom
+        if self.source_type == 'nifti':
+            data = self.get_data().transpose(1, 0, 2)[::-1, :, :]
+            affine = self.affine.copy()
+            affine[0, :] = -affine[0, :]
+            affine[1, 3] = -(affine[1, 3] + (data.shape[0] - 1) *
+                             self.voxel_size[1])
+            if standardise:
+                nii = nibabel.as_closest_canonical(nibabel.Nifti1Image(
+                    data, affine))
+                return nii.get_fdata(), nii.affine
+            else:
+                return data, affine
+
+        # Otherwise, return array as-is
+        return self.get_data(), self.affine
 
     def write(
         self, 
         outname, 
+        standardise=False,
         write_geometry=True, 
         nifti_array=False,
         header_source=None,
@@ -682,16 +802,16 @@ class Image:
 
         # Write to nifti file
         if outname.endswith('.nii') or outname.endswith('.nii.gz'):
-            write_nifti(outname, *self.get_nifti_array_and_affine())
+            data, affine = self.get_nifti_array_and_affine(standardise)
+            write_nifti(outname, data, affine)
             print('Wrote to NIfTI file:', outname)
 
         # Write to numpy file
         elif outname.endswith('.npy'):
             if nifti_array:
-                data, affine = self.get_nifti_array_and_affine()
+                data, affine = self.get_nifti_array_and_affine(standardise)
             else:
-                data = self.data
-                affine = self.affine
+                data, affine = self.get_dicom_array_and_affine(standardise)
             if not write_geometry:
                 affine = None
             write_npy(outname, data, affine)
@@ -716,8 +836,10 @@ class Image:
             # Get header source
             if header_source is None and isinstance(self.source, str):
                 header_source = self.source
-            write_dicom(outdir, self.data, self.affine, header_source,
-                        patient_id, modality, root_uid)
+            data, affine = self.get_dicom_array_and_affine(standardise)
+            write_dicom(outdir, data, affine, header_source, 
+                        self.get_orientation_vector(), patient_id, modality, 
+                        root_uid)
             print('Wrote dicom file(s) to directory:', outdir)
 
     def get_coords(self):
@@ -743,14 +865,9 @@ def load_nifti(path):
     '''Load an image from a nifti file.'''
 
     try:
-        nii = nibabel.as_closest_canonical(nibabel.load(path))
-        data = nii.get_fdata().transpose(1, 0, 2)[::-1, ::-1, :]
+        nii = nibabel.load(path)
+        data = nii.get_fdata()
         affine = nii.affine
-
-        # Reverse x and y directions
-        affine[0, 3] = -(affine[0, 3] + (data.shape[1] - 1) * affine[0, 0])
-        affine[1, 3] = -(affine[1, 3] + (data.shape[0] - 1) * affine[1, 1])
-
         return data, affine
 
     except FileNotFoundError:
@@ -818,7 +935,6 @@ def load_dicom(path):
                     for i in range(2)
                 ]
                 axes.append(3 - sum(axes))
-                axes_colrow = [axes[1], axes[0], axes[2]]
             if (ds.StudyInstanceUID != study_uid 
                 or ds.SeriesNumber != series_num
                 or ds.Modality != modality
@@ -909,27 +1025,6 @@ def load_dicom(path):
         ],
         [0, 0, 0, 1]
     ])
-
-    # Transform array to be in order (row, col, slice) = (x, y, z)
-    transpose = [axes_colrow.index(i) for i in (1, 0, 2)]
-    data = np.transpose(data, transpose)
-
-    # Adjust affine matrix
-    for i in range(3):
-
-        # Voxel sizes
-        if i != axes.index(i):
-            voxel_size = affine[i, axes.index(i)].copy()
-            affine[i, i] = voxel_size
-            affine[i, axes.index(i)] = 0
-
-        # Invert axis direction if negative
-        if axes.index(i) < 2 and orient[axes.index(i), i] < 0:
-            affine[i, i] *= -1
-            to_flip = [1, 0, 2][i]
-            data = np.flip(data, axis=to_flip)
-            n_voxels = data.shape[to_flip]
-            affine[i, 3] = affine[i, 3] - (n_voxels - 1) * affine[i, i]
 
     return data, affine, window_centre, window_width
 
@@ -1026,6 +1121,7 @@ def write_dicom(
     data, 
     affine, 
     header_source=None,
+    orientation=None,
     patient_id=None,
     modality=None,
     root_uid=None
@@ -1035,7 +1131,8 @@ def write_dicom(
         (a) A path to a dicom file, which will be used as the header;
         (b) A path to a directory containing dicom files; the first file
         alphabetically will be used as the header;
-        (c) None, in which case a brand new dicom file with new UIDs will be
+        (c) A pydicom FileDataset object;
+        (d) None, in which case a brand new dicom file with new UIDs will be
         created.
         '''
 
@@ -1051,25 +1148,31 @@ def write_dicom(
     # Try loading from header
     ds = None
     if header_source:
-        dcm_path = None
-        if os.path.isfile(header_source):
-            dcm_path = header_source
-        elif os.path.isdir(header_source):
-            dcms = glob.glob(f'{header_source}/*.dcm')
-            if dcms:
-                dcm_path = dcms[0]
-        if dcm_path:
-            try:
-                ds = pydicom.read_file(dcm_path)
-            except pydicom.errors.InvalidDicomError:
-                pass
+        if isinstance(header_source, FileDataset):
+            ds = header_source
+        else:
+            dcm_path = None
+            if os.path.isfile(header_source):
+                dcm_path = header_source
+            elif os.path.isdir(header_source):
+                dcms = glob.glob(f'{header_source}/*.dcm')
+                if dcms:
+                    dcm_path = dcms[0]
+            if dcm_path:
+                try:
+                    ds = pydicom.read_file(dcm_path)
+                except pydicom.errors.InvalidDicomError:
+                    pass
 
     # Make fresh header if needed
     if ds is None:
-        ds = create_dicom(patient_id, modality, root_uid)
+        ds = create_dicom(orientation, patient_id, modality, root_uid)
 
     # Set voxel sizes etc from affine matrix
-    ds.ImageOrientationPatient = [1, 0, 0, 0, 1, 0]
+    if orientation is None:
+        ds.ImageOrientationPatient = [1, 0, 0, 0, 1, 0]
+    else:
+        ds.ImageOrientationPatient = orientation
     ds.PixelSpacing = [affine[0, 0], affine[1, 1]]
     ds.SliceThickness = affine[2, 2]
     ds.ImagePositionPatient = list(affine[:-1, 3])
@@ -1093,7 +1196,8 @@ def write_dicom(
         ds.save_as(outname)
 
 
-def create_dicom(patient_id=None, modality=None, root_uid=None):
+def create_dicom(orientation=None, patient_id=None, modality=None, 
+                 root_uid=None):
     '''Create a fresh dicom dataset. Taken from https://pydicom.github.io/pydicom/dev/auto_examples/input_output/plot_write_dicom.html#sphx-glr-auto-examples-input-output-plot-write-dicom-py.'''
 
     # Create some temporary filenames
@@ -1105,16 +1209,15 @@ def create_dicom(patient_id=None, modality=None, root_uid=None):
     file_meta.MediaStorageSOPClassUID = '1.2.840.10008.5.1.4.1.1.2'
     file_meta.MediaStorageSOPInstanceUID = "1.2.3"
     file_meta.ImplementationClassUID = "1.2.3.4"
+    file_meta.TransferSyntaxUID = pydicom.uid.ExplicitVRLittleEndian
 
-    # Create the FileDataset instance (initially no data elements, but file_meta
-    # supplied)
-    ds = FileDataset(filename, {}, file_meta=file_meta, preamble=b"\0" * 128)
+    # Create the FileDataset instance
+    ds = FileDataset(filename, {}, file_meta=file_meta, preamble=b"\x00" * 128)
 
     # Add data elements
     ds.PatientID = patient_id if patient_id is not None else '123456'
     ds.PatientName = ds.PatientID
     ds.Modality = modality if modality is not None else 'CT'
-    ds.BitsAllocated = 16
     ds.SeriesInstanceUID = get_new_uid(root_uid)
     ds.StudyInstanceUID = get_new_uid(root_uid)
     ds.SeriesNumber = '123456'
@@ -1122,21 +1225,18 @@ def create_dicom(patient_id=None, modality=None, root_uid=None):
     ds.PhotometricInterpretation = 'MONOCHROME2'
     ds.PixelRepresentation = 0
 
-    # Set the transfer syntax
-    ds.is_little_endian = False
-    ds.is_implicit_VR = False
-
     # Set creation date/time
     dt = datetime.datetime.now()
     ds.ContentDate = dt.strftime('%Y%m%d')
     timeStr = dt.strftime('%H%M%S.%f')  # long format with micro seconds
     ds.ContentTime = timeStr
 
-    # Write as a different transfer syntax XXX shouldn't need this but pydicom
-    # 0.9.5 bug not recognizing transfer syntax
-    ds.file_meta.TransferSyntaxUID = pydicom.uid.ExplicitVRBigEndian
-    ds.is_little_endian = False
+    # Data storage
+    ds.is_little_endian = True
     ds.is_implicit_VR = False
+    ds.BitsAllocated = 16
+    ds.BitsStored = 16
+    ds.HighBit = 15
 
     return ds
 
