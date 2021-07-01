@@ -1170,7 +1170,8 @@ def write_dicom(
                     pass
 
     # Make fresh header if needed
-    if ds is None:
+    fresh_header = ds is None
+    if fresh_header:
         ds = create_dicom(orientation, patient_id, modality, root_uid)
 
     # Set voxel sizes etc from affine matrix
@@ -1187,13 +1188,18 @@ def write_dicom(
     # Rescale data
     slope = getattr(ds, 'RescaleSlope', 1)
     intercept = getattr(ds, 'RescaleIntercept', 0)
+    if fresh_header:
+        intercept = np.min(data)
+        ds.RescaleIntercept = intercept
 
     # Save each x-y slice to a dicom file
     for i in range(data.shape[2]):
         sl = data.shape[2] - i
         pos = affine[2, 3] + i * affine[2, 2]
         xy_slice = data[:, :, i].copy()
-        xy_slice = ((xy_slice - intercept) / slope).astype(np.uint16)
+        xy_slice_init = xy_slice.copy()
+        xy_slice = ((xy_slice - intercept) / slope)
+        xy_slice = xy_slice.astype(np.uint16)
         ds.PixelData = xy_slice.tobytes()
         ds.SliceLocation = pos
         ds.ImagePositionPatient[2] = pos

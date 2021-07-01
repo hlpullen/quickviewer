@@ -176,13 +176,24 @@ def test_nifti_to_dcm():
     ndata, naffine = im_nii2dcm.get_nifti_array_and_affine()
     assert np.all(im_nii.affine == naffine)
     assert np.all(im_nii.data == ndata)
-    assert im_nii.data.dtype == im_nii2dcm.data.dtype
 
 def test_dcm_to_nifti_to_dcm():
     '''Check that a nifti file can be written to dicom using the header of 
     the dicom that was used to create that nifti file.'''
 
-    pass
+    # Write dicom to nifti
+    nii = 'tmp/test_dcm2nii.nii'
+    im_dcm.write(nii)
+    im_dcm2nii = Image(nii)
+
+    # Write nifti to new dicom
+    dcm = 'tmp/test_nii2dcm'
+    im_dcm2nii.write(dcm, header_source=im_dcm.source)
+    im_dcm2 = Image(dcm)
+
+    # Check data is the same
+    assert np.all(im_dcm.affine == im_dcm2.affine)
+    assert np.all(im_dcm.data == im_dcm2.data)
 
 def test_array_to_dcm():
     '''check numpy array is correctly saved to dicom.'''
