@@ -176,6 +176,7 @@ def test_nifti_to_dcm():
     ndata, naffine = im_nii2dcm.get_nifti_array_and_affine()
     assert np.all(im_nii.affine == naffine)
     assert np.all(im_nii.data == ndata)
+    assert im_nii.data.dtype == im_nii2dcm.data.dtype
 
 def test_dcm_to_nifti_to_dcm():
     '''Check that a nifti file can be written to dicom using the header of 
