@@ -224,6 +224,10 @@ class Image:
         self.sdata = data
         self.saffine = affine
 
+        # Get standard voxel sizes and origin
+        self.svoxel_size = list(np.diag(self.saffine))[:-1]
+        self.sorigin = list(self.saffine[:-1, -1])
+
     def get_orientation_codes(self, affine=None, source_type=None):
         '''Get image orientation codes in order (row, column, slice) for
         dicom or (column, row, slice) for nifti.
@@ -310,24 +314,26 @@ class Image:
                 [0, 0, 0, 1]
             ])
         else:
-            self.standardise_data()
-            self.voxel_size = list(np.diag(self.saffine))[:-1]
-            self.origin = list(self.saffine[:-1, -1])
+            self.voxel_size = list(np.diag(self.affine))[:-1]
+            self.origin = list(self.affine[:-1, -1])
 
-        # Set other geometric properties
+        # Set number of voxels
         self.n_voxels = [
             self.data.shape[1],
             self.data.shape[0],
             self.data.shape[2]
         ]
+
+        # Set axis limits for standardised plotting
+        self.standardise_data()
         self.lims = [
-            (self.origin[i], 
-             self.origin[i] + (self.n_voxels[i] - 1) * self.voxel_size[i])
+            (self.sorigin[i], 
+             self.sorigin[i] + (self.n_voxels[i] - 1) * self.svoxel_size[i])
             for i in range(3)
         ]
         self.image_extent = [
-            (self.lims[i][0] - self.voxel_size[i] / 2,
-             self.lims[i][1] + self.voxel_size[i] / 2)
+            (self.lims[i][0] - self.svoxel_size[i] / 2,
+             self.lims[i][1] + self.svoxel_size[i] / 2)
             for i in range(3)
         ]
         self.plot_extent = {
@@ -540,6 +546,7 @@ class Image:
         self.label_ax(view, idx, scale_in_mm, no_title, no_ylabel,
                       annotate_slice, major_ticks, minor_ticks, 
                       ticks_all_sides)
+        self.zoom_ax(view, zoom, zoom_centre)
 
         # Add colorbar
         if colorbar and mpl_kwargs.get('alpha', 1) > 0:
@@ -565,7 +572,7 @@ class Image:
         units = ' (mm)' if scale_in_mm else ''
         self.ax.set_xlabel(_axes[x_ax] + units, labelpad=0)
         if not no_ylabel:
-            self.ax.set_xlabel(_axes[x_ax] + units, labelpad=0)
+            self.ax.set_ylabel(_axes[y_ax] + units)
         else:
             self.ax.set_yticks([])
 
@@ -597,28 +604,61 @@ class Image:
                     which='minor', bottom=True, top=True, left=True, right=True
                 )
 
-    #  def zoom_ax(self, view, zoom=None, zoom_centre):
-        #  '''Zoom in on axes if needed.'''
+    def zoom_ax(self, view, zoom=None, zoom_centre=None):
+        '''Zoom in on axes if needed.'''
 
-        #  if not zoom:
-            #  return
+        if not zoom:
+            return
+        zoom = to_three(zoom)
+        x_ax, y_ax = _plot_axes[view]
+        if zoom_centre is None:
+            im_centre = self.get_image_centre()
+            mid_x = im_centre[x_ax]
+            mid_y = im_centre[y_ax]
+        else:
+            mid_x, mid_y = zoom_centre[x_ax], zoom_centre[y_ax]
 
-        #  init_lims = self.image_extent[view]
+        # Calculate new axis limits
+        init_xlim = self.plot_extent[view][:2]
+        init_ylim = self.plot_extent[view][2:]
+        xlim = [
+            mid_x - (init_xlim[1] - init_xlim[0]) / (2 * zoom[x_ax]),
+            mid_x + (init_xlim[1] - init_xlim[0]) / (2 * zoom[x_ax])
+        ]
+        ylim = [
+            mid_y - (init_ylim[1] - init_ylim[0]) / (2 * zoom[y_ax]),
+            mid_y + (init_ylim[1] - init_ylim[0]) / (2 * zoom[y_ax])
+        ]
 
+        # Set axis limits
+        self.ax.set_xlim(xlim)
+        self.ax.set_ylim(ylim)
 
-    def idx_to_pos(self, idx, ax):
+    def idx_to_pos(self, idx, ax, standardise=True):
         '''Convert an array index to a position in mm along a given axis.'''
 
         self.load_data()
         i_ax = _axes.index(ax) if ax in _axes else ax
-        return self.origin[i_ax] + idx * self.voxel_size[i_ax]
+        if standardise:
+            origin = self.sorigin
+            voxel_size = self.svoxel_size
+        else:
+            origin = self.origin
+            voxel_size = self.voxel_size
+        return origin[i_ax] + idx * voxel_size[i_ax]
 
-    def pos_to_idx(self, pos, ax, return_int=True):
+    def pos_to_idx(self, pos, ax, return_int=True, standardise=True):
         '''Convert a position in mm to an array index along a given axis.'''
 
         self.load_data()
         i_ax = _axes.index(ax) if ax in _axes else ax
-        idx = (pos - self.origin[i_ax]) / self.voxel_size[i_ax]
+        if standardise:
+            origin = self.sorigin
+            voxel_size = self.svoxel_size
+        else:
+            origin = self.origin
+            voxel_size = self.voxel_size
+        idx = (pos - origin[i_ax]) / voxel_size[i_ax]
         if return_int:
             return round(idx)
         else:
@@ -644,19 +684,21 @@ class Image:
         else:
             return sl - 1
 
-    def pos_to_slice(self, pos, ax, return_int=True):
+    def pos_to_slice(self, pos, ax, return_int=True, standardise=True):
         '''Convert a position in mm to a slice number along a given axis.'''
 
-        sl = self.idx_to_slice(self.pos_to_idx(pos, ax, return_int), ax)
+        sl = self.idx_to_slice(
+            self.pos_to_idx(pos, ax, return_int, standardise), 
+            ax)
         if return_int:
             return round(sl)
         else:
             return sl
 
-    def slice_to_pos(self, sl, ax):
+    def slice_to_pos(self, sl, ax, standardise=True):
         '''Convert a slice number to a position in mm along a given axis.'''
 
-        return self.idx_to_pos(self.slice_to_idx(sl, ax), ax)
+        return self.idx_to_pos(self.slice_to_idx(sl, ax), ax, standardise)
 
     def get_image_centre(self):
         '''Get position in mm of the centre of the image.'''

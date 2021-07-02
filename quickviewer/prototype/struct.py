@@ -12,6 +12,7 @@ from shapely import geometry
 from quickviewer.prototype import Image
 from quickviewer.prototype import (
     is_list, 
+    to_three, 
     _axes,
     _slice_axes, 
     _plot_axes,
@@ -331,9 +332,32 @@ class Structure(Image):
         '''Get centroid position in 2D or 3D.'''
         pass
 
-    def get_centre(self, units='mm'):
-        '''Get centre position in 3D.'''
-        pass
+    def get_centre(self, view=None, sl=None, idx=None, pos=None, units='mm',
+                   standardise=True):
+        '''Get centre position in 2D or 3D.'''
+
+        # Get 2D or 3D data for which to calculate centre
+        if view is None:
+            data = self.get_standardised_data() if standardise else \
+                    self.get_data()
+            axes = _axes
+        else:
+            if sl is None and idx is None and pos is None:
+                idx = self.get_mid_idx(view)
+            data = self.get_slice(view, sl, idx, pos)
+            axes = _plot_axes[view]
+
+        # Calculate mean of min and max positions
+        non_zero = np.argwhere(data)
+        if not len(non_zero):
+            return [0 for i in axes]
+        centre_rowcol = list((non_zero.max(0) + non_zero.min(0)) / 2)
+        centre = [centre_rowcol[1], centre_rowcol[0]] + centre_rowcol[2:]
+        
+        # Convert to mm
+        if units == 'mm':
+            centre = [self.idx_to_pos(c, axes[i]) for i, c in enumerate(centre)]
+        return centre
 
     def get_volume(self, units='mm'):
         '''Get structure volume.'''
@@ -393,6 +417,8 @@ class Structure(Image):
         figsize=_default_figsize,
         mpl_kwargs=None,
         include_image=False,
+        zoom=None,
+        zoom_centre=None,
         **kwargs
     ):
         '''Plot the structure as a mask.'''
@@ -422,6 +448,7 @@ class Structure(Image):
             self.image.plot(view, idx=idx, ax=self.ax, show=False)
         self.ax.imshow(s_colors, extent=self.plot_extent[view], **mpl_kwargs)
         self.label_ax(view, idx, **kwargs)
+        self.zoom_ax(view, zoom, zoom_centre)
 
     def plot_contour(
         self,
@@ -435,6 +462,8 @@ class Structure(Image):
         figsize=_default_figsize,
         mpl_kwargs=None,
         include_image=False,
+        zoom=None,
+        zoom_centre=None,
         **kwargs
     ):
         '''Plot the structure as a contour.'''
@@ -463,6 +492,37 @@ class Structure(Image):
         if not include_image:
             self.ax.invert_yaxis()
         self.label_ax(view, idx, **kwargs)
+        self.zoom_ax(view, zoom, zoom_centre)
+
+    def zoom_ax(self, view, zoom=None, zoom_centre=None):
+        '''Zoom in on axes, using centre of structure as zoom centre if not
+        otherwise specified.'''
+
+        if not zoom:
+            return
+        zoom = to_three(zoom)
+        x_ax, y_ax = _plot_axes[view]
+        if zoom_centre is None:
+            mid_x, mid_y = self.get_centre(view)
+        else:
+            mid_x, mid_y = zoom_centre[x_ax], zoom_centre[y_ax]
+
+        # Calculate new axis limits
+        init_xlim = self.plot_extent[view][:2]
+        init_ylim = self.plot_extent[view][2:]
+        xlim = [
+            mid_x - (init_xlim[1] - init_xlim[0]) / (2 * zoom[x_ax]),
+            mid_x + (init_xlim[1] - init_xlim[0]) / (2 * zoom[x_ax])
+        ]
+        ylim = [
+            mid_y - (init_ylim[1] - init_ylim[0]) / (2 * zoom[y_ax]),
+            mid_y + (init_ylim[1] - init_ylim[0]) / (2 * zoom[y_ax])
+        ]
+
+        # Set axis limits
+        self.ax.set_xlim(xlim)
+        self.ax.set_ylim(ylim)
+
 
 
 class StructureSet:
