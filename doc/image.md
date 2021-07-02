@@ -13,8 +13,8 @@ Images can be loaded from dicom files, nifti files, or numpy arrays, and will be
 - The `n_voxels` property containins the number of voxels in the (x, y, z) directions (same as `Image.data.shape`, but with 0 and 1 swapped).
 
 In the standard dicom-style configuration (Left, Posterior, Superior):
-- The x-axis increases along each row, and points towards the patient's left (i.e. towards the heart, away from the liver).
-- The y-axis increase down each column, and points from the patient's front to back (posterior).
+- The x-axis increases along each column, and points towards the patient's left (i.e. towards the heart, away from the liver).
+- The y-axis increase down each row, and points from the patient's front to back (posterior).
 - The z-axis increases along the slice index, and points from the patient's feet to head (superior).
 
 A canonical nifti-style array and affine can be obtained by running `Image.get_nifti_array_and_affine()`. By convention, this points in the same z direction but has x and y axes reversed (Right, Anterior, Superior). In the affine matrix, the x and y origins are therefore defined as being at the opposite end of the scale.
