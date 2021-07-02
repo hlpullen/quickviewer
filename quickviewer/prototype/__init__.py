@@ -209,9 +209,11 @@ class Image:
         # Adjust nifti
         elif self.source_type == 'nifti':
 
+            init_dtype = self.get_data().dtype
             nii = nibabel.as_closest_canonical(nibabel.Nifti1Image(
-                self.get_data(), self.affine))
-            data = nii.get_fdata().transpose(1, 0, 2)[::-1, ::-1, :]
+                self.data.astype(np.float64), self.affine))
+            data = nii.get_fdata().transpose(1, 0, 2)[::-1, ::-1, :].astype(
+                init_dtype)
             affine = nii.affine
             
             # Reverse x and y directions

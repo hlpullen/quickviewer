@@ -12,6 +12,7 @@ from shapely import geometry
 from quickviewer.prototype import Image
 from quickviewer.prototype import (
     is_list, 
+    _axes,
     _slice_axes, 
     _plot_axes,
     _default_figsize
@@ -155,24 +156,25 @@ class Structure(Image):
             self.shape = self.image.data.shape
             Image.__init__(self, np.zeros(self.shape), **self.kwargs)
 
-            # Set x-y contours with z slice numbers as keys
+            # Set x-y contours with z indices as keys
             self.contours = {'x-y': {}}
             for z, contours in self.input_contours.items():
-                z_sl = self.pos_to_slice(z, 'z')
-                self.contours['x-y'][z_sl] = [
+                iz = self.pos_to_idx(z, 'z')
+                self.contours['x-y'][iz] = [
                     [tuple(p[:2]) for p in points] for points in contours
                 ]
 
         # Create name if needed
         if self.name is None: 
-            if isinstance(source, str):
-                basename = os.path.basename(source).split('.')[0]
+            if isinstance(self.source, str):
+                basename = os.path.basename(self.source).split('.')[0]
                 name = re.sub(r'RTSTRUCT_[MVCT]+_\d+_\d+_\d+', '', basename)
                 name = name.replace('_', ' ')
                 self.name = name[0].upper() + name[1:]
             else:
                 self.name = 'Structure'
 
+        self.loaded = True
 
     def get_contours(self, view='x-y'):
         '''Get dict of contours in a given orientation.'''
@@ -205,10 +207,10 @@ class Structure(Image):
 
             # Make new contours from mask
             self.contours[view] = {}
-            for z_sl in range(1, self.n_voxels[z_ax] + 1):
+            for iz in range(self.n_voxels[z_ax]):
 
                 # Get slice of mask array
-                mask_slice = self.get_slice(view, sl=z_sl)
+                mask_slice = self.get_slice(view, idx=iz).T
                 if mask_slice.max() < 0.5:
                     continue 
 
@@ -228,7 +230,7 @@ class Structure(Image):
                         py = self.idx_to_pos(iy, y_ax)
                         contour_points.append((px, py))
                     points.append(contour_points)
-                self.contours[view][z_sl] = points
+                self.contours[view][iz] = points
 
         self.loaded_contours = True
 
@@ -237,11 +239,9 @@ class Structure(Image):
 
         if self.loaded_mask:
             return
-        if not self.loaded:
-            self.load()
 
         # Create mask from x-y contours if needed
-        if hasattr(self, 'input_contours'):
+        if self.input_contours:
 
             # Create mask on each z layer
             for z, contours in self.input_contours.items():
@@ -258,8 +258,6 @@ class Structure(Image):
                     for i in range(2):
                         points_idx[:, i] = pos_to_idx_vec(points[:, i], i,
                                                           return_int=False)
-                    if iz == 63:
-                        print(points_idx)
 
                     # Create polygon
                     polygon = geometry.Polygon(points_idx)
@@ -267,9 +265,9 @@ class Structure(Image):
                     # Get polygon's bounding box
                     ix1, iy1, ix2, iy2 = [int(xy) for xy in polygon.bounds]
                     ix1 = max(0, ix1)
-                    ix2 = min(ix2 + 1, self.shape[0])
+                    ix2 = min(ix2 + 1, self.shape[1])
                     iy1 = max(0, iy1)
-                    iy2 = min(iy2 + 1, self.shape[1])
+                    iy2 = min(iy2 + 1, self.shape[0])
 
                     # Loop over pixels
                     for ix in range(ix1, ix2):
@@ -287,43 +285,47 @@ class Structure(Image):
 
                             # Compute overlap
                             overlap = polygon.intersection(pixel).area
-                            self.data[ix, iy, int(iz)] += overlap
+                            self.data[iy, ix, int(iz)] += overlap
                             
             self.data = self.data > self.mask_level
 
         # Convert to boolean mask
-        if not self.data.dtype == 'bool':
-            self.data = self.data > 0.5
-
-        # Check if empty
-        if not hasattr(self, 'empty'):
-            self.empty = not np.any(self.data)
-
-        self.loaded_mask = True
+        if hasattr(self, 'data'):
+            if not self.data.dtype == 'bool':
+                self.data = self.data > 0.5
+            if not hasattr(self, 'empty'):
+                self.empty = not np.any(self.data)
+            self.loaded_mask = True
 
     def get_slice(self, *args, **kwargs):
 
         self.create_mask()
         return Image.get_slice(self, *args, **kwargs)
 
-    def get_slices(self, view='x-y'):
-        '''Get list of slices on which this structure exists.'''
+    def get_indices(self, view='x-y', slice_num=False):
+        '''Get list of slice indices on which this structure exists. If 
+        <slice_num> is True, slice numbers will be returned instead of 
+        indices.'''
 
         if not hasattr(self, 'contours') or view not in self.contours:
             self.create_contours()
-        return list(self.contours[view].keys())
+        indices = list(self.contours[view].keys())
+        if slice_num:
+            z_ax = _slice_axes[view]
+            return [self.idx_to_slice(i, z_ax) for i in indices]
+        else:
+            return indices
 
-    def get_mid_slice(self, view='x-y'):
-        '''Get central slice of this structure in a given orientation.'''
+    def get_mid_idx(self, view='x-y', slice_num=False):
+        '''Get central slice index of this structure in a given orientation.'''
         
-        return round(np.mean(self.get_slices(view)))
+        return round(np.mean(self.get_indices(view, slice_num=slice_num)))
 
     def on_slice(self, view, sl=None, pos=None, idx=None):
         '''Check whether this structure exists on a given slice.'''
 
         idx = self.get_idx(view, sl, idx, pos)
-        sl = self.idx_to_slice(idx, _slice_axes[view])
-        return sl in self.get_slices(view)
+        return idx in self.get_indices(view)
 
     def get_centroid(self, view='x-y', sl=None, idx=None, pos=None, units='mm'):
         '''Get centroid position in 2D or 3D.'''
@@ -348,12 +350,12 @@ class Structure(Image):
     def set_color(self, color):
         '''Set plotting color.'''
         
-        if color is None:
-            self.color = _standard_colors[0]
-        elif matplotlib.colors.is_color_like(color):
-            self.color = matplotlib.colors.to_rgba(color)
-        else:
+        if not matplotlib.colors.is_color_like(color):
             print(f'Warning: {color} not a valid color!')
+            color = None
+        if color is None:
+            color = _standard_colors[0]
+        self.color = matplotlib.colors.to_rgba(color)
 
     def plot(
         self, 
@@ -362,14 +364,22 @@ class Structure(Image):
         sl=None,
         idx=None,
         pos=None,
+        opacity=None,
         **kwargs
     ):
         '''Plot this structure as either a mask or a contour.'''
 
         if plot_type == 'mask':
-            self.plot_mask(view, sl, idx, pos, **kwargs)
-        else:
+            self.plot_mask(view, sl, idx, pos, opacity, **kwargs)
+        elif plot_type == 'contour':
             self.plot_contour(view, sl, idx, pos, **kwargs)
+        elif plot_type == 'filled':
+            if opacity is None:
+                opacity = 0.5
+            self.plot_mask(view, sl, idx, pos, opacity, **kwargs)
+            self.plot_contour(view, sl, idx, pos, **kwargs)
+        else:
+            print('Unrecognised structure plotting option:', plot_type)
 
     def plot_mask(
         self,
@@ -377,6 +387,7 @@ class Structure(Image):
         sl=None,
         idx=None,
         pos=None,
+        opacity=None,
         ax=None,
         gs=None,
         figsize=_default_figsize,
@@ -387,22 +398,29 @@ class Structure(Image):
         '''Plot the structure as a mask.'''
 
         if sl is None and idx is None and pos is None:
-            sl = self.get_mid_slice(view)
+            idx = self.get_mid_idx(view)
         self.create_mask()
         self.set_ax(view, ax, gs, figsize)
-        mask_slice = self.get_slice(view, sl, idx, pos)
+        mask_slice = self.get_slice(view, idx=idx)
 
         # Make colormap
         norm = matplotlib.colors.Normalize()
         cmap = matplotlib.cm.hsv
+        print('color:', self.color)
         s_colors = cmap(norm(mask_slice))
         s_colors[mask_slice > 0, :] = self.color
         s_colors[mask_slice == 0, :] = (0, 0,  0, 0)
 
+        # Get plotting arguments
+        mpl_kwargs = {} if mpl_kwargs is None else mpl_kwargs
+        if 'interpolation' not in mpl_kwargs:
+            mpl_kwargs['interpolation'] = 'none'
+        if 'opacity' not in mpl_kwargs and opacity is not None:
+            mpl_kwargs['alpha'] = opacity
+
         # Make plot
         if include_image:
-            self.image.plot(view, sl, idx, pos, ax=self.ax, show=False)
-        mpl_kwargs = {} if mpl_kwargs is None else mpl_kwargs
+            self.image.plot(view, idx=idx, ax=self.ax, show=False)
         self.ax.imshow(s_colors, extent=self.plot_extent[view], **mpl_kwargs)
         self.label_ax(view, idx, **kwargs)
 
@@ -412,6 +430,7 @@ class Structure(Image):
         sl=None,
         idx=None,
         pos=None,
+        show=True,
         ax=None,
         gs=None,
         figsize=_default_figsize,
@@ -425,11 +444,8 @@ class Structure(Image):
             self.create_contours()
 
         if sl is None and idx is None and pos is None:
-            sl = self.get_mid_slice(view)
-        idx = self.get_idx(view, sl, idx, pos)
-        sl = self.idx_to_slice(idx, _slice_axes[view])
-        print('trying slice:', sl)
-        if not self.on_slice(view, sl):
+            idx = self.get_mid_idx(view)
+        if not self.on_slice(view, idx=idx):
             return
 
         self.set_ax(view, ax, gs, figsize)
@@ -438,8 +454,8 @@ class Structure(Image):
 
         # Plot
         if include_image:
-            self.image.plot(view, sl, idx, pos, ax=self.ax, show=False)
-        for points in self.contours[view][sl]:
+            self.image.plot(view, idx=idx, ax=self.ax, show=False)
+        for points in self.contours[view][idx]:
             points_x = [p[0] for p in points]
             points_y = [p[1] for p in points]
             points_x.append(points_x[0])
@@ -499,7 +515,7 @@ def load_structs_dicom(path, names=None):
     try:
         ds = pydicom.read_file(path)
     except pydicom.errors.InvalidDicomError:
-        raise TypeError(f'Invalid dicom file: {path}')
+        return []
     if not (ds.SOPClassUID == '1.2.840.10008.5.1.4.1.1.481.3'):
         print(f'Warning: {path} is not a DICOM structure set file!')
         return
