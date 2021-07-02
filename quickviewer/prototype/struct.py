@@ -322,15 +322,40 @@ class Structure(Image):
         
         return round(np.mean(self.get_indices(view, slice_num=slice_num)))
 
-    def on_slice(self, view, sl=None, pos=None, idx=None):
+    def on_slice(self, view, sl=None, idx=None, pos=None):
         '''Check whether this structure exists on a given slice.'''
 
         idx = self.get_idx(view, sl, idx, pos)
         return idx in self.get_indices(view)
 
-    def get_centroid(self, view='x-y', sl=None, idx=None, pos=None, units='mm'):
+    def get_centroid(self, view=None, sl=None, idx=None, pos=None, units='mm',
+                     standardise=True):
         '''Get centroid position in 2D or 3D.'''
-        pass
+        
+        # Get 2D or 3D data from which to calculate centroid
+        if view is not None:
+            if sl is None and idx is None and pos is None:
+                idx = self.get_mid_idx(view)
+            if not self.on_slice(view, sl, idx, pos):
+                print('not on slice!', view, sl, idx, pos)
+                return [None, None]
+            data = self.get_slice(view, sl, idx, pos)
+            axes = _plot_axes[view]
+        else:
+            data = self.get_data(standardise)
+            axes = _axes
+
+        # Compute centroid
+        non_zero = np.argwhere(data)
+        centroid_rowcol = list(non_zero.mean(0))
+        centroid = [centroid_rowcol[1], centroid_rowcol[0]] \
+                + centroid_rowcol[2:] 
+        
+        # Convert to mm
+        if units == 'mm':
+            centroid = [self.idx_to_pos(c, axes[i]) for i, c in 
+                        enumerate(centroid)]
+        return centroid
 
     def get_centre(self, view=None, sl=None, idx=None, pos=None, units='mm',
                    standardise=True):
@@ -338,8 +363,7 @@ class Structure(Image):
 
         # Get 2D or 3D data for which to calculate centre
         if view is None:
-            data = self.get_standardised_data() if standardise else \
-                    self.get_data()
+            data = self.get_data(standardise)
             axes = _axes
         else:
             if sl is None and idx is None and pos is None:
@@ -389,19 +413,31 @@ class Structure(Image):
         idx=None,
         pos=None,
         opacity=None,
+        linewidth=None,
+        contour_kwargs=None,
+        mask_kwargs=None,
         **kwargs
     ):
         '''Plot this structure as either a mask or a contour.'''
 
+        # Plot a mask
         if plot_type == 'mask':
-            self.plot_mask(view, sl, idx, pos, opacity, **kwargs)
-        elif plot_type == 'contour':
-            self.plot_contour(view, sl, idx, pos, **kwargs)
+            self.plot_mask(view, sl, idx, pos, mask_kwargs, opacity, **kwargs)
+
+        # Plot a contour
+        elif plot_type in ['contour', 'centroid']:
+            show_centroid = plot_type == 'centroid'
+            self.plot_contour(view, sl, idx, pos, contour_kwargs, linewidth,
+                              centroid=show_centroid, **kwargs)
+
+        # Plot transparent mask + contour
         elif plot_type == 'filled':
             if opacity is None:
                 opacity = 0.5
-            self.plot_mask(view, sl, idx, pos, opacity, **kwargs)
-            self.plot_contour(view, sl, idx, pos, **kwargs)
+            self.plot_mask(view, sl, idx, pos, mask_kwargs, opacity, **kwargs)
+            self.plot_contour(view, sl, idx, pos, contour_kwargs, linewidth, 
+                              **kwargs)
+
         else:
             print('Unrecognised structure plotting option:', plot_type)
 
@@ -411,11 +447,11 @@ class Structure(Image):
         sl=None,
         idx=None,
         pos=None,
+        mask_kwargs=None,
         opacity=None,
         ax=None,
         gs=None,
         figsize=_default_figsize,
-        mpl_kwargs=None,
         include_image=False,
         zoom=None,
         zoom_centre=None,
@@ -437,16 +473,17 @@ class Structure(Image):
         s_colors[mask_slice == 0, :] = (0, 0,  0, 0)
 
         # Get plotting arguments
-        mpl_kwargs = {} if mpl_kwargs is None else mpl_kwargs
-        if 'interpolation' not in mpl_kwargs:
-            mpl_kwargs['interpolation'] = 'none'
-        if 'opacity' not in mpl_kwargs and opacity is not None:
-            mpl_kwargs['alpha'] = opacity
+        if mask_kwargs is None:
+            mask_kwargs = {}
+        mask_kwargs.setdefault('alpha', opacity)
+        mask_kwargs.setdefault('interpolation', 'none')
 
         # Make plot
         if include_image:
             self.image.plot(view, idx=idx, ax=self.ax, show=False)
-        self.ax.imshow(s_colors, extent=self.plot_extent[view], **mpl_kwargs)
+        self.ax.imshow(s_colors, extent=self.plot_extent[view], **mask_kwargs)
+
+        # Adjust axes
         self.label_ax(view, idx, **kwargs)
         self.zoom_ax(view, zoom, zoom_centre)
 
@@ -456,11 +493,13 @@ class Structure(Image):
         sl=None,
         idx=None,
         pos=None,
+        contour_kwargs=None,
+        linewidth=None,
+        centroid=False,
         show=True,
         ax=None,
         gs=None,
         figsize=_default_figsize,
-        mpl_kwargs=None,
         include_image=False,
         zoom=None,
         zoom_centre=None,
@@ -475,10 +514,11 @@ class Structure(Image):
             idx = self.get_mid_idx(view)
         if not self.on_slice(view, idx=idx):
             return
-
         self.set_ax(view, ax, gs, figsize)
-        mpl_kwargs = {} if mpl_kwargs is None else mpl_kwargs
-        mpl_kwargs.setdefault('color', self.color)
+
+        contour_kwargs = {} if contour_kwargs is None else contour_kwargs
+        contour_kwargs.setdefault('color', self.color)
+        contour_kwargs.setdefault('linewidth', linewidth)
 
         # Plot
         if include_image:
@@ -488,9 +528,16 @@ class Structure(Image):
             points_y = [p[1] for p in points]
             points_x.append(points_x[0])
             points_y.append(points_y[0])
-            self.ax.plot(points_x, points_y, **mpl_kwargs)
+            self.ax.plot(points_x, points_y, **contour_kwargs)
         if not include_image:
             self.ax.invert_yaxis()
+
+        # Plot centroid point
+        if centroid:
+            self.ax.plot(*self.get_centroid(view, sl, idx, pos), '+',
+                         **contour_kwargs)
+
+        # Adjust axes
         self.label_ax(view, idx, **kwargs)
         self.zoom_ax(view, zoom, zoom_centre)
 

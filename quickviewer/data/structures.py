@@ -549,6 +549,7 @@ class Struct(Image):
         self.adjust_ax(view, zoom, zoom_centre)
         self.label_ax(view, no_title=no_title)
 
+
     def plot_contour(
         self,
         view,

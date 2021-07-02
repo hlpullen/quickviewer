@@ -92,11 +92,13 @@ class Image:
         if load:
             self.load_data()
 
-    def get_data(self):
+    def get_data(self, standardise=False):
         '''Return image array.'''
 
         if self.data is None:
             self.load_data()
+        if standardise:
+            return self.get_standardised_data()
         return self.data
 
     def load_data(self, force=False):
