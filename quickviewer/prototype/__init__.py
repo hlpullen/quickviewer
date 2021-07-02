@@ -310,8 +310,9 @@ class Image:
                 [0, 0, 0, 1]
             ])
         else:
-            self.voxel_size = list(np.diag(self.affine))[:-1]
-            self.origin = list(self.affine[:-1, -1])
+            self.standardise_data()
+            self.voxel_size = list(np.diag(self.saffine))[:-1]
+            self.origin = list(self.saffine[:-1, -1])
 
         # Set other geometric properties
         self.n_voxels = [
@@ -596,6 +597,14 @@ class Image:
                     which='minor', bottom=True, top=True, left=True, right=True
                 )
 
+    #  def zoom_ax(self, view, zoom=None, zoom_centre):
+        #  '''Zoom in on axes if needed.'''
+
+        #  if not zoom:
+            #  return
+
+        #  init_lims = self.image_extent[view]
+
 
     def idx_to_pos(self, idx, ax):
         '''Convert an array index to a position in mm along a given axis.'''
@@ -662,7 +671,18 @@ class Image:
     def get_plot_aspect_ratio(self, view, zoom=None, n_colorbars=0,
                               figsize=_default_figsize):
         '''Estimate the ideal width/height ratio for a plot of this image 
-        in a given orientation.'''
+        in a given orientation.
+
+        view : str
+            Orienation ('x-y', 'y-z', or 'x-z')
+
+        zoom : float/list, default=None
+            Zoom factors; either a single value for all axes, or three values 
+            in order (x, y, z).
+
+        n_colorbars : int, default=0
+            Number of colorbars to make space for.
+        '''
 
         # Get length of the image in the plot axis directions
         x_ax, y_ax = _plot_axes[view]
@@ -681,6 +701,10 @@ class Image:
         x_pad = (0.7 * max_y_digits + 1.2 * minus_sign + 1) * font
 
         # Account for zoom
+        if zoom:
+            zoom = to_three(zoom)
+            x_len /= zoom[x_ax]
+            y_len /= zoom[y_ax]
 
         # Add padding for colorbar(s)
         colorbar_frac = 0.4 * 5 / figsize
@@ -1279,3 +1303,16 @@ def get_new_uid(root=None):
     else:
         new_id = '.'.join([new_id, str(np.random.randint(10, 99))])
     return new_id
+
+
+def to_three(val):
+    '''Ensure that a value is a list of three items.'''
+
+    if val is None:
+        return None
+    if is_list(val):
+        if not len(val) == 3:
+            print(f'Warning: {val} should be a list containing 3 items!')
+        return val
+    elif not is_list(val):
+        return [val, val, val]

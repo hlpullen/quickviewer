@@ -350,7 +350,7 @@ class Structure(Image):
     def set_color(self, color):
         '''Set plotting color.'''
         
-        if not matplotlib.colors.is_color_like(color):
+        if color is not None and not matplotlib.colors.is_color_like(color):
             print(f'Warning: {color} not a valid color!')
             color = None
         if color is None:
@@ -406,7 +406,6 @@ class Structure(Image):
         # Make colormap
         norm = matplotlib.colors.Normalize()
         cmap = matplotlib.cm.hsv
-        print('color:', self.color)
         s_colors = cmap(norm(mask_slice))
         s_colors[mask_slice > 0, :] = self.color
         s_colors[mask_slice == 0, :] = (0, 0,  0, 0)
