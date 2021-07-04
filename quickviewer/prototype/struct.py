@@ -545,6 +545,7 @@ class Structure(Image):
                          **contour_kwargs)
 
         # Adjust axes
+        self.ax.set_aspect('equal')
         self.label_ax(view, idx, **kwargs)
         self.zoom_ax(view, zoom, zoom_centre)
 
