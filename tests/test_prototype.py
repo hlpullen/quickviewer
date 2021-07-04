@@ -76,9 +76,16 @@ def test_array_to_nifti_npy():
 
     outname = 'tmp/test_nii.npy'
     im.write(outname, nifti_array=True)
-    im_npy_nifti = Image(outname)
+    im_npy_nifti = Image(outname, nifti_array=True, voxel_size=voxel_size,
+                         origin=origin)
     ndata, naffine = im.get_nifti_array_and_affine()
+    print(naffine)
+    print(im_npy_nifti.affine)
+    assert ndata.shape == im_npy_nifti.data.shape
     assert np.all(ndata == im_npy_nifti.data)
+    assert np.all(im.saffine == im_npy_nifti.saffine)
+    assert np.all(im.get_standardised_data() 
+                  == im_npy_nifti.get_standardised_data())
 
 def test_array_to_nifti():
     '''Check numpy array is correctly saved to nifti.'''
