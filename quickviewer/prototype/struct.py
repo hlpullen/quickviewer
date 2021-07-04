@@ -420,23 +420,26 @@ class Structure(Image):
     ):
         '''Plot this structure as either a mask or a contour.'''
 
+        show_centroid = 'centroid' in plot_type
+
         # Plot a mask
         if plot_type == 'mask':
             self.plot_mask(view, sl, idx, pos, mask_kwargs, opacity, **kwargs)
 
         # Plot a contour
         elif plot_type in ['contour', 'centroid']:
-            show_centroid = plot_type == 'centroid'
             self.plot_contour(view, sl, idx, pos, contour_kwargs, linewidth,
                               centroid=show_centroid, **kwargs)
 
         # Plot transparent mask + contour
-        elif plot_type == 'filled':
+        elif 'filled' in plot_type:
             if opacity is None:
-                opacity = 0.5
+                opacity = 0.3
             self.plot_mask(view, sl, idx, pos, mask_kwargs, opacity, **kwargs)
-            self.plot_contour(view, sl, idx, pos, contour_kwargs, linewidth, 
-                              **kwargs)
+            kwargs['ax'] = self.ax
+            kwargs['include_image'] = False
+            self.plot_contour(view, sl, idx, pos, contour_kwargs, linewidth,
+                              centroid=show_centroid, **kwargs)
 
         else:
             print('Unrecognised structure plotting option:', plot_type)
@@ -461,6 +464,8 @@ class Structure(Image):
 
         if sl is None and idx is None and pos is None:
             idx = self.get_mid_idx(view)
+        else:
+            idx = self.get_idx(view, sl, idx, pos)
         self.create_mask()
         self.set_ax(view, ax, gs, figsize)
         mask_slice = self.get_slice(view, idx=idx)
@@ -512,6 +517,8 @@ class Structure(Image):
 
         if sl is None and idx is None and pos is None:
             idx = self.get_mid_idx(view)
+        else:
+            idx = self.get_idx(view, sl, idx, pos)
         if not self.on_slice(view, idx=idx):
             return
         self.set_ax(view, ax, gs, figsize)
