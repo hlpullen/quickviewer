@@ -44,6 +44,7 @@ class Image:
         affine=None,
         voxel_size=(1, 1, 1),
         origin=(0, 0, 0),
+        nifti_array=False,
         downsample=None
     ):
         '''
@@ -79,6 +80,16 @@ class Image:
         origin : tuple, default=(0, 0, 0)
             Origin position in mm in order (x, y, z) to use if <source> is a 
             numpy array or path to a numpy file and <affine> is not provided.
+
+        nifti_array : bool, default=False
+            If True and <source> is a numpy array or numpy file, the array 
+            will be treated as a nifti-style array, i.e. (x, y, z) in 
+            (row, column, slice), as opposed to dicom style.
+
+        downsample : int/list, default=None
+            Amount by which to downsample the image. Can be a single value for
+            all axes, or a list containing downsampling amounts in order
+            (x, y, z).
         '''
 
         self.data = None
@@ -89,6 +100,7 @@ class Image:
         self.origin = origin
         self.affine = affine
         self.downsampling = downsample
+        self.nifti_array = nifti_array
         if load:
             self.load_data()
 
@@ -114,7 +126,7 @@ class Image:
         # Numpy array
         if isinstance(self.source, np.ndarray):
             self.data = self.source
-            self.source_type = 'array'
+            self.source_type = 'nifti array' if self.nifti_array else 'array'
 
         # Try loading from nifti file
         else:
@@ -137,7 +149,7 @@ class Image:
         # Try loading from numpy file
         if self.data is None:
             self.data = load_npy(self.source)
-            self.source_type = 'array'
+            self.source_type = 'nifti array' if self.nifti_array else 'array'
 
         # Ensure array is 3D
         if self.data.ndim == 2:
@@ -209,7 +221,7 @@ class Image:
                             * affine[i, i]
 
         # Adjust nifti
-        elif self.source_type == 'nifti':
+        elif 'nifti' in self.source_type:
 
             init_dtype = self.get_data().dtype
             nii = nibabel.as_closest_canonical(nibabel.Nifti1Image(
@@ -256,7 +268,7 @@ class Image:
             ('P', 'A'),
             ('I', 'S')
         ]
-        if source_type != 'nifti':
+        if 'nifti' not in source_type:
             for i in range(2):
                 switched = False
                 for p in pairs:
@@ -276,7 +288,7 @@ class Image:
             affine = self.affine
 
         codes = self.get_orientation_codes(affine, source_type)
-        if source_type == 'nifti':
+        if 'nifti' in source_type:
             codes = [codes[1], codes[0], codes[2]]
         vecs = {
             'L': [1, 0, 0],
@@ -315,6 +327,11 @@ class Image:
                 [0, 0, self.voxel_size[2], self.origin[2]],
                 [0, 0, 0, 1]
             ])
+            if 'nifti' in self.source_type:
+                self.affine[0, :] = -self.affine[0, :]
+                self.affine[1, 3] = -(self.affine[1, 3] 
+                                      + (self.data.shape[1] - 1)
+                                      * self.voxel_size[1])
         else:
             self.voxel_size = list(np.diag(self.affine))[:-1]
             self.origin = list(self.affine[:-1, -1])
@@ -789,7 +806,7 @@ class Image:
         configuration.'''
 
         # Convert dicom-style array to nifti
-        if self.source_type != 'nifti':
+        if 'nifti' not in self.source_type:
             data = self.get_data().transpose(1, 0, 2)[:, ::-1, :]
             affine = self.affine.copy()
             affine[0, :] = -affine[0, :]
@@ -816,7 +833,7 @@ class Image:
             return self.get_standardised_data(), self.saffine
 
         # Convert nifti-style array to dicom
-        if self.source_type == 'nifti':
+        if 'nifti' in self.source_type:
             data = self.get_data().transpose(1, 0, 2)[::-1, :, :]
             affine = self.affine.copy()
             affine[0, :] = -affine[0, :]
