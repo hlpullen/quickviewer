@@ -99,7 +99,7 @@ class Structure(Image):
         self.set_color(color)
         self.input_contours = contours
         self.image = image
-        if not isinstance(image, Image):
+        if image and not isinstance(image, Image):
             self.image = Image(image)
         self.shape = shape
         self.mask_level = mask_level
@@ -597,7 +597,7 @@ class StructureSet:
             self.sources = [sources]
         self.structs = []
         self.image = image
-        if not isinstance(image, Image):
+        if image and not isinstance(image, Image):
             self.image = Image(image)
 
         for source in self.sources:
@@ -606,7 +606,7 @@ class StructureSet:
             structs = load_structs_dicom(source)
             if len(structs):
                 for struct in structs.values():
-                    self.structs.append(Struct(
+                    self.structs.append(Structure(
                         name=struct['name'],
                         color=struct['color'],
                         contours=struct['contours'],
@@ -615,10 +615,24 @@ class StructureSet:
 
             # Load from struct mask
             else:
-                self.structs.append(Struct(
+                self.structs.append(Structure(
                     source, image=self.image
                 ))
 
+    def get_struct_list(self):
+        '''Get list of Structure objects.'''
+
+        return self.structs
+
+    def get_struct_names(self):
+        '''Get list of names of structures.'''
+
+        return [s.name for s in self.structs]
+
+    def get_struct_dict(self):
+        '''Get dict of structure names and Structure objects.'''
+
+        return {s.name: s for s in self.structs}
 
 
 def load_structs_dicom(path, names=None):
