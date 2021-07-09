@@ -644,6 +644,17 @@ class StructureSet:
 
         return {s.name: s for s in self.structs}
 
+    def print_structs(self):
+        print('\n'.join(self.get_struct_names()))
+
+    def __repr__(self):
+        out_str = 'StructureSet\n{'
+        out_str += '\n  name : ' + str(self.name)
+        out_str += '\n  structs :\n    '
+        out_str += '\n    '.join(self.get_struct_names())
+        out_str += '\n}'
+        return out_str
+
 
 def load_structs_dicom(path, names=None):
     '''Load structure(s) from a dicom structure file. <name> can be a single
