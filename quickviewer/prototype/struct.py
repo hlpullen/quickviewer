@@ -124,6 +124,8 @@ class Structure(Image):
         if self.loaded:
             return
 
+        self.image.load_data()
+
         if isinstance(self.source, str):
         
             # Try loading from dicom structure set
@@ -596,9 +598,7 @@ class StructureSet:
         if not is_list(sources):
             self.sources = [sources]
         self.structs = []
-        self.image = image
-        if image and not isinstance(image, Image):
-            self.image = Image(image)
+        self.set_image(image)
 
         for source in self.sources:
 
@@ -619,7 +619,17 @@ class StructureSet:
                     source, image=self.image
                 ))
 
-    def get_struct_list(self):
+    def set_image(self, image):
+        '''Set image for self and all structures.'''
+
+        if image and not isinstance(image, Image):
+            image = Image(image)
+
+        self.image = image
+        for s in self.structs:
+            s.image = image
+
+    def get_structs(self):
         '''Get list of Structure objects.'''
 
         return self.structs

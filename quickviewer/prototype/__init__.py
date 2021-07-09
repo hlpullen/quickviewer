@@ -518,6 +518,8 @@ class Image:
             left. The top/right ticks will not be labelled.
         '''
 
+        self.load_data()
+
         # Set up axes
         self.set_ax(view, ax, gs, figsize, zoom, colorbar)
 
@@ -1058,8 +1060,12 @@ def load_dicom(path):
             # Get HU window defaults
             if window_centre is None:
                 window_centre = getattr(ds, 'WindowCenter', None)
+                if isinstance(window_centre, pydicom.multival.MultiValue):
+                    window_centre = window_centre[0]
             if window_width is None:
                 window_width = getattr(ds, 'WindowWidth', None)
+                if isinstance(window_width, pydicom.multival.MultiValue):
+                    window_width = window_width[0]
 
         # Skip any invalid dicom files
         except pydicom.errors.InvalidDicomError:
