@@ -723,22 +723,44 @@ class StructureSet:
         for s in self.structs:
             s.image = image
 
-    def rename_structs(self, names=None):
-        '''Rename structures if a naming dictionary is given.'''
+    def rename_structs(self, names=None, first_match_only=True):
+        '''Rename structures if a naming dictionary is given. If 
+        <first_match_only> is True, only the first structure matching the 
+        possible matches will be renamed.'''
 
         if names is None:
             names = self.names
         if not names:
             return
 
-        for s in self.structs:
-            for name, matches in names.items():
-                if not is_list(matches):
-                    matches = [matches]
-                if any([fnmatch.fnmatch(standard_str(s.name), standard_str(m))
-                        for m in matches]):
-                    print('matched structure:', s.name, 'to:', name, matches)
-                    s.name = name
+        # Loop through each new name
+        already_renamed = []
+        for name, matches in names.items():
+
+            if not is_list(matches):
+                matches = [matches]
+
+            # Loop through all possible original names
+            name_matched = False
+            for m in matches:
+
+                # Loop through structures and see if there's a match
+                for i, s in enumerate(self.structs):
+
+                    # Don't rename a structure more than once
+                    if i in already_renamed:
+                        continue
+
+                    if fnmatch.fnmatch(standard_str(s.name), standard_str(m)):
+                        s.name = name
+                        name_matched = True
+                        already_renamed.append(i)
+                        if first_match_only:
+                            break
+
+                # If first_match_only, don't rename more than one structure
+                # with this new name
+                if name_matched and first_match_only:
                     break
 
     def filter_structs(self, to_keep=None, to_remove=None):
