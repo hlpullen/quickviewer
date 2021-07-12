@@ -62,7 +62,7 @@ class Image:
 
         load : bool, default=True
             If True, the image data will be immediately loaded. Otherwise, it
-            can be loaded later with the load_data() method.
+            can be loaded later with the load() method.
 
         title : str, default=None
             Title to use when plotting the image. If None and <source> is a 
@@ -102,18 +102,18 @@ class Image:
         self.downsampling = downsample
         self.nifti_array = nifti_array
         if load:
-            self.load_data()
+            self.load()
 
     def get_data(self, standardise=False):
         '''Return image array.'''
 
         if self.data is None:
-            self.load_data()
+            self.load()
         if standardise:
             return self.get_standardised_data()
         return self.data
 
-    def load_data(self, force=False):
+    def load(self, force=False):
         '''Load pixel array from image source.'''
 
         if self.data is not None and not force:
@@ -150,6 +150,10 @@ class Image:
         if self.data is None:
             self.data = load_npy(self.source)
             self.source_type = 'nifti array' if self.nifti_array else 'array'
+
+        # If still None, raise exception
+        if self.data is None:
+            raise RuntimeError(f'{self.source} not a valid image source!')
 
         # Ensure array is 3D
         if self.data.ndim == 2:
@@ -255,7 +259,7 @@ class Image:
         '''
 
         if affine is None:
-            self.load_data()
+            self.load()
             affine = self.affine
         codes = list(nibabel.aff2axcodes(affine))
 
@@ -518,13 +522,13 @@ class Image:
             left. The top/right ticks will not be labelled.
         '''
 
-        self.load_data()
+        self.load()
 
         # Set up axes
         self.set_ax(view, ax, gs, figsize, zoom, colorbar)
 
         # Get image slice
-        self.load_data()
+        self.load()
         idx = self.get_idx(view, sl, idx, pos)
         image_slice = self.get_slice(view, sl=sl, idx=idx, pos=pos)
 
@@ -658,7 +662,7 @@ class Image:
     def idx_to_pos(self, idx, ax, standardise=True):
         '''Convert an array index to a position in mm along a given axis.'''
 
-        self.load_data()
+        self.load()
         i_ax = _axes.index(ax) if ax in _axes else ax
         if standardise:
             origin = self.sorigin
@@ -671,7 +675,7 @@ class Image:
     def pos_to_idx(self, pos, ax, return_int=True, standardise=True):
         '''Convert a position in mm to an array index along a given axis.'''
 
-        self.load_data()
+        self.load()
         i_ax = _axes.index(ax) if ax in _axes else ax
         if standardise:
             origin = self.sorigin
@@ -688,7 +692,7 @@ class Image:
     def idx_to_slice(self, idx, ax):
         '''Convert an array index to a slice number along a given axis.'''
         
-        self.load_data()
+        self.load()
         i_ax = _axes.index(ax) if ax in _axes else ax
         if i_ax == 2:
             return self.n_voxels[i_ax] - idx
@@ -698,7 +702,7 @@ class Image:
     def slice_to_idx(self, sl, ax):
         '''Convert a slice number to an array index along a given axis.'''
 
-        self.load_data()
+        self.load()
         i_ax = _axes.index(ax) if ax in _axes else ax
         if i_ax == 2:
             return self.n_voxels[i_ax] - sl

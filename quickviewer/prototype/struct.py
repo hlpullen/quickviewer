@@ -20,15 +20,60 @@ from quickviewer.prototype import (
 )
 
 
-# Standard list of colours for structures
-_standard_colors = (
-    list(matplotlib.cm.Set1.colors)[:-1]
-    + list(matplotlib.cm.Set2.colors)[:-1]
-    + list(matplotlib.cm.Set3.colors)
-    + list(matplotlib.cm.tab20.colors)
-)
-for i in [9, 10]:  # Remove greys
-    del _standard_colors[i]
+class StructDefaults:
+    '''Singleton class for assigning default structure names and colours.'''
+
+    # Define the single instance as a class attribute
+    instance = None
+
+    # Create single instance in inner class
+    class __StructDefaults:
+
+        def __init__(self):
+
+            self.n_structs = 0
+            self.n_structure_sets = 0
+            self.n_colors_used = 0
+
+            self.colors = (
+                list(matplotlib.cm.Set1.colors)[:-1]
+                + list(matplotlib.cm.Set2.colors)[:-1]
+                + list(matplotlib.cm.Set3.colors)
+                + list(matplotlib.cm.tab20.colors)
+            )
+            for i in [9, 10]:  # Remove greys
+                del self.colors[i]
+
+    def __init__(self, reset=False):
+        '''Constructor of StructDefaults singleton class.'''
+
+        if not StructDefaults.instance:
+            StructDefaults.instance = StructDefaults.__StructDefaults()
+        elif reset:
+            StructDefaults.instance.__init__()
+
+    def get_default_struct_name(self):
+        '''Get a default name for a structure.'''
+
+        StructDefaults.instance.n_structs += 1
+        return f'Structure {StructDefaults.instance.n_structs}'
+
+    def get_default_struct_color(self):
+        '''Get a default structure color.'''
+
+        color = StructDefaults.instance.colors[
+            StructDefaults.instance.n_colors_used]
+        StructDefaults.instance.n_colors_used += 1
+        return color
+
+    def get_default_structure_set_name(self):
+        '''Get a default name for a structure set.'''
+
+        StructDefaults.instance.n_structure_sets += 1
+        return f'Structure Set {StructDefaults.instance.n_structure_sets}'
+
+
+StructDefaults()
 
 
 class Structure(Image):
@@ -94,7 +139,6 @@ class Structure(Image):
 
         # Assign properties
         self.source = source
-        self.name = name
         self.custom_color = color is not None
         self.set_color(color)
         self.input_contours = contours
@@ -105,11 +149,16 @@ class Structure(Image):
         self.mask_level = mask_level
         self.kwargs = kwargs
 
-        # Check either a source file or contours were given
-        if source is None:
-            if contours is None or (shape is None and image is None):
-                raise RuntimeError('Must provide contours and associated '
-                                   'image/shape if no source file is provided!')
+        # Create name
+        self.name = name
+        if self.name is None:
+            if isinstance(self.source, str):
+                basename = os.path.basename(self.source).split('.')[0]
+                name = re.sub(r'RTSTRUCT_[MVCT]+_\d+_\d+_\d+', '', basename)
+                name = standard_str(name)
+                self.name = name[0].upper() + name[1:]
+            else:
+                self.name = StructDefaults().get_default_struct_name()
 
         # Load structure data
         self.loaded = False
@@ -154,10 +203,11 @@ class Structure(Image):
         if self.input_contours is not None:
 
             # Create Image object
-            self.kwargs['voxel_size'] = self.image.voxel_size
-            self.kwargs['origin'] = self.image.origin
-            self.shape = self.image.data.shape
-            Image.__init__(self, np.zeros(self.shape), **self.kwargs)
+            if self.image is not None:
+                self.kwargs['voxel_size'] = self.image.voxel_size
+                self.kwargs['origin'] = self.image.origin
+                self.shape = self.image.data.shape
+                Image.__init__(self, np.zeros(self.shape), **self.kwargs)
 
             # Set x-y contours with z indices as keys
             self.contours = {'x-y': {}}
@@ -167,15 +217,6 @@ class Structure(Image):
                     [tuple(p[:2]) for p in points] for points in contours
                 ]
 
-        # Create name if needed
-        if self.name is None: 
-            if isinstance(self.source, str):
-                basename = os.path.basename(self.source).split('.')[0]
-                name = re.sub(r'RTSTRUCT_[MVCT]+_\d+_\d+_\d+', '', basename)
-                name = name.replace('_', ' ')
-                self.name = name[0].upper() + name[1:]
-            else:
-                self.name = 'Structure'
 
         self.loaded = True
 
@@ -245,6 +286,13 @@ class Structure(Image):
 
         # Create mask from x-y contours if needed
         if self.input_contours:
+
+            # Check an image or shape was given
+            if self.image is None and self.shape is None:
+                raise RuntimeError('Must set structure.image or structure.shape'
+                                   ' before creating mask!')
+            if self.image is None:
+                Image.__init__(self, np.zeros(self.shape), **self.kwargs)
 
             # Create mask on each z layer
             for z, contours in self.input_contours.items():
@@ -404,7 +452,7 @@ class Structure(Image):
             print(f'Warning: {color} not a valid color!')
             color = None
         if color is None:
-            color = _standard_colors[0]
+            color = StructDefaults().get_default_struct_color()
         self.color = matplotlib.colors.to_rgba(color)
 
     def plot(
@@ -589,18 +637,50 @@ class StructureSet:
         self,
         sources,
         name=None,
-        image=None
+        image=None,
+        load=True,
+        names=None,
+        to_keep=None,
+        to_remove=None,
     ):
         '''Load structures from sources.'''
 
         self.name = name
+        if name is None:
+            self.name = StructDefaults().get_default_structure_set_name()
         self.sources = sources
         if not is_list(sources):
             self.sources = [sources]
         self.structs = []
         self.set_image(image)
+        self.to_keep = to_keep
+        self.to_remove = to_remove
+        self.names = names
+        self.loaded = False
+        if load:
+            self.load()
 
-        for source in self.sources:
+    def load(self, sources=None, force=False):
+        '''Load structures from sources. If None, will load from own 
+        self.sources.'''
+
+        if self.loaded and not force and sources is None:
+            return
+
+        if sources is None:
+            sources = self.sources
+        elif not is_list(sources):
+            sources = [sources]
+
+        # Expand any directories
+        sources_expanded = []
+        for source in sources:
+            if os.path.isdir(source):
+                sources_expanded.extend(os.path.listdir(source))
+            else:
+                sources_expanded.append(source)
+
+        for source in sources_expanded:
 
             # Attempt to load from dicom
             structs = load_structs_dicom(source)
@@ -615,9 +695,23 @@ class StructureSet:
 
             # Load from struct mask
             else:
-                self.structs.append(Structure(
-                    source, image=self.image
-                ))
+                try:
+                    self.structs.append(Structure(
+                        source, image=self.image
+                    ))
+                except RuntimeError:
+                    continue
+
+        self.rename_structs()
+        self.filter_structs()
+        self.loaded = True
+
+    def reset(self):
+        '''Reload structures from sources.'''
+
+        self.structs = []
+        self.loaded = False
+        self.load(force=True)
 
     def set_image(self, image):
         '''Set image for self and all structures.'''
@@ -629,25 +723,110 @@ class StructureSet:
         for s in self.structs:
             s.image = image
 
+    def rename_structs(self, names=None):
+        '''Rename structures if a naming dictionary is given.'''
+
+        if names is None:
+            names = self.names
+        if not names:
+            return
+
+        for s in self.structs:
+            for name, matches in names.items():
+                if not is_list(matches):
+                    matches = [matches]
+                if any([fnmatch.fnmatch(standard_str(s.name), standard_str(m))
+                        for m in matches]):
+                    print('matched structure:', s.name, 'to:', name, matches)
+                    s.name = name
+                    break
+
+    def filter_structs(self, to_keep=None, to_remove=None):
+        '''Keep only structs in the to_keep list, and remove any in the 
+        to_remove list.'''
+
+        if to_keep is None:
+            to_keep = self.to_keep
+        elif not is_list(to_keep):
+            to_keep = [to_keep]
+        if to_remove is None:
+            to_remove = self.to_remove
+        elif not is_list(to_remove):
+            to_remove = [to_remove]
+
+        if to_keep is not None:
+            keep = []
+            for s in self.structs:
+                if any([fnmatch.fnmatch(standard_str(s.name), standard_str(k))
+                       for k in to_keep]):
+                    keep.append(s)
+            self.structs = keep
+
+        if to_remove is not None:
+            keep = []
+            for s in self.structs:
+                if not any([fnmatch.fnmatch(standard_str(s.name), 
+                                            standard_str(r))
+                           for r in to_remove]):
+                    keep.append(s)
+            self.structs = keep
+
+    def add_structs(self, sources):
+        '''Add additional structures from sources.'''
+
+        if not is_list(sources):
+            sources = [sources]
+        self.sources.extend(sources)
+        self.load_structs(sources)
+
+    def copy(self, name=None, names=None, to_keep=None, to_remove=None):
+        '''Create a copy of this structure set, with structures optionally
+        renamed or filtered.'''
+
+        if not hasattr(self, 'n_copies'):
+            self.n_copies = 1
+        else:
+            self.n_copies += 1
+        if name is None:
+            name = f'{self.name} (copy {self.n_copies})'
+
+        ss = StructureSet(self.sources, name=name, image=self.image, 
+                          load=False, names=names, to_keep=to_keep, 
+                          to_remove=to_remove)
+        if self.loaded:
+            ss.structs = self.structs
+            ss.loaded = True
+            ss.rename_structs(names)
+            ss.filter_structs(to_keep, to_remove)
+
+        return ss
+
     def get_structs(self):
         '''Get list of Structure objects.'''
 
+        self.load()
         return self.structs
 
     def get_struct_names(self):
         '''Get list of names of structures.'''
 
+        self.load()
         return [s.name for s in self.structs]
 
     def get_struct_dict(self):
         '''Get dict of structure names and Structure objects.'''
 
+        self.load()
         return {s.name: s for s in self.structs}
 
     def print_structs(self):
+
+        self.load()
         print('\n'.join(self.get_struct_names()))
 
     def __repr__(self):
+
+        self.load()
         out_str = 'StructureSet\n{'
         out_str += '\n  name : ' + str(self.name)
         out_str += '\n  structs :\n    '

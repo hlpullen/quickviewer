@@ -775,8 +775,14 @@ class RtStruct(ArchiveObject, StructureSet):
         self.series_description = ""
 
         # Initialise structure sets
-        self.structure_sets = [StructureSet(f.path, image=self.scan) 
-                               for f in self.files]
+        self.structure_sets = []
+        for i, f in enumerate(self.files):
+            self.structure_sets.append(StructureSet(
+                f.path,
+                image=self.scan,
+                name=f'{f.timestamp}_StructureSet{i + 1}',
+                load=False
+            ))
 
     def get_structs(self, file_index=None):
 
