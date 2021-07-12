@@ -168,6 +168,16 @@ class SyntheticImage(Image):
 
         return np.ones(self.shape) * self.bg_intensity
 
+    def reset(self):
+        '''Remove all shapes.'''
+
+        self.shapes = []
+        self.structs = []
+        self.groups = {}
+        self.shape_count = {}
+        self.translation = None
+        self.rotation = None
+
     def add_shape(self, shape, shape_type, is_struct, above, group):
 
         if above:
@@ -331,7 +341,7 @@ class SyntheticImage(Image):
         # Apply transformations
         return self.coords
 
-    def reset(self):
+    def reset_transforms(self):
         '''Remove any rotations or translations.'''
 
         self.translation = None
@@ -452,7 +462,7 @@ class Grid():
         self.axis = axis
         self.shape = shape
 
-    def get_data(self):
+    def get_data(self, _):
 
         coords = np.meshgrid(
             np.arange(0, self.shape[0]),
@@ -460,6 +470,7 @@ class Grid():
             np.arange(0, self.shape[2]),
         )
         if self.axis is not None:
+            axis = _axes.index(self.axis)
             ax1, ax2 = [i for i in [0, 1, 2] if i != axis]
             return (coords[ax1] % self.spacing[ax1] < self.thickness[ax1]) | (
                 coords[ax2] % self.spacing[ax2] < self.thickness[ax2]
