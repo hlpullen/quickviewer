@@ -173,11 +173,13 @@ class Structure(Image):
         if self.loaded:
             return
 
-        self.image.load_data()
+        if self.image:
+            self.image.load_data()
 
+        # Try loading from dicom structure set
+        structs = []
         if isinstance(self.source, str):
         
-            # Try loading from dicom structure set
             structs = load_structs_dicom(self.source, names=self.name)
             if len(structs):
 
@@ -194,10 +196,10 @@ class Structure(Image):
                 if not self.custom_color:
                     self.set_color(struct['color'])
 
-            # Load structure mask
-            else:
-                Image.__init__(self, self.source, **self.kwargs)
-                self.create_mask()
+        # Load structure mask
+        if not len(structs):
+            Image.__init__(self, self.source, **self.kwargs)
+            self.create_mask()
 
         # Deal with input from dicom
         if self.input_contours is not None:

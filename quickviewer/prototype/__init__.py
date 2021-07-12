@@ -102,18 +102,18 @@ class Image:
         self.downsampling = downsample
         self.nifti_array = nifti_array
         if load:
-            self.load()
+            self.load_data()
 
     def get_data(self, standardise=False):
         '''Return image array.'''
 
         if self.data is None:
-            self.load()
+            self.load_data()
         if standardise:
             return self.get_standardised_data()
         return self.data
 
-    def load(self, force=False):
+    def load_data(self, force=False):
         '''Load pixel array from image source.'''
 
         if self.data is not None and not force:
@@ -259,7 +259,7 @@ class Image:
         '''
 
         if affine is None:
-            self.load()
+            self.load_data()
             affine = self.affine
         codes = list(nibabel.aff2axcodes(affine))
 
@@ -522,13 +522,13 @@ class Image:
             left. The top/right ticks will not be labelled.
         '''
 
-        self.load()
+        self.load_data()
 
         # Set up axes
         self.set_ax(view, ax, gs, figsize, zoom, colorbar)
 
         # Get image slice
-        self.load()
+        self.load_data()
         idx = self.get_idx(view, sl, idx, pos)
         image_slice = self.get_slice(view, sl=sl, idx=idx, pos=pos)
 
@@ -662,7 +662,7 @@ class Image:
     def idx_to_pos(self, idx, ax, standardise=True):
         '''Convert an array index to a position in mm along a given axis.'''
 
-        self.load()
+        self.load_data()
         i_ax = _axes.index(ax) if ax in _axes else ax
         if standardise:
             origin = self.sorigin
@@ -675,7 +675,7 @@ class Image:
     def pos_to_idx(self, pos, ax, return_int=True, standardise=True):
         '''Convert a position in mm to an array index along a given axis.'''
 
-        self.load()
+        self.load_data()
         i_ax = _axes.index(ax) if ax in _axes else ax
         if standardise:
             origin = self.sorigin
@@ -692,7 +692,7 @@ class Image:
     def idx_to_slice(self, idx, ax):
         '''Convert an array index to a slice number along a given axis.'''
         
-        self.load()
+        self.load_data()
         i_ax = _axes.index(ax) if ax in _axes else ax
         if i_ax == 2:
             return self.n_voxels[i_ax] - idx
@@ -702,7 +702,7 @@ class Image:
     def slice_to_idx(self, sl, ax):
         '''Convert a slice number to an array index along a given axis.'''
 
-        self.load()
+        self.load_data()
         i_ax = _axes.index(ax) if ax in _axes else ax
         if i_ax == 2:
             return self.n_voxels[i_ax] - sl
