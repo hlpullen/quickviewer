@@ -7,6 +7,7 @@ import matplotlib.cm
 import matplotlib.colors
 import matplotlib.pyplot as plt
 from matplotlib.ticker import MultipleLocator, AutoMinorLocator, FormatStrFormatter
+import matplotlib.patches as mpatches
 import nibabel
 import numpy as np
 import os
@@ -565,6 +566,7 @@ class Image:
 
         # Set up axes
         self.set_ax(view, ax, gs, figsize, zoom, colorbar)
+        plt.cla()
 
         # Get image slice
         self.load_data()
@@ -607,7 +609,7 @@ class Image:
         )
 
         # Plot structures
-        if include_structures and len(self.structures):
+        if include_structures:
             handles = []
 
             # Plot standalone structures
@@ -643,7 +645,7 @@ class Image:
                                                       label=name))
 
             # Draw structure legend
-            if struct_legend:
+            if struct_legend and len(handles):
                 self.ax.legend(
                     handles=handles, loc=legend_loc, facecolor='white',
                     framealpha=1
