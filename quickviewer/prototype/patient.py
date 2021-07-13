@@ -760,7 +760,7 @@ class RtPlan(MachineObject):
                         self.target_dose += dose.TargetPrescriptionDose
 
 
-class RtStruct(ArchiveObject, StructureSet):
+class RtStruct(ArchiveObject):
     """Class for loading a structure set associated with a specific scan."""
 
     def __init__(self, path="", scans=[]):

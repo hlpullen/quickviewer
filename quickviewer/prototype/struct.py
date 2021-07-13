@@ -197,7 +197,7 @@ class Structure(Image):
                     self.set_color(struct['color'])
 
         # Load structure mask
-        if not len(structs):
+        if not len(structs) and self.source is not None:
             Image.__init__(self, self.source, **self.kwargs)
             self.create_mask()
 
@@ -725,7 +725,8 @@ class StructureSet:
         for s in self.structs:
             s.image = image
 
-    def rename_structs(self, names=None, first_match_only=True):
+    def rename_structs(self, names=None, first_match_only=True,
+                       keep_renamed_only=False):
         '''Rename structures if a naming dictionary is given. If 
         <first_match_only> is True, only the first structure matching the 
         possible matches will be renamed.'''
@@ -765,6 +766,11 @@ class StructureSet:
                 if name_matched and first_match_only:
                     break
 
+        # Keep only the renamed structs
+        if keep_renamed_only:
+            renamed_structs = [self.structs[i] for i in already_renamed]
+            self.structs = renamed_structs
+
     def filter_structs(self, to_keep=None, to_remove=None):
         '''Keep only structs in the to_keep list, and remove any in the 
         to_remove list.'''
@@ -803,7 +809,8 @@ class StructureSet:
         self.sources.extend(sources)
         self.load_structs(sources)
 
-    def copy(self, name=None, names=None, to_keep=None, to_remove=None):
+    def copy(self, name=None, names=None, to_keep=None, to_remove=None,
+             keep_renamed_only=False):
         '''Create a copy of this structure set, with structures optionally
         renamed or filtered.'''
 
@@ -820,7 +827,7 @@ class StructureSet:
         if self.loaded:
             ss.structs = self.structs
             ss.loaded = True
-            ss.rename_structs(names)
+            ss.rename_structs(names, keep_renamed_only=keep_renamed_only)
             ss.filter_structs(to_keep, to_remove)
 
         return ss

@@ -101,6 +101,8 @@ class Image:
         self.affine = affine
         self.downsampling = downsample
         self.nifti_array = nifti_array
+        self.structures = []
+        self.structure_sets = []
         if load:
             self.load_data()
 
@@ -411,6 +413,22 @@ class Image:
             self.fig = plt.figure(figsize=(figsize * aspect, figsize))
             self.ax = self.fig.add_subplot()
 
+    def add_struct(self, struct):
+        '''Add a structure.'''
+
+        self.structures.append(struct)
+
+    def add_structure_set(self, structure_set):
+        '''Add a structure set.'''
+
+        self.structure_sets.append(structure_set)
+
+    def clear_structs(self):
+        '''Clear all structures.'''
+
+        self.structures = []
+        self.structure_sets = []
+
     def plot(
         self, 
         view='x-y', 
@@ -432,7 +450,12 @@ class Image:
         annotate_slice=False,
         major_ticks=None,
         minor_ticks=None,
-        ticks_all_sides=False
+        ticks_all_sides=False,
+        include_structures=True,
+        struct_plot_type='contour',
+        struct_legend=False,
+        struct_kwargs={},
+        legend_loc='lower left'
     ):
         '''Plot a 2D slice of the image.
 
@@ -520,6 +543,22 @@ class Image:
             If True, major (and minor if using) tick marks will be shown above
             and to the right hand side of the plot as well as below and to the
             left. The top/right ticks will not be labelled.
+
+        include_structures : bool, default=True
+            If True and this Image object has associated structures, the 
+            structures will be plotted on top of the image.
+
+        struct_plot_type : str, default='contour'
+            Structure plotting type (see Structure.plot() for options).
+
+        struct_legend : bool, default=False
+            If True, a legend will be drawn containing structure names.
+
+        struct_kwargs : dict, default=None
+            Extra arguments to provide to structure plotting.
+
+        legend_loc : str, default='lower left'
+            Legend location for structure legend.
         '''
 
         self.load_data()
@@ -566,6 +605,49 @@ class Image:
             vmax=vmax,
             **mpl_kwargs
         )
+
+        # Plot structures
+        if include_structures and len(self.structures):
+            handles = []
+
+            # Plot standalone structures
+            for s in self.structures:
+                s.plot(
+                    view, 
+                    idx=idx, 
+                    ax=self.ax,
+                    plot_type=struct_plot_type, 
+                    include_image=False,
+                    **struct_kwargs
+                )
+                if s.on_slice(view, idx=idx) and struct_legend:
+                    handles.append(mpatches.Patch(color=s.color, 
+                                                  label=s.name))
+
+            # Plot structure sets
+            for ss in self.structure_sets:
+                for s in ss.get_structs():
+                    name = s.name
+                    if len(self.structure_sets) > 1:
+                        name += f' ({ss.name})'
+                    s.plot(
+                        view, 
+                        idx=idx, 
+                        ax=self.ax,
+                        plot_type=struct_plot_type, 
+                        include_image=False,
+                        **struct_kwargs
+                    )
+                    if s.on_slice(view, idx=idx) and struct_legend:
+                        handles.append(mpatches.Patch(color=s.color, 
+                                                      label=name))
+
+            # Draw structure legend
+            if struct_legend:
+                self.ax.legend(
+                    handles=handles, loc=legend_loc, facecolor='white',
+                    framealpha=1
+                )
 
         # Label axes
         self.label_ax(view, idx, scale_in_mm, no_title, no_ylabel,
