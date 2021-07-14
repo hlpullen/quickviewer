@@ -1503,6 +1503,8 @@ class Image(ArchiveObject):
         # Write to nifti file
         if outname.endswith('.nii') or outname.endswith('.nii.gz'):
             data, affine = self.get_nifti_array_and_affine(standardise)
+            if data.dtype == 'bool':
+                data = data.copy().astype(int)
             write_nifti(outname, data, affine)
             print('Wrote to NIfTI file:', outname)
 
@@ -1732,6 +1734,7 @@ class ROI(Image):
 
         # Try loading from dicom structure set
         structs = []
+        self.source_type = None
         if isinstance(self.source, str):
         
             structs = load_structs_dicom(self.source, names=self.name)
@@ -1749,6 +1752,7 @@ class ROI(Image):
                 self.input_contours = struct['contours']
                 if not self.custom_color:
                     self.set_color(struct['color'])
+                self.source_type = 'dicom'
 
         # Load structure mask
         if not len(structs) and self.source is not None:
@@ -1772,7 +1776,6 @@ class ROI(Image):
                 self.contours['x-y'][iz] = [
                     [tuple(p[:2]) for p in points] for points in contours
                 ]
-
 
         self.loaded = True
 
@@ -2187,6 +2190,8 @@ class ROI(Image):
 
     def write(self, outname=None, outdir='.', ext=None, **kwargs):
 
+        self.load()
+
         # Generate output name if not given
         possible_ext = ['.dcm', '.nii.gz', '.nii', '.npy']
         if outname is None:
@@ -2213,7 +2218,8 @@ class ROI(Image):
 
         # Write array to nifti or npy
         if ext != '.dcm':
-            Image.write(outname, **kwargs)
+            self.create_mask()
+            Image.write(self, outname, **kwargs)
         else:
             print('Warning: dicom structure writing not currently available!')
 
@@ -2256,6 +2262,7 @@ class RtStruct(ArchiveObject):
         '''Load structures from sources. If None, will load from own 
         self.sources.'''
 
+
         if self.loaded and not force and sources is None:
             return
 
@@ -2268,11 +2275,17 @@ class RtStruct(ArchiveObject):
         sources_expanded = []
         for source in sources:
             if os.path.isdir(source):
-                sources_expanded.extend(os.path.listdir(source))
+                sources_expanded.extend([os.path.join(source, file) for file in
+                                        os.listdir(source)])
             else:
                 sources_expanded.append(source)
 
         for source in sources_expanded:
+
+            if source.startswith('.') or source.endswith('.txt'):
+                continue
+            if os.path.isdir(source):
+                continue
 
             # Attempt to load from dicom
             structs = load_structs_dicom(source)
@@ -2464,6 +2477,29 @@ class RtStruct(ArchiveObject):
         out_str += '\n}'
         return out_str
 
+    def write(self, outname=None, outdir='.', ext=None, **kwargs):
+        '''Write to a dicom RtStruct file or directory of nifti files.'''
+
+        if ext is not None and not ext.startswith('.'):
+            ext = f'.{ext}'
+
+        # Check whether to write to dicom file
+        if isinstance(outname, str) and outname.endswith('.dcm'):
+            ext = '.dcm'
+            outname = os.path.join(outdir, outname)
+        
+        if ext == '.dcm':
+            if outname is None:
+                outname = f'{outdir}/{self.name}.dcm'
+            print('Warning: dicom writing not yet available!')
+            return
+
+        # Otherwise, write to individual structure files
+        if not os.path.exists(outdir):
+            os.makedirs(outdir)
+        for s in self.get_structs():
+            s.write(outdir=outdir, ext=ext, **kwargs)
+
 
 def load_structs_dicom(path, names=None):
     '''Load structure(s) from a dicom structure file. <name> can be a single
@@ -2535,30 +2571,6 @@ def load_structs_dicom(path, names=None):
     return structs
 
 
-    def write(self, outname=None, outdir='.', ext=None, **kwargs):
-        '''Write to a dicom RtStruct file or directory of nifti files.'''
-
-        if ext is not None and not ext.startswith('.'):
-            ext = f'.{ext}'
-
-        # Check whether to write to dicom file
-        if outname.endswith('.dcm'):
-            ext = '.dcm'
-            outname = os.path.join(outdir, outname)
-        
-        if ext == '.dcm':
-            if outname is None:
-                outname = f'{outdir}/{self.name}.dcm'
-            print('Warning: dicom writing not yet available!')
-            return
-
-        # Otherwise, write to individual structure files
-        if not os.path.exists(outdir):
-            os.path.makedirs(outdir)
-        for s in self.get_structs():
-            s.write(outdir=outdir, ext=ext, **kwargs)
-
-
 def get_dicom_sequence(ds=None, basename=''):
 
     sequence = []
@@ -2605,11 +2617,10 @@ def load_dicom(path):
     paths = []
     if os.path.isfile(path):
         try:
-            ds = pydicom.read_file(path, force=True)
+            ds = pydicom.read_file(path)
             if ds.get('ImagesInAcquisition', None) == 1:
                 paths = [path]
         except pydicom.errors.InvalidDicomError:
-            print(path)
             return None, None, None, None
 
     # Case where there are multiple dicom files for this image
@@ -2641,7 +2652,7 @@ def load_dicom(path):
         try:
             
             # Load file and check it matches the others
-            ds = pydicom.read_file(dcm, force=True)
+            ds = pydicom.read_file(dcm)
             if study_uid is None:
                 study_uid = ds.StudyInstanceUID
             if series_num is None:
