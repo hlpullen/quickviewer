@@ -959,6 +959,7 @@ class Image(ArchiveObject):
         struct_plot_type='contour',
         struct_legend=False,
         struct_kwargs={},
+        centre_on_struct=None,
         legend_loc='lower left'
     ):
         '''Plot a 2D slice of the image.
@@ -1065,6 +1066,11 @@ class Image(ArchiveObject):
         struct_kwargs : dict, default=None
             Extra arguments to provide to structure plotting.
 
+        centre_on_struct : str, default=None
+            Name of struct on which to centre, if no idx/sl/pos is given.
+            If <zoom> is given but no <zoom_centre>, the zoom will also centre
+            on this struct.
+
         legend_loc : str, default='lower left'
             Legend location for structure legend.
         '''
@@ -1074,9 +1080,13 @@ class Image(ArchiveObject):
         # Set up axes
         self.set_ax(view, ax, gs, figsize, zoom, colorbar)
         self.ax.clear()
+        self.load_data()
+
+        # If centering on structure, find central slice
+        #  if all([i is None for i in [idx, pos, sl]):
+                #  if cen
 
         # Get image slice
-        self.load_data()
         idx = self.get_idx(view, sl, idx, pos)
         image_slice = self.get_slice(view, sl=sl, idx=idx, pos=pos)
 
@@ -1697,6 +1707,19 @@ class ROI(Image):
         self.loaded_mask = False
         if load:
             self.load()
+
+    def __repr__(self):
+
+        self.load()
+        out_str = 'ROI\n{'
+        attrs_to_print = sorted([
+            'name',
+            'color'
+        ])
+        for attr in attrs_to_print:
+            out_str += f'\n {attr}: {getattr(self, attr)}'
+        out_str += '\n}'
+        return out_str
 
     def load(self):
         '''Load structure from file.'''
@@ -2384,6 +2407,15 @@ class RtStruct(ArchiveObject):
 
         self.load()
         return {s.name: s for s in self.structs}
+
+    def get_struct(self, name):
+        """Get a structure with a specific name."""
+
+        structs = self.get_struct_dict()
+        if name not in structs:
+            print(f"Structure {name} not found!")
+            return
+        return structs[name]
 
     def print_structs(self):
 

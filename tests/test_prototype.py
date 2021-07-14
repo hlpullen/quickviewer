@@ -19,12 +19,12 @@ if os.path.exists('tmp'):
 os.mkdir('tmp')
 
 # Create a test nifti file
-nii_file = 'tmp/test.nii'
+nii_file = 'tmp/tmp.nii'
 im.write(nii_file)
 im_nii = Image(nii_file)
 
 # Create a test dicom file
-dcm_file = 'tmp/test_dcm'
+dcm_file = 'tmp/tmp_dcm'
 im.write(dcm_file)
 im_dcm = Image(dcm_file)
 
@@ -64,7 +64,7 @@ def test_nifti_array():
 def test_array_to_npy():
     '''Check numpy array can be saved to a .npy file and read in correctly.'''
 
-    outname = 'tmp/test.npy'
+    outname = 'tmp/tmp.npy'
     im.write(outname)
     im_npy = Image(outname, affine=im.affine)
     assert np.all(im_npy.data == im.data)
@@ -74,7 +74,7 @@ def test_array_to_npy():
 def test_array_to_nifti_npy():
     '''Check numpy array is correctly saved in nifti-style.'''
 
-    outname = 'tmp/test_nii.npy'
+    outname = 'tmp/tmp_nii.npy'
     im.write(outname, nifti_array=True)
     im_npy_nifti = Image(outname, nifti_array=True, voxel_size=voxel_size,
                          origin=origin)
@@ -106,7 +106,7 @@ def test_nifti_to_nifti():
     '''Check a nifti file can be written and read correctly.'''
 
     # Write nifti image to second nifti file
-    nii2 = 'tmp/test2.nii'
+    nii2 = 'tmp/tmp2.nii'
     im_nii.write(nii2)
     im_nii2 = Image(nii2)
 
@@ -118,7 +118,7 @@ def test_nifti_to_npy():
     '''Check that a nifti file is correctly written to a numpy file.'''
 
     # Write to numpy file
-    npy = 'tmp/test2.npy'
+    npy = 'tmp/tmp2.npy'
     im_nii.write(npy)
     affine_dcm = im_nii.get_dicom_array_and_affine()[1]
     im_npy = Image(npy, affine=affine_dcm)
@@ -138,7 +138,7 @@ def test_dcm_to_nifti():
     '''Check that a dicom file is correctly written to nifti.'''
 
     # Write dicom to nifti
-    nii = 'tmp/test_dcm2nii.nii'
+    nii = 'tmp/tmp_dcm2nii.nii'
     im_dcm.write(nii)
     im_dcm2nii = Image(nii)
 
@@ -157,7 +157,7 @@ def test_dcm_to_dcm():
     '''Check that a dicom file is correctly written to dicom.'''
 
     # Write to dicom
-    dcm = 'tmp/test_dcm2'
+    dcm = 'tmp/tmp_dcm2'
     im_dcm.write(dcm)
     im_dcm2 = Image(dcm)
 
@@ -169,7 +169,7 @@ def test_nifti_to_dcm():
     '''Check that a nifti file can be written to dicom using a fresh header.'''
 
     # Write nifti to dicom
-    dcm = 'tmp/test_nii2dcm'
+    dcm = 'tmp/tmp_nii2dcm'
     im_nii.write(dcm)
     im_nii2dcm = Image(dcm)
 
@@ -189,12 +189,12 @@ def test_dcm_to_nifti_to_dcm():
     the dicom that was used to create that nifti file.'''
 
     # Write dicom to nifti
-    nii = 'tmp/test_dcm2nii.nii'
+    nii = 'tmp/tmp_dcm2nii.nii'
     im_dcm.write(nii)
     im_dcm2nii = Image(nii)
 
     # Write nifti to new dicom
-    dcm = 'tmp/test_nii2dcm'
+    dcm = 'tmp/tmp_nii2dcm'
     im_dcm2nii.write(dcm, header_source=im_dcm.source)
     im_dcm2 = Image(dcm)
 
