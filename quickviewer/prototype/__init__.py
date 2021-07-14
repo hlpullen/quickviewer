@@ -253,16 +253,16 @@ class DataObject:
 
 
 class PathObject(DataObject):
-    """DataObject with and associated directory; has the ability to 
-    extract a list of dated objects from within this directory."""
+    '''DataObject with and associated directory; has the ability to 
+    extract a list of dated objects from within this directory.'''
 
-    def __init__(self, path=""):
+    def __init__(self, path=''):
         self.path = fullpath(path)
-        self.subdir = ""
+        self.subdir = ''
 
-    def get_dated_objects(self, dtype="DatedObject", subdir=""):
-        """Create list of objects of a given type, <dtype>, inside own 
-        directory, or inside own directory + <subdir> if given."""
+    def get_dated_objects(self, dtype='DatedObject', subdir='', **kwargs):
+        '''Create list of objects of a given type, <dtype>, inside own 
+        directory, or inside own directory + <subdir> if given.'''
 
         # Create object for each file in the subdir
         objs = []
@@ -285,10 +285,10 @@ class PathObject(DataObject):
 
 @functools.total_ordering
 class DatedObject(PathObject):
-    """PathObject with an associated date and time, which can be used for 
-    sorting multiple DatedObjects."""
+    '''PathObject with an associated date and time, which can be used for 
+    sorting multiple DatedObjects.'''
 
-    def __init__(self, path=""):
+    def __init__(self, path=''):
 
         PathObject.__init__(self, path)
 
@@ -301,14 +301,14 @@ class DatedObject(PathObject):
         if (self.date is None) and (self.time is None):
             timestamp = os.path.basename(self.path)
             try:
-                self.date, self.time = timestamp.split("_")
+                self.date, self.time = timestamp.split('_')
             except ValueError:
                 self.date, self.time = (None, None)
 
-        self.timestamp = f"{self.date}_{self.time}"
+        self.timestamp = f'{self.date}_{self.time}'
 
     def in_date_interval(self, min_date=None, max_date=None):
-        """Check whether own date falls within an interval."""
+        '''Check whether own date falls within an interval.'''
 
         if min_date:
             if self.date < min_date:
@@ -342,15 +342,15 @@ class DatedObject(PathObject):
 
 
 class MachineObject(DatedObject):
-    """Dated object with an associated machine name."""
+    '''Dated object with an associated machine name.'''
 
-    def __init__(self, path=""):
+    def __init__(self, path=''):
         DatedObject.__init__(self, path)
         self.machine = os.path.basename(os.path.dirname(path))
 
 
 class ArchiveObject(DatedObject):
-    """Dated object associated with multiple files."""
+    '''Dated object associated with multiple files.'''
 
     def __init__(self, path='', allow_dirs=False):
 
@@ -363,7 +363,7 @@ class ArchiveObject(DatedObject):
         for filename in filenames:
 
             # Disregard hidden files
-            if not filename.startswith("."):
+            if not filename.startswith('.'):
                 filepath = os.path.join(self.path, filename)
                 if not os.path.isdir(filepath) or allow_dirs:
                     self.files.append(File(path=filepath))
@@ -372,10 +372,10 @@ class ArchiveObject(DatedObject):
 
 
 class File(DatedObject):
-    """File with an associated date. Files can be sorted based on their 
-    filenames."""
+    '''File with an associated date. Files can be sorted based on their 
+    filenames.'''
 
-    def __init__(self, path=""):
+    def __init__(self, path=''):
         DatedObject.__init__(self, path)
 
     def __cmp__(self, other):
@@ -2185,6 +2185,38 @@ class ROI(Image):
         self.ax.set_ylim(ylim)
 
 
+    def write(self, outname=None, outdir='.', ext=None, **kwargs):
+
+        # Generate output name if not given
+        possible_ext = ['.dcm', '.nii.gz', '.nii', '.npy']
+        if outname is None:
+            if ext is None:
+                ext = '.nii'
+            else:
+                if ext not in possible_ext:
+                    raise RuntimeError(f'Unrecognised file extension: {ext}')
+            if not ext.startswith('.'):
+                ext = f'.{ext}'
+            outname = f'{outdir}/{self.name}{ext}'
+
+        # Otherwise, infer extension from filename
+        else:
+
+            # Find any of the valid file extensions
+            for pos in possible_ext:
+                if outname.endswith(pos):
+                    ext = pos
+            if ext not in possible_ext:
+                raise RuntimeError(f'Unrecognised output file type: {outname}')
+
+            outname = os.path.join(outdir, outname)
+
+        # Write array to nifti or npy
+        if ext != '.dcm':
+            Image.write(outname, **kwargs)
+        else:
+            print('Warning: dicom structure writing not currently available!')
+
 
 class RtStruct(ArchiveObject):
     '''Structure set.'''
@@ -2503,6 +2535,30 @@ def load_structs_dicom(path, names=None):
     return structs
 
 
+    def write(self, outname=None, outdir='.', ext=None, **kwargs):
+        '''Write to a dicom RtStruct file or directory of nifti files.'''
+
+        if ext is not None and not ext.startswith('.'):
+            ext = f'.{ext}'
+
+        # Check whether to write to dicom file
+        if outname.endswith('.dcm'):
+            ext = '.dcm'
+            outname = os.path.join(outdir, outname)
+        
+        if ext == '.dcm':
+            if outname is None:
+                outname = f'{outdir}/{self.name}.dcm'
+            print('Warning: dicom writing not yet available!')
+            return
+
+        # Otherwise, write to individual structure files
+        if not os.path.exists(outdir):
+            os.path.makedirs(outdir)
+        for s in self.get_structs():
+            s.write(outdir=outdir, ext=ext, **kwargs)
+
+
 def get_dicom_sequence(ds=None, basename=''):
 
     sequence = []
@@ -2549,10 +2605,11 @@ def load_dicom(path):
     paths = []
     if os.path.isfile(path):
         try:
-            ds = pydicom.read_file(path)
+            ds = pydicom.read_file(path, force=True)
             if ds.get('ImagesInAcquisition', None) == 1:
                 paths = [path]
         except pydicom.errors.InvalidDicomError:
+            print(path)
             return None, None, None, None
 
     # Case where there are multiple dicom files for this image
@@ -2584,7 +2641,7 @@ def load_dicom(path):
         try:
             
             # Load file and check it matches the others
-            ds = pydicom.read_file(dcm)
+            ds = pydicom.read_file(dcm, force=True)
             if study_uid is None:
                 study_uid = ds.StudyInstanceUID
             if series_num is None:
@@ -2644,7 +2701,7 @@ def load_dicom(path):
     # Case where no data was found
     if not data_slices:
         print(f'Warning: no valid dicom files found in {path}')
-        return None, None
+        return None, None, None, None
 
     # Case with single image array
     if len(data_slices) == 1:
@@ -3205,6 +3262,7 @@ class Study(ArchiveObject):
         ArchiveObject.__init__(self, path, allow_dirs=True)
 
         special_dirs = ['RTPLAN', 'RTSTRUCT', 'RTDOSE']
+        self.scan_types = []
         for file in self.files:
 
             subdir = os.path.basename(file.path)
@@ -3213,10 +3271,12 @@ class Study(ArchiveObject):
 
             # Get images
             im_name = f'{subdir.lower()}_scans'
+            self.scan_types.append(im_name)
             setattr(
                 self, 
                 im_name,
-                self.get_dated_objects(dtype='Image', subdir=subdir)
+                self.get_dated_objects(dtype='Image', subdir=subdir, 
+                                       load=False)
             )
 
             # Get associated structs
@@ -3243,9 +3303,6 @@ class Study(ArchiveObject):
             #  dtype='RtDose', subdir='RTDOSE/CT', images=self.ct_scans
         #  )
         #  self.ct_doses = self.correct_dose_scan_position(self.ct_doses)
-
-        # Set description
-        self.description = self.get_description()
 
     def correct_dose_scan_position(self, doses=[]):
         '''Correct for scan positions from CheckTomo being offset by one slice
@@ -3512,16 +3569,7 @@ class Study(ArchiveObject):
         '''Load a study description.'''
 
         # Find an object from which to extract description
-        obj = None
-        if self.ct_scans:
-            obj = self.ct_scans[-1]
-        elif self.mvct_scans:
-            obj = self.mvct_scans[-1]
-        elif self.ct_structs:
-            obj = self.ct_structs[-1]
-        elif self.mvct_structs:
-            obj = self.mvct_structs[-1]
-
+        obj = getattr(self, self.scan_types[0])[-1]
         description = ''
         if obj:
             if obj.files:
