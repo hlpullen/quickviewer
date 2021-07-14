@@ -23,6 +23,7 @@ import skimage.measure
 import tempfile
 import time
 import uuid
+import shutil
 
 
 default_stations = {"0210167": "LA3", "0210292": "LA4"}
@@ -1526,14 +1527,7 @@ class Image(ArchiveObject):
             if outname.endswith('.dcm'):
                 outdir = os.path.dirname(outname)
             else:
-                basename_split = os.path.basename(outname).split('.')
-                if len(basename_split) == 1:
-                    outdir = outname
-                else:
-                    raise RuntimeError(
-                        'Unrecognised file extension: ' +
-                        '.'.join(basename_split[1:])
-                    )
+                outdir = outname
 
             # Get header source
             if header_source is None and isinstance(self.source, str):
@@ -3157,9 +3151,6 @@ class Patient(PathObject):
                                 )
                             )
 
-        # Get patient demographics
-        self.birth_date, self.age, self.sex = self.get_demographics()
-
     def combined_files(self, dtype, min_date=None, max_date=None):
         '''Get list of all files of a given data type <dtype> associated with 
         this patient, within a given date range if specified.'''
@@ -3215,15 +3206,8 @@ class Patient(PathObject):
         # Find an object from which to extract the info
         obj = None
         if self.studies:
-            study = self.studies[-1]
-            if study.ct_scans:
-                im = study.ct_scans[-1]
-            elif study.mvct_scans:
-                obj = study.mvct_scans[-1]
-            elif study.ct_scans:
-                obj = study.ct_scans[-1]
-            elif study.mvct_scans:
-                obj = study.mvct_scans[-1]
+            obj = getattr(self.studies[0], 
+                          f'{self.studies[0].im_types[0].lower()}_scans')[-1]
 
         # Read demographic info from the object
         if obj and obj.files:
@@ -3265,6 +3249,64 @@ class Patient(PathObject):
                 break
         return last
 
+    def write(
+        self, 
+        outdir='.', 
+        ext='.nii.gz', 
+        to_ignore=None, 
+        overwrite=True
+    ):
+        '''Write files tree.'''
+
+        if not ext.startswith('.'):
+            ext = f'.{ext}'
+
+        patient_dir = os.path.join(outdir, self.id)
+        if not os.path.exists(patient_dir):
+            os.makedirs(patient_dir)
+        elif overwrite:
+            shutil.rmtree(patient_dir)
+            os.mkdir(patient_dir)
+
+        if to_ignore is None:
+            to_ignore = []
+
+        for study in self.studies:
+
+            # Make study directory
+            study_dir = os.path.join(
+                patient_dir, os.path.relpath(study.path, self.path))
+            if not os.path.exists(study_dir):
+                os.makedirs(study_dir)
+
+            # Loop through image types
+            for im_type in study.im_types:
+
+                if im_type in to_ignore:
+                    continue
+
+                im_type_dir = os.path.join(study_dir, im_type)
+                if not os.path.exists(im_type_dir):
+                    os.mkdir(im_type_dir)
+
+                # Write all scans of this image type
+                for im in getattr(study, f'{im_type.lower()}_scans'):
+
+                    # Make directory for this scan
+                    im_dir = os.path.join(
+                        study_dir,
+                        os.path.relpath(im.path, study.path)
+                    )
+
+                    # Write image data to nifti
+                    if ext == '.dcm':
+                        outname = im_dir
+                    else:
+                        outname = f'{im_dir}{ext}'
+                    if overwrite and os.path.exists(outname):
+                        continue
+                    im.write(outname)
+
 
 class Study(ArchiveObject):
 
@@ -3273,16 +3315,16 @@ class Study(ArchiveObject):
         ArchiveObject.__init__(self, path, allow_dirs=True)
 
         special_dirs = ['RTPLAN', 'RTSTRUCT', 'RTDOSE']
-        self.scan_types = []
+        self.im_types = []
         for file in self.files:
 
             subdir = os.path.basename(file.path)
             if subdir in special_dirs:
                 continue
+            self.im_types.append(subdir)
 
             # Get images
             im_name = f'{subdir.lower()}_scans'
-            self.scan_types.append(im_name)
             setattr(
                 self, 
                 im_name,
@@ -3580,7 +3622,9 @@ class Study(ArchiveObject):
         '''Load a study description.'''
 
         # Find an object from which to extract description
-        obj = getattr(self, self.scan_types[0])[-1]
+        obj = None
+        if self.studies:
+            obj = getattr(self, f'{self.im_types[0].lower()}_scans')[-1]
         description = ''
         if obj:
             if obj.files:
