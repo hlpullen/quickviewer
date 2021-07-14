@@ -1054,7 +1054,7 @@ class Image(ArchiveObject):
 
         # Set up axes
         self.set_ax(view, ax, gs, figsize, zoom, colorbar)
-        plt.cla()
+        self.ax.clear()
 
         # Get image slice
         self.load_data()
