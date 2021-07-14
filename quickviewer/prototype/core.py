@@ -411,3 +411,73 @@ class File(DatedObject):
         return result
 
 
+def alphanumeric(in_str=''):
+    '''Function that can be passed as value for list sort() method
+    to have alphanumeric (natural) sorting'''
+
+    import re
+
+    elements = []
+    for substr in re.split('(-*[0-9]+)', in_str):
+        try:
+            element = int(substr)
+        except BaseException:
+            element = substr
+        elements.append(element)
+    return elements
+
+
+def fullpath(path=''):
+    '''Evaluate full path, expanding '~', environment variables, and 
+    symbolic links.'''
+
+    expanded = ''
+    if path:
+        tmp = os.path.expandvars(path.strip())
+        tmp = os.path.abspath(os.path.expanduser(tmp))
+        expanded = os.path.realpath(tmp)
+    return expanded
+
+
+def get_time_and_date(timestamp=''):
+
+    timeAndDate = (None, None)
+    if is_timestamp(timestamp):
+        valueList = os.path.splitext(timestamp)[0].split('_')
+        valueList = [value.strip() for value in valueList]
+        if valueList[0].isalpha():
+            timeAndDate = tuple(valueList[1:3])
+        else:
+            timeAndDate = tuple(valueList[0:2])
+    else:
+        i1 = timestamp.find('_')
+        i2 = timestamp.rfind('.')
+        if (-1 != i1) and (-1 != i2):
+            bitstamp = timestamp[i1 + 1 : i2]
+            if is_timestamp(bitstamp):
+                timeAndDate = tuple(bitstamp.split('_'))
+
+    return timeAndDate
+
+
+def is_timestamp(testString=''):
+
+    timestamp = True
+    valueList = os.path.splitext(testString)[0].split('_')
+    valueList = [value.strip() for value in valueList]
+    if len(valueList) > 2:
+        if valueList[0].isalpha() and valueList[1].isdigit() \
+           and valueList[2].isdigit():
+            valueList = valueList[1:3]
+        elif valueList[0].isdigit() and valueList[1].isdigit():
+            valueList = valueList[:2]
+        elif valueList[0].isdigit() and valueList[1].isdigit():
+            valueList = valueList[:2]
+    if len(valueList) != 2:
+        timestamp = False
+    else:
+        for value in valueList:
+            if not value.isdigit():
+                timestamp = False
+                break
+    return timestamp
