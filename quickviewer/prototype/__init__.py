@@ -352,7 +352,7 @@ class MachineObject(DatedObject):
 class ArchiveObject(DatedObject):
     """Dated object associated with multiple files."""
 
-    def __init__(self, path=""):
+    def __init__(self, path='', allow_dirs=False):
 
         DatedObject.__init__(self, path)
         self.files = []
@@ -365,7 +365,7 @@ class ArchiveObject(DatedObject):
             # Disregard hidden files
             if not filename.startswith("."):
                 filepath = os.path.join(self.path, filename)
-                if not os.path.isdir(filepath):
+                if not os.path.isdir(filepath) or allow_dirs:
                     self.files.append(File(path=filepath))
 
         self.files.sort()
@@ -581,6 +581,25 @@ class Image(ArchiveObject):
 
         if load:
             self.load_data()
+
+    def __repr__(self):
+
+        self.load_data()
+        out_str = 'Image\n{'
+        attrs_to_print = sorted([
+            'date',
+            'path',
+            'subdir',
+            'source_type',
+            'affine',
+            'timestamp',
+            'title',
+            'downsampling'
+        ])
+        for attr in attrs_to_print:
+            out_str += f'\n {attr}: {getattr(self, attr)}'
+        out_str += '\n}'
+        return out_str
 
     def get_data(self, standardise=False):
         '''Return image array.'''
@@ -3147,50 +3166,51 @@ class Patient(PathObject):
         return last
 
 
-class Study(DatedObject):
+class Study(ArchiveObject):
 
     def __init__(self, path=''):
 
-        DatedObject.__init__(self, path)
+        ArchiveObject.__init__(self, path, allow_dirs=True)
 
-        # Load RT plans, CT and MR scans, all doses, and CT structure sets
-        self.plans = self.get_plan_data(dtype='RtPlan', subdir='RTPLAN')
-        self.ct_scans = self.get_dated_objects(dtype='Image', subdir='CT')
-        self.mr_scans = self.get_dated_objects(dtype='Image', subdir='MR')
-        self.doses = self.get_plan_data(
-            dtype='RtDose',
-            subdir='RTDOSE',
-            exclude=['MVCT', 'CT'],
-            images=self.ct_scans
-        )
-        self.ct_structs = self.get_structs(subdir='RTSTRUCT/CT', 
-                                           images=self.ct_scans)
+        special_dirs = ['RTPLAN', 'RTSTRUCT', 'RTDOSE']
+        for file in self.files:
 
-        # Look for HD CT scans and add to CT list
-        ct_hd = self.get_dated_objects(dtype='CT', subdir='CT_HD')
-        ct_hd_structs = self.get_structs(subdir='RTSTRUCT/CT_HD', images=ct_hd)
-        if ct_hd:
-            self.ct_scans.extend(ct_hd)
-            self.ct_scans.sort()
-        if ct_hd_structs:
-            self.ct_structs.extend(ct_hd_structs)
-            self.ct_structs.sort()
+            subdir = os.path.basename(file.path)
+            if subdir in special_dirs:
+                continue
+
+            # Get images
+            im_name = f'{subdir.lower()}_scans'
+            setattr(
+                self, 
+                im_name,
+                self.get_dated_objects(dtype='Image', subdir=subdir)
+            )
+
+            # Get associated structs
+            struct_subdir = f'RTSTRUCT/{subdir}'
+            if os.path.exists(os.path.join(self.path, struct_subdir)):
+                setattr(
+                    self,
+                    f'{subdir.lower()}_structs',
+                    self.get_structs(subdir=struct_subdir, 
+                                     images=getattr(self, im_name))
+                )
+
+        # Plans, dose etc: leave commented for now
+        #  self.plans = self.get_plan_data(dtype='RtPlan', subdir='RTPLAN')
+        #  self.doses = self.get_plan_data(
+            #  dtype='RtDose',
+            #  subdir='RTDOSE',
+            #  exclude=['MVCT', 'CT'],
+            #  images=self.ct_scans
+        #  )
 
         # Load CT-specific RT doses
-        self.ct_doses = self.get_plan_data(
-            dtype='RtDose', subdir='RTDOSE/CT', images=self.ct_scans
-        )
-        self.ct_doses = self.correct_dose_scan_position(self.ct_doses)
-
-        # Load MVCT images, doses, and structs
-        self.mvct_scans = self.get_dated_objects(dtype='Image', subdir='MVCT')
-        self.mvct_doses = self.get_plan_data(
-            dtype='RtDose', subdir='RTDOSE/MVCT', images=self.mvct_scans
-        )
-        self.mvct_doses = self.correct_dose_scan_position(self.mvct_doses)
-        self.mvct_structs = self.get_structs(
-            subdir='RTSTRUCT/MVCT', images=self.mvct_scans
-        )
+        #  self.ct_doses = self.get_plan_data(
+            #  dtype='RtDose', subdir='RTDOSE/CT', images=self.ct_scans
+        #  )
+        #  self.ct_doses = self.correct_dose_scan_position(self.ct_doses)
 
         # Set description
         self.description = self.get_description()
