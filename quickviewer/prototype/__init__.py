@@ -3254,7 +3254,8 @@ class Patient(PathObject):
         outdir='.', 
         ext='.nii.gz', 
         to_ignore=None, 
-        overwrite=True
+        overwrite=True,
+        structure_set=None,
     ):
         '''Write files tree.'''
 
@@ -3303,9 +3304,49 @@ class Patient(PathObject):
                         outname = im_dir
                     else:
                         outname = f'{im_dir}{ext}'
-                    if overwrite and os.path.exists(outname):
+                    if os.path.exists(outname) and not overwrite:
                         continue
                     im.write(outname)
+
+                    # Find structure sets to write
+                    if structure_set == 'all':
+                        ss_to_write = im.structs
+                    elif structure_set is None:
+                        ss_to_write = []
+                    elif isinstance(structure_set, int):
+                        ss_to_write = [im.structs[structure_set]]
+                    elif is_list(structure_set):
+                        ss_to_write = [im.structs[i] for i in structure_set]
+                    else:
+                        raise TypeError('Unrecognised structure_set option '
+                                        f'{structure_set}')
+
+                    # Write structure sets for this image
+                    for ss in ss_to_write:
+
+                        # Find path to output structure directory
+                        ss_path = os.path.join(
+                            study_dir,
+                            os.path.relpath(ss.path, study.path)
+                        ) 
+                        if ext == '.dcm':
+                            ss_dir = os.path.dirname(ss_path)
+                        else:
+                            ss_dir = ss_path.replace('.dcm', '')
+
+                        # Ensure it exists
+                        if not os.path.exists(ss_path):
+                            os.makedirs(ss_path)
+
+                        # Write dicom structure set
+                        if ext == '.dcm':
+                            if os.path.exists(ss_path) and not overwrite:
+                                continue
+                            ss.write(ss_path)
+
+                        # Write structs to individual files
+                        else:
+                            ss.write(outdir=ss_dir, ext=ext)
 
 
 class Study(ArchiveObject):
