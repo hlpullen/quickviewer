@@ -757,7 +757,7 @@ class OrthogonalImage(MultiImage):
             mpl_kwargs=mpl_kwargs,
             show=False,
             colorbar=False,
-            no_ylabel=False,
+            no_ylabel=True,
             no_title=True,
             major_ticks=major_ticks,
             minor_ticks=minor_ticks,
