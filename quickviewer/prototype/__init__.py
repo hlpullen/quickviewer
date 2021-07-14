@@ -1,29 +1,494 @@
 '''Prototype classes for core data functionality.'''
 
+from matplotlib.ticker import MultipleLocator, AutoMinorLocator, FormatStrFormatter
+from pydicom.dataset import Dataset, FileDataset, FileMetaDataset
+from scipy.ndimage import morphology
+from shapely import geometry
 import copy
+import datetime
+import fnmatch
+import functools
 import glob
 import matplotlib as mpl
 import matplotlib.cm
 import matplotlib.colors
-import matplotlib.pyplot as plt
-from matplotlib.ticker import MultipleLocator, AutoMinorLocator, FormatStrFormatter
 import matplotlib.patches as mpatches
+import matplotlib.pyplot as plt
 import nibabel
 import numpy as np
 import os
 import pydicom
-from pydicom.dataset import Dataset, FileDataset, FileMetaDataset
-import datetime
-import tempfile
-import uuid
-import time
-import fnmatch
-import skimage.measure
 import re
-from scipy.ndimage import morphology
-from shapely import geometry
+import skimage.measure
+import tempfile
+import time
+import uuid
 
-from quickviewer.prototype.core import ArchiveObject, default_stations
+
+default_stations = {"0210167": "LA3", "0210292": "LA4"}
+
+default_opts = {}
+default_opts['print_depth'] = 0
+
+
+class Defaults:
+    '''
+    Singleton class for storing default values of parameters
+    that may be used in object initialisation.
+
+    Implementation of the singleton design pattern is based on:
+    https://python-3-patterns-idioms-test.readthedocs.io
+           /en/latest/Singleton.html
+    '''
+
+    # Define the single instance as a class attribute
+    instance = None
+
+    # Create single instance in inner class
+    class __Defaults:
+
+        # Define instance attributes based on opts dictionary
+        def __init__(self, opts={}):
+            for key, value in opts.items():
+                setattr(self, key, value)
+
+        # Allow for printing instance attributes
+        def __repr__(self):
+            out_list = []
+            for key, value in sorted(self.__dict__.items()):
+                out_list.append(f'{key}: {value}')
+            out_string = '\n'.join(out_list)
+            return out_string
+
+    def __init__(self, opts={}, reset=False):
+        '''
+        Constructor of Defaults singleton class.
+
+        Parameters
+        ----------
+        opts : dict, default={}
+            Dictionary of attribute-value pairs.
+
+        reset : bool, default=False
+            If True, delete all pre-existing instance attributes before
+            adding attributes and values from opts dictionary.
+            If False, don't delete pre-existing instance attributes,
+            but add to them, or modify values, from opts dictionary.
+        '''
+
+        if not Defaults.instance:
+            Defaults.instance = Defaults.__Defaults(opts)
+        else:
+            if reset:
+                Defaults.instance.__dict__ = {}
+            for key, value in opts.items():
+                setattr(Defaults.instance, key, value)
+
+    # Allow for getting instance attributes
+    def __getattr__(self, name):
+        return getattr(self.instance, name)
+
+    # Allow for setting instance attributes
+    def __setattr__(self, name, value):
+        return setattr(self.instance, name, value)
+
+    # Allow for printing instance attributes
+    def __repr__(self):
+        return self.instance.__repr__()
+
+
+Defaults(default_opts)
+
+
+class DataObject:
+    '''
+    Base class for objects serving as data containers.
+    An object has user-defined data attributes, which may include
+    other DataObject objects and lists of DataObject objects.
+
+    The class provides for printing attribute values recursively, to
+    a chosen depth, and for obtaining nested dictionaries of
+    attributes and values.
+    '''
+
+    def __init__(self, opts={}, **kwargs):
+        '''
+        Constructor of DataObject class, allowing initialisation of an 
+        arbitrary set of attributes.
+
+        Parameters
+        ----------
+        opts : dict, default={}
+            Dictionary to be used in setting instance attributes
+            (dictionary keys) and their initial values.
+
+        **kwargs
+            Keyword-value pairs to be used in setting instance attributes
+            and their initial values.
+        '''
+
+        for key, value in opts.items():
+            setattr(self, key, value)
+        for key, value in kwargs.items():
+            setattr(self, key, value)
+        return None
+
+    def __repr__(self, depth=None):
+        '''
+        Create string recursively listing attributes and values.
+
+        Parameters
+        ----------
+
+        depth : integer/None, default=None
+            Depth to which recursion is performed.
+            If the value is None, depth is set to the value
+            of the object's print_depth property, if defined,
+            or otherwise to the value of Defaults().print_depth.
+        '''
+
+        if depth is None:
+            depth = self.get_print_depth()
+
+        out_list = [f'\n{self.__class__.__name__}', '{']
+
+        # Loop over attributes, with different treatment
+        # depending on whether attribute value is a list.
+        # Where an attribute value of list item is
+        # an instance of DataObject or a subclass
+        # it's string representation is obtained by calling
+        # the instance's __repr__() method with depth decreased
+        # by 1, or (depth less than 1) is the class representation.
+        for key in sorted(self.__dict__):
+            item = self.__dict__[key]
+            if isinstance(item, list):
+                items = item
+                n = len(items)
+                if n:
+                    if depth > 0:
+                        value_string = '['
+                        for i, item in enumerate(items):
+                            item_string = item.__repr__(depth=(depth - 1))
+                            comma = "," if (i + 1 < n) else ''
+                            value_string = \
+                                f'{value_string} {item_string}{comma}'
+                        value_string = f'{value_string}]'
+                    else:
+                        value_string = f'[{n} * {item[0].__class__}]'
+                else:
+                    value_string = '[]'
+            else:
+                if issubclass(item.__class__, DataObject):
+                    if depth > 0:
+                        value_string = item.__repr__(depth=(depth - 1))
+                    else:
+                        value_string = f'{item.__class__}'
+                else:
+                    value_string = item.__repr__()
+            out_list.append(f'  {key} : {value_string} ')
+        out_list.append('}')
+        out_string = '\n'.join(out_list)
+        return out_string
+
+    def get_dict(self):
+        '''
+        Return a nested dictionary of object attributes (dictionary keys)
+        and their values.
+        '''
+
+        objects = {}
+        for key in self.__dict__:
+            try:
+                objects[key] = self.__dict__[key].get_dict()
+            except AttributeError:
+                objects[key] = self.__dict__[key]
+
+        return objects
+
+    def get_print_depth(self):
+        '''
+        Retrieve the value of the object's print depth,
+        setting an initial value if not previously defined.
+        '''
+
+        if not hasattr(self, 'print_depth'):
+            self.set_print_depth()
+        return self.print_depth
+
+    def print(self, depth=None):
+        '''
+        Convenience method for recursively printing
+        object attributes and values, with recursion
+        to a specified depth.
+
+        Parameters
+        ----------
+
+        depth : integer/None, default=None
+            Depth to which recursion is performed.
+            If the value is None, depth is set in the
+            __repr__() method.
+        '''
+
+        print(self.__repr__(depth))
+        return None
+
+    def set_print_depth(self, depth=None):
+        '''
+        Set the object's print depth.
+
+        Parameters
+        ----------
+
+        depth : integer/None, default=None
+            Depth to which recursion is performed.
+            If the value is None, the object's print depth is
+            set to the value of Defaults().print_depth.
+        '''
+
+        if depth is None:
+            depth = Defaults().print_depth
+        self.print_depth = depth
+        return None
+
+
+class PathObject(DataObject):
+    """DataObject with and associated directory; has the ability to 
+    extract a list of dated objects from within this directory."""
+
+    def __init__(self, path=""):
+        self.path = fullpath(path)
+        self.subdir = ""
+
+    def get_dated_objects(self, dtype="DatedObject", subdir=""):
+        """Create list of objects of a given type, <dtype>, inside own 
+        directory, or inside own directory + <subdir> if given."""
+
+        # Create object for each file in the subdir
+        objs = []
+        path = os.path.join(self.path, subdir)
+        if os.path.isdir(path):
+            filenames = os.listdir(path)
+            for filename in filenames:
+                if is_timestamp(filename):
+                    filepath = os.path.join(path, filename)
+                    objs.append(globals()[dtype](path=filepath))
+
+        # Sort and assign subdir to the created objects
+        objs.sort()
+        if subdir:
+            for obj in objs:
+                obj.subdir = subdir
+
+        return objs
+
+
+@functools.total_ordering
+class DatedObject(PathObject):
+    """PathObject with an associated date and time, which can be used for 
+    sorting multiple DatedObjects."""
+
+    def __init__(self, path=""):
+
+        PathObject.__init__(self, path)
+
+        # Assign date and time
+        timestamp = os.path.basename(self.path)
+        self.date, self.time = get_time_and_date(timestamp)
+        if (self.date is None) and (self.time is None):
+            timestamp = os.path.basename(os.path.dirname(self.path))
+            self.date, self.time = get_time_and_date(timestamp)
+        if (self.date is None) and (self.time is None):
+            timestamp = os.path.basename(self.path)
+            try:
+                self.date, self.time = timestamp.split("_")
+            except ValueError:
+                self.date, self.time = (None, None)
+
+        self.timestamp = f"{self.date}_{self.time}"
+
+    def in_date_interval(self, min_date=None, max_date=None):
+        """Check whether own date falls within an interval."""
+
+        if min_date:
+            if self.date < min_date:
+                return False
+        if max_date:
+            if self.date > max_date:
+                return False
+        return True
+
+    def __eq__(self, other):
+        return self.date == other.date and self.time == other.time
+
+    def __ne__(self, other):
+        return self.date == other.date or self.time == other.time
+
+    def __lt__(self, other):
+        if self.date == other.date:
+            return self.time < other.time
+        return self.date < other.date
+
+    def __gt__(self, other):
+        if self.date == other.date:
+            return self.time > other.time
+        return self.date > other.date
+
+    def __le__(self, other):
+        return self
+        if self.date == other.date:
+            return self.time < other.time
+        return self.date < other.date
+
+
+class MachineObject(DatedObject):
+    """Dated object with an associated machine name."""
+
+    def __init__(self, path=""):
+        DatedObject.__init__(self, path)
+        self.machine = os.path.basename(os.path.dirname(path))
+
+
+class ArchiveObject(DatedObject):
+    """Dated object associated with multiple files."""
+
+    def __init__(self, path=""):
+
+        DatedObject.__init__(self, path)
+        self.files = []
+        try:
+            filenames = os.listdir(self.path)
+        except OSError:
+            filenames = []
+        for filename in filenames:
+
+            # Disregard hidden files
+            if not filename.startswith("."):
+                filepath = os.path.join(self.path, filename)
+                if not os.path.isdir(filepath):
+                    self.files.append(File(path=filepath))
+
+        self.files.sort()
+
+
+class File(DatedObject):
+    """File with an associated date. Files can be sorted based on their 
+    filenames."""
+
+    def __init__(self, path=""):
+        DatedObject.__init__(self, path)
+
+    def __cmp__(self, other):
+
+        result = DatedObject.__cmp__(self, other)
+        if not result:
+            self_basename = os.path.basename(self.path)
+            other_basename = os.path.basename(other.path)
+            basenames = [self_basename, other_basename]
+            basenames.sort(key=alphanumeric)
+            if basenames[0] == self_basename:
+                result = -1
+            else:
+                result = 1
+        return result
+
+    def __eq__(self, other):
+        return self.path == other.path
+
+    def __ne__(self, other):
+        return self.path != other.path
+
+    def __lt__(self, other):
+
+        self_name = os.path.splitext(os.path.basename(self.path))[0]
+        other_name = os.path.splitext(os.path.basename(other.path))[0]
+        try:
+            result = eval(self_name) < eval(other_name)
+        except (NameError, SyntaxError):
+            result = self.path < other.path
+        return result
+
+    def __gt__(self, other):
+
+        self_name = os.path.splitext(os.path.basename(self.path))[0]
+        other_name = os.path.splitext(os.path.basename(other.path))[0]
+        try:
+            result = eval(self_name) > eval(other_name)
+        except (NameError, SyntaxError):
+            result = self.path > other.path
+        return result
+
+
+def alphanumeric(in_str=''):
+    '''Function that can be passed as value for list sort() method
+    to have alphanumeric (natural) sorting'''
+
+    import re
+
+    elements = []
+    for substr in re.split('(-*[0-9]+)', in_str):
+        try:
+            element = int(substr)
+        except BaseException:
+            element = substr
+        elements.append(element)
+    return elements
+
+
+def fullpath(path=''):
+    '''Evaluate full path, expanding '~', environment variables, and 
+    symbolic links.'''
+
+    expanded = ''
+    if path:
+        tmp = os.path.expandvars(path.strip())
+        tmp = os.path.abspath(os.path.expanduser(tmp))
+        expanded = os.path.realpath(tmp)
+    return expanded
+
+
+def get_time_and_date(timestamp=''):
+
+    timeAndDate = (None, None)
+    if is_timestamp(timestamp):
+        valueList = os.path.splitext(timestamp)[0].split('_')
+        valueList = [value.strip() for value in valueList]
+        if valueList[0].isalpha():
+            timeAndDate = tuple(valueList[1:3])
+        else:
+            timeAndDate = tuple(valueList[0:2])
+    else:
+        i1 = timestamp.find('_')
+        i2 = timestamp.rfind('.')
+        if (-1 != i1) and (-1 != i2):
+            bitstamp = timestamp[i1 + 1 : i2]
+            if is_timestamp(bitstamp):
+                timeAndDate = tuple(bitstamp.split('_'))
+
+    return timeAndDate
+
+
+def is_timestamp(testString=''):
+
+    timestamp = True
+    valueList = os.path.splitext(testString)[0].split('_')
+    valueList = [value.strip() for value in valueList]
+    if len(valueList) > 2:
+        if valueList[0].isalpha() and valueList[1].isdigit() \
+           and valueList[2].isdigit():
+            valueList = valueList[1:3]
+        elif valueList[0].isdigit() and valueList[1].isdigit():
+            valueList = valueList[:2]
+        elif valueList[0].isdigit() and valueList[1].isdigit():
+            valueList = valueList[:2]
+    if len(valueList) != 2:
+        timestamp = False
+    else:
+        for value in valueList:
+            if not value.isdigit():
+                timestamp = False
+                break
+    return timestamp
 
 
 _axes = ['x', 'y', 'z']
@@ -46,7 +511,7 @@ class Image(ArchiveObject):
 
     def __init__(
         self,
-        source,
+        path,
         load=True,
         title=None,
         affine=None,
@@ -60,7 +525,7 @@ class Image(ArchiveObject):
 
         Parameters
         ----------
-        source : str/array/Nifti1Image
+        path : str/array/Nifti1Image
             Source of image data. Can be either:
                 (a) A string containing the path to a dicom or nifti file;
                 (b) A string containing the path to a numpy file containing a
@@ -102,7 +567,7 @@ class Image(ArchiveObject):
 
         self.data = None
         self.title = title
-        self.source = source
+        self.source = path
         self.source_type = None
         self.voxel_size = voxel_size
         self.origin = origin
@@ -471,7 +936,7 @@ class Image(ArchiveObject):
         major_ticks=None,
         minor_ticks=None,
         ticks_all_sides=False,
-        include_structures=True,
+        structure_set=None,
         struct_plot_type='contour',
         struct_legend=False,
         struct_kwargs={},
@@ -564,9 +1029,13 @@ class Image(ArchiveObject):
             and to the right hand side of the plot as well as below and to the
             left. The top/right ticks will not be labelled.
 
-        include_structures : bool, default=True
-            If True and this Image object has associated structures, the 
-            structures will be plotted on top of the image.
+        structure_set : int/str, default=None
+            Option for which structure set should be plotted (if the Image 
+            owns any structure sets). Can be:
+                - None: no structures will be plotted.
+                - The index in self.structs of the structure set (e.g. to plot
+                the newest structure set, use structure_set=-1)
+                - 'all': all structure sets will be plotted.
 
         struct_plot_type : str, default='contour'
             Structure plotting type (see ROI.plot() for options).
@@ -628,14 +1097,29 @@ class Image(ArchiveObject):
         )
 
         # Plot structures
-        if include_structures:
-            handles = []
+        if structure_set is not None:
+
+            # Get list of structure sets to plot
+            to_plot = []
+            if isinstance(structure_set, int):
+                try:
+                    to_plot = [self.structs[structure_set]]
+                except IndexError:
+                    print(f'Warning: structure set {structure_set} not found! '
+                          f'Image only has {len(self.structs)} structure sets.'
+                         )
+            elif structure_set == 'all':
+                to_plot = self.structs
+            else:
+                print(f'Warning: structure set option {structure_set} not '
+                      'recognised! Must be an int, None, or \'all\'.')
 
             # Plot structure sets
-            for ss in self.structs:
+            handles = []
+            for ss in to_plot:
                 for s in ss.get_structs():
                     name = s.name
-                    if len(self.structs) > 1:
+                    if len(to_plot) > 1:
                         name += f' ({ss.name})'
                     s.plot(
                         view, 
@@ -2418,3 +2902,604 @@ def to_three(val):
         return val
     elif not is_list(val):
         return [val, val, val]
+
+
+class RtDose(MachineObject):
+
+    def __init__(self, path=''):
+
+        MachineObject.__init__(self, path)
+
+        if not os.path.exists(path):
+            return
+
+        ds = pydicom.read_file(path, force=True)
+
+        # Get dose summation type
+        try:
+            self.summation_type = ds.DoseSummationType
+        except AttributeError:
+            self.summation_type = None
+
+        # Get slice thickness
+        if ds.SliceThickness:
+            slice_thickness = float(ds.SliceThickness)
+        else:
+            slice_thickness = None
+
+        # Get scan position and voxel sizes
+        if ds.GridFrameOffsetVector[-1] > ds.GridFrameOffsetVector[0]:
+            self.reverse = False
+            self.scan_position = (
+                float(ds.ImagePositionPatient[0]),
+                float(ds.ImagePositionPatient[1]),
+                float(ds.ImagePositionPatient[2] + ds.GridFrameOffsetVector[0]),
+            )
+        else:
+            self.reverse = True
+            self.scan_position = (
+                float(ds.ImagePositionPatient[0]),
+                float(ds.ImagePositionPatient[1]),
+                float(ds.ImagePositionPatient[2] + ds.GridFrameOffsetVector[-1]),
+            )
+        self.voxel_size = (
+            float(ds.PixelSpacing[0]),
+            float(ds.PixelSpacing[1]),
+            slice_thickness,
+        )
+        self.transform_ijk_to_xyz = get_transform_ijk_to_xyz(self)
+        self.image_stack = None
+
+    def get_image_stack(self, rescale=True, renew=False):
+
+        if self.image_stack is not None and not renew:
+            return self.image_stack
+
+        # Load dose array from dicom
+        ds = pydicom.read_file(self.path, force=True)
+        self.image_stack = np.transpose(ds.pixel_array, (1, 2, 0))
+
+        # Rescale voxel values
+        if rescale:
+            try:
+                rescale_intercept = ds.RescaleIntercept
+            except AttributeError:
+                rescale_intercept = 0
+            self.image_stack = self.image_stack * float(ds.DoseGridScaling) \
+                    + float(rescale_intercept)
+
+        if self.reverse:
+            self.image_stack[:, :, :] = self.image_stack[:, :, ::-1]
+
+        return self.image_stack
+
+
+class RtPlan(MachineObject):
+
+    def __init__(self, path=''):
+
+        MachineObject.__init__(self, path)
+
+        ds = pydicom.read_file(path, force=True)
+
+        try:
+            self.approval_status = ds.ApprovalStatus
+        except AttributeError:
+            self.approval_status = None
+
+        try:
+            self.n_fraction_group = len(ds.FractionGroupSequence)
+        except AttributeError:
+            self.n_fraction_group = None
+
+        try:
+            self.n_beam_seq = len(ds.BeamSequence)
+        except AttributeError:
+            self.n_beam_seq = None
+
+        self.n_fraction = None
+        self.target_dose = None
+        if self.n_fraction_group is not None:
+            self.n_fraction = 0
+            for fraction in ds.FractionGroupSequence:
+                self.n_fraction += fraction.NumberOfFractionsPlanned
+                if hasattr(fraction, 'ReferencedDoseReferenceSequence'):
+                    if self.target_dose is None:
+                        self.target_dose = 0.0
+                    for dose in fraction.ReferencedDoseReferenceSequence:
+                        self.target_dose += dose.TargetPrescriptionDose
+
+
+class Patient(PathObject):
+    '''Object associated with a top-level directory whose name corresponds to
+    a patient ID, and whose subdirectories contain studies.'''
+
+    def __init__(self, path=None, exclude=['logfiles']):
+
+        start = time.time()
+
+        # Set path and patient ID
+        if path is None:
+            path = os.getcwd()
+        self.path = fullpath(path)
+        self.id = os.path.basename(self.path)
+
+        # Find studies
+        self.studies = self.get_dated_objects(dtype='Study')
+        if not self.studies:
+            if os.path.isdir(self.path):
+                if os.access(self.path, os.R_OK):
+                    subdirs = sorted(os.listdir(self.path))
+                    for subdir in subdirs:
+                        if subdir not in exclude:
+                            self.studies.extend(
+                                self.get_dated_objects(
+                                    dtype='Study', subdir=subdir
+                                )
+                            )
+
+        # Get patient demographics
+        self.birth_date, self.age, self.sex = self.get_demographics()
+
+    def combined_files(self, dtype, min_date=None, max_date=None):
+        '''Get list of all files of a given data type <dtype> associated with 
+        this patient, within a given date range if specified.'''
+
+        files = []
+        for study in self.studies:
+            objs = getattr(study, dtype)
+            for obj in objs:
+                for file in obj.files:
+                    if file.in_date_interval(min_date, max_date):
+                        files.append(file)
+        files.sort()
+        return files
+
+    def combined_files_by_dir(self, dtype, min_date=None, max_date=None):
+        '''Get dict of all files of a given data type <dtype> associated with 
+        this patient, within a given date range if specified. The dict keys 
+        will be the directories that the files are in.'''
+
+        files = {}
+        for study in self.studies:
+            objs = getattr(study, dtype)
+            for object in objs:
+                for file in object.files:
+                    if file.in_date_interval(min_date, max_date):
+                        folder = os.path.dirname(fullpath(file.path))
+                        if folder not in files:
+                            files[folder] = []
+                        files[folder].append(file)
+
+        for folder in files:
+            files[folder].sort()
+
+        return files
+
+    def combined_objs(self, dtype):
+        '''Get list of all objects of a given data type <dtype> associated
+        with this patient.'''
+
+        all_objs = []
+        for study in self.studies:
+            objs = getattr(study, dtype)
+            if objs:
+                all_objs.extend(objs)
+        all_objs.sort()
+        return all_objs
+
+    def get_demographics(self):
+        '''Return patient's birth date, age, and sex.'''
+
+        info = {'BirthDate': None, 'Age': None, 'Sex': None}
+
+        # Find an object from which to extract the info
+        obj = None
+        if self.studies:
+            study = self.studies[-1]
+            if study.ct_scans:
+                im = study.ct_scans[-1]
+            elif study.mvct_scans:
+                obj = study.mvct_scans[-1]
+            elif study.ct_scans:
+                obj = study.ct_scans[-1]
+            elif study.mvct_scans:
+                obj = study.mvct_scans[-1]
+
+        # Read demographic info from the object
+        if obj and obj.files:
+            ds = pydicom.read_file(fp=obj.files[-1].path, force=True)
+            for key in info:
+                for prefix in ['Patient', 'Patients']:
+                    attr = f'{prefix}{key[0].upper()}{key[1:]}'
+                    if hasattr(ds, attr):
+                        info[key] = getattr(ds, attr)
+                        break
+
+        # Ensure sex is uppercase and single character
+        if info['Sex']:
+            info['Sex'] = info['Sex'][0].upper()
+
+        return info['BirthDate'], info['Age'], info['Sex']
+
+    def get_subdir_study_list(self, subdir=''):
+
+        subdir_studies = []
+        for study in self.studies:
+            if subdir == study.subdir:
+                subdir_studies.append(study)
+
+        subdir_studies.sort()
+
+        return subdir_studies
+
+    def last_in_interval(self, dtype=None, min_date=None, max_date=None):
+        '''Get the last object of a given data type <dtype> in a given
+        date interval.'''
+
+        files = self.combined_files(dtype)
+        last = None
+        files.reverse()
+        for file in files:
+            if file.in_date_interval(min_date, max_date):
+                last = file
+                break
+        return last
+
+
+class Study(DatedObject):
+
+    def __init__(self, path=''):
+
+        DatedObject.__init__(self, path)
+
+        # Load RT plans, CT and MR scans, all doses, and CT structure sets
+        self.plans = self.get_plan_data(dtype='RtPlan', subdir='RTPLAN')
+        self.ct_scans = self.get_dated_objects(dtype='Image', subdir='CT')
+        self.mr_scans = self.get_dated_objects(dtype='Image', subdir='MR')
+        self.doses = self.get_plan_data(
+            dtype='RtDose',
+            subdir='RTDOSE',
+            exclude=['MVCT', 'CT'],
+            images=self.ct_scans
+        )
+        self.ct_structs = self.get_structs(subdir='RTSTRUCT/CT', 
+                                           images=self.ct_scans)
+
+        # Look for HD CT scans and add to CT list
+        ct_hd = self.get_dated_objects(dtype='CT', subdir='CT_HD')
+        ct_hd_structs = self.get_structs(subdir='RTSTRUCT/CT_HD', images=ct_hd)
+        if ct_hd:
+            self.ct_scans.extend(ct_hd)
+            self.ct_scans.sort()
+        if ct_hd_structs:
+            self.ct_structs.extend(ct_hd_structs)
+            self.ct_structs.sort()
+
+        # Load CT-specific RT doses
+        self.ct_doses = self.get_plan_data(
+            dtype='RtDose', subdir='RTDOSE/CT', images=self.ct_scans
+        )
+        self.ct_doses = self.correct_dose_scan_position(self.ct_doses)
+
+        # Load MVCT images, doses, and structs
+        self.mvct_scans = self.get_dated_objects(dtype='Image', subdir='MVCT')
+        self.mvct_doses = self.get_plan_data(
+            dtype='RtDose', subdir='RTDOSE/MVCT', images=self.mvct_scans
+        )
+        self.mvct_doses = self.correct_dose_scan_position(self.mvct_doses)
+        self.mvct_structs = self.get_structs(
+            subdir='RTSTRUCT/MVCT', images=self.mvct_scans
+        )
+
+        # Set description
+        self.description = self.get_description()
+
+    def correct_dose_scan_position(self, doses=[]):
+        '''Correct for scan positions from CheckTomo being offset by one slice
+        relative to scan positions.'''
+
+        for dose in doses:
+            dx, dy, dz = dose.voxel_size
+            x0, y0, z0 = dose.scan_position
+            dose.scan_position = (x0, y0, z0 + dz)
+        return doses
+
+    def get_machine_sublist(self, dtype='', machine='', ignore_case=True):
+        '''Get list of doses or treatment plans corresponding to a specific
+        machine.'''
+
+        sublist = []
+        if dtype.lower() in ['plan', 'rtplan']:
+            objs = self.plans
+        elif dtype.lower() in ['dose', 'rtdose']:
+            objs = self.doses
+        else:
+            objs = []
+
+        if ignore_case:
+            for obj in objs:
+                if objs.machine.lower() == machine.lower():
+                    sublist.append(obj)
+        else:
+            for obj in objs:
+                if objs.machine == machine:
+                    sublist.append(object)
+        return sublist
+
+    def get_mvct_selection(self, mvct_dict={}, min_delta_hours=0.0):
+        '''Get a selection of MVCT scans which were taken at least 
+        <min_delta_hours> apart. <mvct_dict> is a dict where the keys are 
+        patient IDs, and the paths are directory paths from which to load scans
+        for that patient.'''
+
+        # Find scans meeting the time separation requirement
+        if min_delta_hours > 0:
+            mvct_scans = get_time_separated_objects(
+                self.mvct_scans, min_delta_hours)
+        else:
+            mvct_scans = self.mvct_scans
+
+        # Find scans matching the directory requirement
+        selected = []
+        patient_id = self.get_patient_id()
+        if patient_id in mvct_dict:
+
+            # Get all valid directories for this patient
+            valid_dirs = [fullpath(path) for path in mvct_dict[patient_id]]
+
+            # Check for scans matching that directory requirement
+            for mvct in mvct_scans:
+                mvct_dir = os.path.dirname(mvct.files[-1].path)
+                if fullpath(mvct_dir) in valid_dirs:
+                    selected.append(mvct)
+
+        # Otherwise, just return all scans for this patient
+        else:
+            selection = mvct_scans
+
+        return selection
+
+    def get_patient_id(self):
+        patient_id = os.path.basename(os.path.dirname(self.path))
+        return patient_id
+
+    def get_plan_data(
+        self, dtype='RtPlan', subdir='RTPLAN', exclude=[], images=[]
+    ):
+        '''Get list of RT dose or plan objects specified by dtype='RtDose' or 
+        'RtPlan' <dtype>, respectively) by searching within a given directory, 
+        <subdir> (or within the top level directory of this Study, if 
+        <subdir> is not provided).
+
+        Subdirectories with names in <exclude> will be ignored.
+
+        Each dose-like object will be matched by timestamp to one of the scans 
+        in <scans> (which should be a list of DatedObjects), if provided.'''
+
+        doses = []
+
+        # Get initial path to search
+        if subdir:
+            path1 = os.path.join(self.path, subdir)
+        else:
+            path1 = self.path
+
+        # Look for subdirs up to two levels deep from initial dir
+        subdirs = []
+        if os.path.isdir(path1):
+
+            # Search top level of dir
+            path1_subdirs = os.listdir(path1)
+            for item1 in path1_subdirs:
+
+                if item1 in exclude:
+                    continue
+                path2 = os.path.join(path1, item1)
+                n_sub_subdirs = 0
+
+                # Search any directories in the top level dir
+                if os.path.isdir(path2):
+                    path2_subdirs = os.listdir(path2)
+                    for item2 in path2_subdirs:
+                        path3 = os.path.join(path2, item2)
+
+                        # Search another level (subdir/item1/item2/*)
+                        if os.path.isdir(path3):
+                            n_sub_subdirs += 1
+                            if subdir:
+                                subdirs.append(os.path.join(
+                                    subdir, item1, item2))
+                            else:
+                                subdirs.append(item1, item2)
+
+                if not n_sub_subdirs:
+                    if subdir:
+                        subdirs = [os.path.join(subdir, item1)]
+                    else:
+                        subdirs = [item1]
+
+                for subdir_item in subdirs:
+                    doses.extend(
+                        self.get_dated_objects(
+                            dtype=dtype, subdir=subdir_item
+                        )
+                    )
+
+        # Assign dose-specific properties
+        if dtype == 'RtDose':
+            new_doses = []
+            for dose in doses:
+
+                # Search for scans with matching timestamp
+                timestamp = os.path.basename(os.path.dirname(dose.path))
+                if scans:
+                    try:
+                        dose.date, dose.time = timestamp.split('_')
+                        scan = get_dated_obj(scans, dose)
+                        dose.machine = scan.machine
+                    except BaseException:
+                        scan = scans[-1]
+                        dose.date = scan.date
+                        dose.time = scan.time
+
+                    dose.timestamp = f'{dose.date}_{dose.time}'
+                    dose.scan = scan
+
+                dose.couch_translation, dose.couch_rotation \
+                        = get_couch_shift(dose.path)
+                # WARNING!
+                #     Couch translation third component (y) inverted with
+                #     respect to CT scan
+                # WARNING!
+                new_doses.append(dose)
+            doses = new_doses
+
+        doses.sort()
+        return doses
+
+    def get_plan_dose(self):
+
+        plan_dose = None
+        dose_dict = {}
+
+        # Group doses by summation type
+        for dose in self.doses:
+            if dose.summationType not in dose_dict:
+                dose_dict[dose.summationType] = []
+            dose_dict[dose.summationType].append(dose)
+        for st in dose_dict:
+            dose_dict[st].sort()
+
+        # 'PLAN' summation type: just take the newest entry
+        if 'PLAN' in dose_dict:
+            plan_dose = dose_dict['PLAN'][-1]
+            plan_dose.imageStack = plan_dose.getImageStack()
+
+        else:
+            
+            # Get fraction froup and beam sequence
+            if self.plans:
+                n_frac_group = self.plans[-1].nFractionGroup
+                n_beam_seq = self.plans[-1].nBeamSequence
+            else:
+                n_frac_group = None
+                n_beam_seq = None
+
+            # Sum over fractions
+            if 'FRACTION' in dose_dict:
+                if len(dose_dict['FRACTION']) == n_frac_group:
+                    
+                    # Single fraction
+                    if n_frac_group == 1:
+                        plan_dose = doseDict['FRACTION'][0]
+
+                    # Sum fractions
+                    else:
+                        plan_dose = self.sum_dose_plans(dose_dict, 'FRACTION')
+
+            # Sum over beams
+            elif 'BEAM' in sum_type:
+                if len(dose_dict['BEAM']) == n_beam_seq:
+
+                    # Single fraction
+                    if n_frac_group == 1:
+                        plan_dose = dose_dict['BEAM'][0]
+
+                    # Sum beams
+                    else:
+                        plan_dose = self.sum_dose_plans(dose_dict, 'BEAM')
+
+        return plan_dose
+
+    def get_structs(self, subdir='', images=[]):
+        '''Make list of RtStruct objects found within a given subdir, and
+        set their associated scan objects.'''
+
+        # Find RtStruct directories associated with each scan
+        groups = self.get_dated_objects(dtype='ArchiveObject', subdir=subdir)
+
+        # Load RtStruct files for each
+        structs = []
+        for group in groups:
+
+            # Find the matching Image for this group
+            image = Image(None, load=False)
+            image_dir = os.path.basename(group.path)
+            image_found = False
+
+            # Try matching on path
+            for im in images:
+                if image_dir == os.path.basename(im.path):
+                    image = im
+                    image_found = True
+                    break
+
+            # If no path match, try matching on timestamp
+            if not image_found:
+                for im in images:
+                    if (group.date == im.date) and (group.time == im.time):
+                        image = im
+                        break
+
+            # Find all RtStruct files inside the dir
+            for file in group.files:
+
+                # Create RtStruct
+                rt_struct = RtStruct(file.path, image=im)
+
+                # Add to Image
+                image.add_structs(rt_struct)
+
+                # Add to list of all structure sets
+                structs.append(rt_struct)
+
+        return structs
+
+    def get_description(self):
+        '''Load a study description.'''
+
+        # Find an object from which to extract description
+        obj = None
+        if self.ct_scans:
+            obj = self.ct_scans[-1]
+        elif self.mvct_scans:
+            obj = self.mvct_scans[-1]
+        elif self.ct_structs:
+            obj = self.ct_structs[-1]
+        elif self.mvct_structs:
+            obj = self.mvct_structs[-1]
+
+        description = ''
+        if obj:
+            if obj.files:
+                scan_path = obj.files[-1].path
+                ds = pydicom.read_file(fp=scan_path, force=True)
+                if hasattr(ds, 'StudyDescription'):
+                    description = ds.StudyDescription
+
+        return description
+
+    def sum_dose_plans(self, dose_dict={}, sum_type=''):
+        '''Sum over doses using a given summation type.'''
+
+        plan_dose = None
+        if sum_type in dose_dict:
+            dose = dose_dict[sum_type].pop()
+            plan_dose = RtDose()
+            plan_dose.machine = dose.machine
+            plan_dose.path = dose.path
+            plan_dose.subdir = dose.subdir
+            plan_dose.date = dose.date
+            plan_dose.time = dose.time
+            plan_dose.timestamp = dose.timestamp
+            plan_dose.summationType = 'PLAN'
+            plan_dose.scanPosition = dose.scanPosition
+            plan_dose.reverse = dose.reverse
+            plan_dose.voxelSize = dose.voxelSize
+            plan_dose.transform_ijk_to_xyz = dose.transform_ijk_to_xyz
+            plan_dose.imageStack = dose.getImageStack()
+            for dose in dose_dict[sum_type]:
+                plan_dose.imageStack += dose.getImageStack()
+
+        return plan_dose
