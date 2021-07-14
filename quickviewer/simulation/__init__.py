@@ -10,7 +10,7 @@ import logging
 import shutil
 from scipy import ndimage
 
-from quickviewer.data.image import Image, make_three, is_list
+from quickviewer.data.image import Image, make_three, is_list, _axes
 from quickviewer.data.image import get_translation_matrix, get_rotation_matrix
 from quickviewer.data.structures import Struct
 
@@ -346,11 +346,8 @@ class GeometricNifti(Image):
         axis=None,
         name=None,
         above=True,
-        in_mm=None,
     ):
 
-        if in_mm is None:
-            in_mm = self.in_mm
         grid = Grid(self.shape, spacing, thickness, intensity, axis, name)
         self.add_shape(grid, "grid", False, above, group=None)
 
@@ -552,7 +549,7 @@ class Grid(Shape):
         self.axis = axis
         self.shape = shape
 
-    def get_data(self):
+    def get_data(self, _):
 
         coords = np.meshgrid(
             np.arange(0, self.shape[0]),
@@ -560,7 +557,7 @@ class Grid(Shape):
             np.arange(0, self.shape[2]),
         )
         if self.axis is not None:
-            ax1, ax2 = [i for i in [0, 1, 2] if i != axis]
+            ax1, ax2 = [i for i in [0, 1, 2] if i != self.axis]
             return (coords[ax1] % self.spacing[ax1] < self.thickness[ax1]) | (
                 coords[ax2] % self.spacing[ax2] < self.thickness[ax2]
             )
