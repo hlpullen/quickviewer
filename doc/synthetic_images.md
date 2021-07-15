@@ -104,10 +104,51 @@ The `write` function can also take any of the arguments of the `Image.write()` f
 
 ## Adding structures
 
+When shapes are added to the image, they can also be set as structures. This allows you to:
+- Plot them as contours or masks on top of the image;
+- Access an `RtStruct` object containing the structures;
+- Write structures out separately as masks or as a dicom RtStruct file.
+
 ### Single structures
+
+To assign a shape as a structure, you can either give it a name upon creation, e.g.:
+
+```
+sim.add_sphere(50, name='my_sphere')
+```
+
+or set the `is_struct` property to `True` (the structure will then be given an automatic named based on its shape type):
+```
+sim.add_sphere(50, is_struct=True)
+```
+
+When `sim.plot()` is called, its structures will automatically be plotted as contours. Some useful extra options to the `plot` function are:
+- `struct_plot_type`: set plot type to any of the valid `ROI` plotting types (mask, contour, filled, centroid, filled centroid).
+- `centre_on_struct`: name of structure on which the plotted image should be centred.
+- `struct_legend`: set to `True` to draw a legend containing the strutcure names.
 
 ### Grouped structures
 
+Multiple shapes can be combined to create a single structure. To do this, set the `group` argument to some string when creating structures. Any shapes created with the same `group` name will be added to this group.
+
+E.g. to create a single structure called "two_cubes" out of two cubes centred at different positions, run:
+```
+sim.add_cube(10, centre=(5, 5, 5), group='two_cubes')
+sim.add_cube(10, centre=(7, 7, 5)), group='two_cubes')
+```
+
 ### Getting structures
 
+To get an `RtStruct` object containing all of the structures belonging to the image, run:
+```
+rtstruct = sim.get_rtstruct()
+```
+
+You can also access a single structure as an `ROI` object by running:
+```
+roi = sim.get_struct(struct_name)
+```
+
 ### Saving structures
+
+When the `SyntheticImage.write()` function is called, the structures belonging to that image will also be written. If the provided `outname` is that of a nifti or NumPy file, the structures will be written to nifti or Numpy files, respectively, inside a directory with the same name as `outname` but with the extension removed.
