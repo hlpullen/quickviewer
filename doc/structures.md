@@ -24,3 +24,6 @@
 ### Copying a structure set
 
 ### Writing a structure set
+
+
+## Combining Images and structures
