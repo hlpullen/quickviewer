@@ -598,7 +598,8 @@ class Image(ArchiveObject):
             'downsampling'
         ])
         for attr in attrs_to_print:
-            out_str += f'\n {attr}: {getattr(self, attr)}'
+            out_str += f'\n  {attr} : {getattr(self, attr)}'
+        out_str += f'\n  structs: [{len(self.structs)} * {type(self.structs[0])}]'
         out_str += '\n}'
         return out_str
 
@@ -1083,9 +1084,32 @@ class Image(ArchiveObject):
         self.ax.clear()
         self.load_data()
 
-        # If centering on structure, find central slice
-        #  if all([i is None for i in [idx, pos, sl]):
-                #  if cen
+        # Get list of structures to plot
+        to_plot = []
+        if structure_set is not None:
+
+            # Get list of structure sets to plot
+            if isinstance(structure_set, int):
+                try:
+                    to_plot = [self.structs[structure_set]]
+                except IndexError:
+                    print(f'Warning: structure set {structure_set} not found! '
+                          f'Image only has {len(self.structs)} structure sets.'
+                         )
+            elif structure_set == 'all':
+                to_plot = self.structs
+            elif is_list(structure_set):
+                to_plot = [self.structs[i] for i in structure_set]
+            else:
+                print(f'Warning: structure set option {structure_set} not '
+                      'recognised! Must be an int, None, or \'all\'.')
+
+            # If centering on structure, find central slice
+            if all([i is None for i in [idx, pos, sl]]) and centre_on_struct:
+                central_struct = to_plot[0].get_struct(centre_on_struct)
+                idx = central_struct.get_mid_idx(view)
+                if zoom and zoom_centre is None:
+                    zoom_centre = central_struct.get_zoom_centre(view)
 
         # Get image slice
         idx = self.get_idx(view, sl, idx, pos)
@@ -1106,6 +1130,7 @@ class Image(ArchiveObject):
         # Get image extent and aspect ratio
         extent = self.plot_extent[view]
         aspect = 1
+        x_ax, y_ax = _plot_axes[view]
         if not scale_in_mm:
             extent = [
                 self.pos_to_slice(extent[0], x_ax, False),
@@ -1126,25 +1151,8 @@ class Image(ArchiveObject):
             **mpl_kwargs
         )
 
-        # Plot structures
-        if structure_set is not None:
-
-            # Get list of structure sets to plot
-            to_plot = []
-            if isinstance(structure_set, int):
-                try:
-                    to_plot = [self.structs[structure_set]]
-                except IndexError:
-                    print(f'Warning: structure set {structure_set} not found! '
-                          f'Image only has {len(self.structs)} structure sets.'
-                         )
-            elif structure_set == 'all':
-                to_plot = self.structs
-            else:
-                print(f'Warning: structure set option {structure_set} not '
-                      'recognised! Must be an int, None, or \'all\'.')
-
-            # Plot structure sets
+        # Plot structure sets
+        if len(to_plot):
             handles = []
             for ss in to_plot:
                 for s in ss.get_structs():
@@ -2139,7 +2147,10 @@ class ROI(Image):
             points_x.append(points_x[0])
             points_y.append(points_y[0])
             self.ax.plot(points_x, points_y, **contour_kwargs)
-        if not include_image:
+        
+        # Check whether y axis needs to be inverted
+        if not (self.plot_extent[view][3] > self.plot_extent[view][2]) \
+           == (self.ax.get_ylim()[1] > self.ax.get_ylim()[0]):
             self.ax.invert_yaxis()
 
         # Plot centroid point
@@ -2150,37 +2161,19 @@ class ROI(Image):
         # Adjust axes
         self.ax.set_aspect('equal')
         self.label_ax(view, idx, **kwargs)
+        if zoom_centre is None:
+            zoom_centre = self.get_zoom_centre(view)
         self.zoom_ax(view, zoom, zoom_centre)
 
-    def zoom_ax(self, view, zoom=None, zoom_centre=None):
-        '''Zoom in on axes, using centre of structure as zoom centre if not
-        otherwise specified.'''
+    def get_zoom_centre(self, view):
+        '''Get coordinates to zoom in on this structure.'''
 
-        if not zoom:
-            return
-        zoom = to_three(zoom)
+        zoom_centre = [None, None, None]
         x_ax, y_ax = _plot_axes[view]
-        if zoom_centre is None:
-            mid_x, mid_y = self.get_centre(view)
-        else:
-            mid_x, mid_y = zoom_centre[x_ax], zoom_centre[y_ax]
-
-        # Calculate new axis limits
-        init_xlim = self.plot_extent[view][:2]
-        init_ylim = self.plot_extent[view][2:]
-        xlim = [
-            mid_x - (init_xlim[1] - init_xlim[0]) / (2 * zoom[x_ax]),
-            mid_x + (init_xlim[1] - init_xlim[0]) / (2 * zoom[x_ax])
-        ]
-        ylim = [
-            mid_y - (init_ylim[1] - init_ylim[0]) / (2 * zoom[y_ax]),
-            mid_y + (init_ylim[1] - init_ylim[0]) / (2 * zoom[y_ax])
-        ]
-
-        # Set axis limits
-        self.ax.set_xlim(xlim)
-        self.ax.set_ylim(ylim)
-
+        x, y = self.get_centre(view)
+        zoom_centre[x_ax] = x
+        zoom_centre[y_ax] = y
+        return zoom_centre
 
     def write(self, outname=None, outdir='.', ext=None, **kwargs):
 
