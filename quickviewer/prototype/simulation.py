@@ -330,9 +330,7 @@ class SyntheticImage(Image):
                         get_translation_matrix(*[-d for d in self.translation])
                     )
                 if self.rotation:
-                    centre = [
-                        np.mean(self.lims[ax]) for ax in ['x', 'y', 'z']
-                    ]
+                    centre = self.get_image_centre()
                     transform = transform.dot(
                         get_rotation_matrix(*[-r for r in self.rotation], centre)
                     )
@@ -362,7 +360,7 @@ class SyntheticImage(Image):
     def translate(self, dx=0, dy=0, dz=0):
         '''Set a translation to apply to the final image.'''
 
-        self.translation = (dx, dy, dz)
+        self.translation = (dy, dx, dz)
 
     def rotate(self, yaw=0, pitch=0, roll=0):
         '''Set a rotation to apply to the final image.'''
