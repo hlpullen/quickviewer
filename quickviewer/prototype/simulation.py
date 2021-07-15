@@ -9,8 +9,8 @@ import nibabel
 import shutil
 from scipy import ndimage
 
-from quickviewer.prototype import Image, to_three, is_list, _axes
-from quickviewer.prototype.struct import Structure
+from quickviewer.prototype import Image, RtStruct, ROI
+from quickviewer.prototype import to_three, is_list, _axes
 
 
 class SyntheticImage(Image):
@@ -64,7 +64,7 @@ class SyntheticImage(Image):
         self.bg_intensity = intensity
         self.background = self.make_background()
         self.shapes = []
-        self.structs = []
+        self.struct_shapes = []
         self.groups = {}
         self.shape_count = {}
         self.translation = None
@@ -113,29 +113,37 @@ class SyntheticImage(Image):
         '''Plot the current image.'''
 
         self.sdata = self.get_data()
-        Image.plot(self, *args, **kwargs)
+        self.structs = [self.get_rtstruct()]
+        Image.plot(self, structure_set=0, *args, **kwargs)
 
     def get_struct_data(self):
         '''Get dict of structures and names, with any transformations applied.'''
 
         struct_data = {}
-        for shape in self.structs:
+        for shape in self.struct_shapes:
             data = shape.get_data(self.get_coords())
             struct_data[shape.name] = data
         return struct_data
 
+    def get_rtstruct(self):
+        '''Make RtStruct object of own structures.'''
+
+        rtstruct = RtStruct()
+        for shape in self.struct_shapes:
+            rtstruct.add_struct(shape.get_data(self.get_coords()), 
+                                name=shape.name)
+        return rtstruct
+
     def get_struct(self, name):
         '''Get a named structure as a Structure object.'''
 
-        structs_dict = {s.name: s for s in self.structs}
+        structs_dict = {s.name: s for s in self.struct_shapes}
         if name not in structs_dict:
             print('Structure', name, 'not found!')
             return
 
         s = structs_dict[name]
-        return Struct(s.get_data(self.get_coords()),
-                      name=name,
-                      affine=self.affine)
+        return ROI(s.get_data(self.get_coords()), name=name, affine=self.affine)
 
     def write(self, outname=None):
         '''Write image data to an output file.'''
@@ -153,15 +161,15 @@ class SyntheticImage(Image):
         Image.write(self, outname)
 
         # Write structures
-        # Create structure set
-
-        # Nifti: create subdirectory
-        #  if outname.endswith('.nii') or outname.endswidth('.nii.gz'):
-            #  struct_dir = f'{outname}/structs'
-            #  if not os.path.exists(struct_dir):
-                #  os.mkdir(struct_dir)
-
-        # Dicom: write structures to dicom file
+        rtstruct = self.get_rtstruct()
+        exts = ['.nii', '.nii.gz', '.npy']
+        outdir = outname
+        ext_to_use = None
+        for ext in exts:
+            if outname.endswith(ext):
+                ext_to_use = ext
+                outdir = outname.replace(ext, '')
+        rtstruct.write(outdir=outdir, ext=ext_to_use)
 
     def make_background(self):
         '''Make blank image array or noisy array.'''
@@ -172,7 +180,7 @@ class SyntheticImage(Image):
         '''Remove all shapes.'''
 
         self.shapes = []
-        self.structs = []
+        self.struct_shapes = []
         self.groups = {}
         self.shape_count = {}
         self.translation = None
@@ -193,11 +201,11 @@ class SyntheticImage(Image):
             if group is not None:
                 if group not in self.groups:
                     self.groups[group] = ShapeGroup([shape], name=group)
-                    self.structs.append(self.groups[group])
+                    self.struct_shapes.append(self.groups[group])
                 else:
                     self.groups[group].add_shape(shape)
             else:
-                self.structs.append(shape)
+                self.struct_shapes.append(shape)
 
         if shape_type not in self.shape_count:
             self.shape_count[shape_type] = 1

@@ -1714,14 +1714,16 @@ class ROI(Image):
 
     def __repr__(self):
 
-        self.load()
         out_str = 'ROI\n{'
         attrs_to_print = sorted([
             'name',
-            'color'
+            'color',
+            'loaded_contours',
+            'loaded_mask'
         ])
         for attr in attrs_to_print:
-            out_str += f'\n {attr}: {getattr(self, attr)}'
+            if hasattr(self, attr):
+                out_str += f'\n {attr}: {getattr(self, attr)}'
         out_str += '\n}'
         return out_str
 
@@ -2216,7 +2218,7 @@ class RtStruct(ArchiveObject):
 
     def __init__(
         self,
-        sources,
+        sources=None,
         name=None,
         image=None,
         load=True,
@@ -2230,7 +2232,9 @@ class RtStruct(ArchiveObject):
         if name is None:
             self.name = StructDefaults().get_default_structure_set_name()
         self.sources = sources
-        if not is_list(sources):
+        if self.sources is None:
+            self.sources = []
+        elif not is_list(sources):
             self.sources = [sources]
         self.structs = []
         self.set_image(image)
@@ -2398,6 +2402,12 @@ class RtStruct(ArchiveObject):
             sources = [sources]
         self.sources.extend(sources)
         self.load_structs(sources)
+
+    def add_struct(self, source, **kwargs):
+        '''Add a single structure with  optional kwargs.'''
+
+        self.sources.append(source)
+        self.structs.append(ROI(source, **kwargs))
 
     def copy(self, name=None, names=None, to_keep=None, to_remove=None,
              keep_renamed_only=False):
