@@ -27,20 +27,20 @@ The `SyntheticImage` object has various methods for adding geometric shapes. Eac
 - `above`: if `True`, this shape will be overlaid on top of all existing shapes; otherwise, it will be added below all other shapes.
 
 The available shapes and their specific arguments are:
-- *Sphere*: `sim.add_sphere(radius, centre=None)`
+- **Sphere**: `sim.add_sphere(radius, centre=None)`
     - `radius`: radius of the sphere in mm.
     - `centre`: position of the centre of the sphere in mm (if `None`, the sphere will be placed in the centre of the image).
-- *Cuboid*: `sim.add_cuboid(side_length, centre=None)`
+- **Cuboid**: `sim.add_cuboid(side_length, centre=None)`
     - `side_length`: side length in mm. Can either be a single value (to create a cube) or a list of the (x, y, z) side lengths.
     - `centre`: position of the centre of the cuboid in mm (if `None`, the cuboid will be placed in the centre of the image).
-- *Cube*: `sim.add_cube(side_length, centre=None)`
+- **Cube**: `sim.add_cube(side_length, centre=None)`
     - Same as `add_cuboid`.
-- *Cylinder*: `sim.add_cylinder(radius, length, axis='z', centre=None)`
+- **Cylinder**: `sim.add_cylinder(radius, length, axis='z', centre=None)`
     - `radius`: radius of the cylinder in mm.
     - `length`: length of the cylinder in mm.
     - `axis`: either `'x'`, `'y'`, or `'z'`; direction along which the length of the cylinder should lie.
     - `centre`: position of the centre of the cylinder in mm (if `None`, the cylinder will be placed in the centre of the image).
-- *Grid*: `sim.add_grid(spacing, thickness=1, axis=None)`
+- **Grid**: `sim.add_grid(spacing, thickness=1, axis=None)`
     - `spacing`: grid spacing in mm. Can either be a single value, or list of (x, y, z) spacings.
     - `thickenss`: gridline thickness in mm. Can either be a single value, or list of (x, y, z) thicknesses.
     - `axis`: if None, gridlines will be created in all three directions; if set to `'x'`, `'y'`, or `'z'`, grids will only be created in the plane orthogonal to the chosen axis, such that a solid grid runs through the image along that axis.
