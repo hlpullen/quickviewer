@@ -10,6 +10,8 @@
 
 ### Rotations and translations
 
+### Getting the image array
+
 ### Saving
 
 
