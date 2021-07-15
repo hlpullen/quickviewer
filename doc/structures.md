@@ -27,3 +27,7 @@
 
 
 ## Combining Images and structures
+
+### Assigning an Image to an ROI or RtStruct
+
+### Assigning RtStructs to an Image
