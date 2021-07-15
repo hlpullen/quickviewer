@@ -2029,20 +2029,25 @@ class ROI(Image):
         linewidth=None,
         contour_kwargs=None,
         mask_kwargs=None,
+        zoom_centre=None,
         **kwargs
     ):
         '''Plot this structure as either a mask or a contour.'''
 
         show_centroid = 'centroid' in plot_type
+        if zoom_centre is None:
+            zoom_centre = self.get_zoom_centre(view)
 
         # Plot a mask
         if plot_type == 'mask':
-            self.plot_mask(view, sl, idx, pos, mask_kwargs, opacity, **kwargs)
+            self.plot_mask(view, sl, idx, pos, mask_kwargs, opacity, 
+                           zoom_centre=zoom_centre, **kwargs)
 
         # Plot a contour
         elif plot_type in ['contour', 'centroid']:
             self.plot_contour(view, sl, idx, pos, contour_kwargs, linewidth,
-                              centroid=show_centroid, **kwargs)
+                              centroid=show_centroid, zoom_centre=zoom_centre,
+                              **kwargs)
 
         # Plot transparent mask + contour
         elif 'filled' in plot_type:
@@ -2052,7 +2057,8 @@ class ROI(Image):
             kwargs['ax'] = self.ax
             kwargs['include_image'] = False
             self.plot_contour(view, sl, idx, pos, contour_kwargs, linewidth,
-                              centroid=show_centroid, **kwargs)
+                              centroid=show_centroid, zoom_centre=zoom_centre,
+                              **kwargs)
 
         else:
             print('Unrecognised structure plotting option:', plot_type)
@@ -2163,8 +2169,6 @@ class ROI(Image):
         # Adjust axes
         self.ax.set_aspect('equal')
         self.label_ax(view, idx, **kwargs)
-        if zoom_centre is None:
-            zoom_centre = self.get_zoom_centre(view)
         self.zoom_ax(view, zoom, zoom_centre)
 
     def get_zoom_centre(self, view):
