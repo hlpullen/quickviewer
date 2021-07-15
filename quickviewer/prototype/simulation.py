@@ -145,7 +145,7 @@ class SyntheticImage(Image):
         s = structs_dict[name]
         return ROI(s.get_data(self.get_coords()), name=name, affine=self.affine)
 
-    def write(self, outname=None):
+    def write(self, outname=None, overwrite_struct_dir=False):
         '''Write image data to an output file.'''
 
         # Check filename
@@ -169,7 +169,8 @@ class SyntheticImage(Image):
             if outname.endswith(ext):
                 ext_to_use = ext
                 outdir = outname.replace(ext, '')
-        rtstruct.write(outdir=outdir, ext=ext_to_use)
+        rtstruct.write(outdir=outdir, ext=ext_to_use, 
+                       overwrite=overwrite_struct_dir)
 
     def make_background(self):
         '''Make blank image array or noisy array.'''

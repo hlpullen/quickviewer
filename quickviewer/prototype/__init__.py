@@ -2474,7 +2474,8 @@ class RtStruct(ArchiveObject):
         out_str += '\n}'
         return out_str
 
-    def write(self, outname=None, outdir='.', ext=None, **kwargs):
+    def write(self, outname=None, outdir='.', ext=None, overwrite=False, 
+              **kwargs):
         '''Write to a dicom RtStruct file or directory of nifti files.'''
 
         if ext is not None and not ext.startswith('.'):
@@ -2494,6 +2495,9 @@ class RtStruct(ArchiveObject):
         # Otherwise, write to individual structure files
         if not os.path.exists(outdir):
             os.makedirs(outdir)
+        elif overwrite:
+            shutil.rmtree(outdir)
+            os.mkdir(outdir)
         for s in self.get_structs():
             s.write(outdir=outdir, ext=ext, **kwargs)
 
