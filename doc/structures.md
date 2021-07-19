@@ -214,6 +214,8 @@ To plot just one structure set, you can also provide the index of the structure 
 image.plot(structure_set=-1)
 ```
 
+To add a legend to the plot, set `struct_legend=True`.
+
 The image's structure sets can be cleared at any time via
 ```
 image.clear_structs()
