@@ -130,6 +130,8 @@ rtstruct.filter_structs(to_keep, to_remove)
 ```
 where `to_keep` and `to_remove` are optional lists containing structure names, or wildcards with the `*` character. First, all of the ROIs belonging to `rtstruct` are checked and only kept if they match the names or wildcards in `to_keep`. The remaining ROIs are then removed if their names match the names or wildcards in `to_remove`.
 
+To restore a structure set to its original state (i.e. reload it from its source), run `rtstruct.reset()`.
+
 ### Renaming ROIs
 
 ROIs can be renamed by mapping from one or more possible original names to a single final name. In this way, multiple structure sets where the same ROI might have different names can be standardised to have the same ROI names.
