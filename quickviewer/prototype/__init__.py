@@ -1630,7 +1630,6 @@ class ROI(Image):
         name=None,
         color=None,
         load=None,
-        contours=None,
         image=None,
         shape=None,
         mask_level=0.25,
@@ -1647,6 +1646,11 @@ class ROI(Image):
                 (b) A numpy array containing a binary mask;
                 (c) The path to a file containing a numpy array;
                 (d) The path to a dicom structure set file.
+                (e) Dictionary of contours in the x-y orienation, where the 
+                keys are z positions in mm and values are lists of lists of 
+                3D contour points in order (x, y, z), with one list per contour
+                on that slice. These contours will be used to generate a 
+                binary mask.
 
             If <source> is not given, <contours> and <shape> must be given in
             order to load a structure directly from a contour.
@@ -1663,12 +1667,6 @@ class ROI(Image):
             If True, contours/mask will be created during initialisation; 
             otherwise they will be created on-demand.
 
-        contours: dict, default=None
-            Dictionary of contours in the x-y orienation, where the keys are 
-            z positions in mm and values are the 3D contour points in order
-            (x, y, z). Only used if <source> is None. These contours will be
-            used to generate a binary mask.
-
         image : Image/str, default=None
             Associated image from which to extract shape and affine matrix.
 
@@ -1683,10 +1681,14 @@ class ROI(Image):
         '''
 
         # Assign properties
-        self.source = source
+        if isinstance(source, dict):
+            self.source = None
+            self.input_contours = source
+        else:
+            self.source = source
+            self.input_contours = None
         self.custom_color = color is not None
         self.set_color(color)
-        self.input_contours = contours
         self.image = image
         if image and not isinstance(image, Image):
             self.image = Image(image)
@@ -2029,13 +2031,14 @@ class ROI(Image):
         linewidth=None,
         contour_kwargs=None,
         mask_kwargs=None,
+        zoom=None,
         zoom_centre=None,
         **kwargs
     ):
         '''Plot this structure as either a mask or a contour.'''
 
         show_centroid = 'centroid' in plot_type
-        if zoom_centre is None:
+        if zoom and zoom_centre is None:
             zoom_centre = self.get_zoom_centre(view)
 
         # Plot a mask
@@ -2046,7 +2049,8 @@ class ROI(Image):
         # Plot a contour
         elif plot_type in ['contour', 'centroid']:
             self.plot_contour(view, sl, idx, pos, contour_kwargs, linewidth,
-                              centroid=show_centroid, zoom_centre=zoom_centre,
+                              centroid=show_centroid, zoom=zoom, 
+                              zoom_centre=zoom_centre,
                               **kwargs)
 
         # Plot transparent mask + contour
@@ -2057,7 +2061,8 @@ class ROI(Image):
             kwargs['ax'] = self.ax
             kwargs['include_image'] = False
             self.plot_contour(view, sl, idx, pos, contour_kwargs, linewidth,
-                              centroid=show_centroid, zoom_centre=zoom_centre,
+                              centroid=show_centroid, zoom=zoom, 
+                              zoom_centre=zoom_centre,
                               **kwargs)
 
         else:
@@ -2131,6 +2136,7 @@ class ROI(Image):
     ):
         '''Plot the structure as a contour.'''
 
+        self.load()
         if not hasattr(self, 'contours') or view not in self.contours:
             self.create_contours()
 
@@ -2287,9 +2293,9 @@ class RtStruct(ArchiveObject):
             if len(structs):
                 for struct in structs.values():
                     self.structs.append(ROI(
+                        struct['contours'],
                         name=struct['name'],
                         color=struct['color'],
-                        contours=struct['contours'],
                         image=self.image
                     ))
 

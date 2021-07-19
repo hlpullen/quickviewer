@@ -131,7 +131,7 @@ class SyntheticImage(Image):
         rtstruct = RtStruct()
         for shape in self.struct_shapes:
             rtstruct.add_struct(shape.get_data(self.get_coords()), 
-                                name=shape.name)
+                                name=shape.name, affine=self.affine)
         return rtstruct
 
     def get_struct(self, name):
