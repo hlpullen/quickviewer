@@ -83,6 +83,19 @@ class Image:
             can be loaded later using the get_data() function.
         """
 
+        if isinstance(im, Image):
+            self.title = im.title
+            self.scale_in_mm = im.scale_in_mm
+            self.data = im.get_data()
+            self.affine = im.affine
+            self.input = im.input
+            self.rescale = im.rescale
+            self.input_orientation = im.input_orientation
+            self.input_origin = im.input_origin
+            self.input_voxel_sizes = im.input_voxel_sizes
+            self.downsample_amount = im.downsample_amount
+            self.set_plotting_defaults()
+
         # Assign settings
         self.title = title
         self.scale_in_mm = scale_in_mm

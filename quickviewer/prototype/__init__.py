@@ -2192,7 +2192,7 @@ class ROI(Image):
         self.load()
 
         # Generate output name if not given
-        possible_ext = ['.dcm', '.nii.gz', '.nii', '.npy']
+        possible_ext = ['.dcm', '.nii.gz', '.nii', '.npy', '.txt']
         if outname is None:
             if ext is None:
                 ext = '.nii'
@@ -2215,8 +2215,27 @@ class ROI(Image):
 
             outname = os.path.join(outdir, outname)
 
+        # Write points to text file
+        if ext == '.txt':
+
+            self.load()
+            if not 'x-y' in self.contours:
+                self.create_contours()
+
+            with open(outname, 'w') as file:
+                file.write('point\n')
+                points = []
+                for z, contours in self.contours['x-y'].items():
+                    for contour in contours:
+                        for point in contour:
+                            points.append(f'{point[0]} {point[1]} {z}')
+                file.write(str(len(points)) + '\n')
+                file.write('\n'.join(points))
+                file.close()
+            return
+
         # Write array to nifti or npy
-        if ext != '.dcm':
+        elif ext != '.dcm':
             self.create_mask()
             Image.write(self, outname, **kwargs)
         else:
@@ -3215,8 +3234,8 @@ class Patient(PathObject):
         all_objs.sort()
         return all_objs
 
-    def get_demographics(self):
-        '''Return patient's birth date, age, and sex.'''
+    def load_demographics(self):
+        '''Load a patient's birth date, age, and sex.'''
 
         info = {'BirthDate': None, 'Age': None, 'Sex': None}
 
@@ -3240,7 +3259,25 @@ class Patient(PathObject):
         if info['Sex']:
             info['Sex'] = info['Sex'][0].upper()
 
-        return info['BirthDate'], info['Age'], info['Sex']
+        # Store data
+        self.age = info['Age']
+        self.sex = info['Sex']
+        self.birth_date = info['BirthDate']
+
+    def get_age(self):
+
+        self.load_demographics()
+        return self.age
+
+    def get_sex(self):
+
+        self.load_demographics()
+        return self.sex
+
+    def get_birth_date(self):
+
+        self.load_demographics()
+        return self.birth_date
 
     def get_subdir_study_list(self, subdir=''):
 
@@ -3279,7 +3316,7 @@ class Patient(PathObject):
         if not ext.startswith('.'):
             ext = f'.{ext}'
 
-        patient_dir = os.path.join(outdir, self.id)
+        patient_dir = os.path.join(os.path.expanduser(outdir), self.id)
         if not os.path.exists(patient_dir):
             os.makedirs(patient_dir)
         elif overwrite:
