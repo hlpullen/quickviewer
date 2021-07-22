@@ -90,6 +90,12 @@ The `ROI` class has various methods for obtaining geometric properties of the RO
 
 - **Centre**: get the 3D midpoint coordinates (i.e. the mean of the maximum extents in each direction, rather than centre of mass) via `roi.get_centre()`. The 2D midpoint of a slice is obtained in a similar way to the centroid, e.g. `roi.get_centre(view='x-y', sl=10)`.
 
+- **Volume**: `roi.get_volume(units)`, where `units` can either be `mm` or `voxels` (default `mm`).
+
+- **Area**: get the area of a given slice of a structure by running e.g. `roi.get_area(view='x-y', sl=10, units='mm')`. To get the area of the central slice, can simply run `roi.get_area()`.
+
+- **Length**: get structure length along a given axis by running `roi.get_length(axis, units)` where `axis` is `x`, `y`, or `z` and `units` is `mm` or `voxels`.
+
 ## Structure Sets: the RtStruct class
 
 A structure set is an object that contains multiple ROIs. This is done via the `RtStruct` class. 
