@@ -1842,6 +1842,7 @@ class ROI(Image):
     def get_mask(self):
         '''Get binary mask.'''
 
+        self.load()
         self.create_mask()
         return self.data
 
@@ -2092,6 +2093,58 @@ class ROI(Image):
             self.length[ax] = {'voxels': 0, 'mm': 0}
 
         return self.length[ax][units]
+
+    def get_centroid_vector(self, roi, **kwargs):
+        '''Get centroid displacement vector with respect to another ROI.'''
+
+        this_centroid = np.array(self.get_centroid(**kwargs))
+        other_centroid = np.array(roi.get_centroid(**kwargs))
+        return other_centroid - this_centroid
+
+    def get_centroid_distance(self, roi, **kwargs):
+        '''Get absolute centroid distance.'''
+
+        return np.linalg.norm(self.get_centroid_vector(roi, **kwargs))
+
+    def get_dice(self, roi, view='x-y', sl=None, idx=None, pos=None, 
+                 flatten=False):
+        '''Get Dice score, either global or on a given slice.'''
+
+        if sl is None and idx is None and pos is None:
+            data1 = self.get_mask()
+            data2 = roi.get_mask()
+            if flatten:
+                data1 = np.sum(data1, axis=_slice_axes[view])
+                data2 = np.sum(data2, axis=_slice_axes[view])
+        else:
+            data1 = self.get_slice(view, sl, idx, pos)
+            data2 = roi.get_slice(view, sl, idx, pos)
+
+        return (data1 & data2).sum() / np.mean([data1.sum(), data2.sum()])
+
+    def get_volume_ratio(self, roi):
+        '''Get ratio of another ROI's volume with respect to own volume.'''
+
+        return roi.get_volume() / self.get_volume()
+
+    def get_area_ratio(self, roi):
+        '''Get ratio of another ROI's area with respect to own area.'''
+
+        return roi.get_area() / self.get_area()
+
+    def get_relative_volume_diff(self, roi, units='mm'):
+        '''Get relative volume of another ROI with respect to own volume.'''
+
+        own_volume = self.get_volume(units)
+        other_volume = roi.get_volume(units)
+        return (other_volume - own_volume) / own_volume
+
+    def get_relative_area_diff(self, roi, units='mm'):
+        '''Get relative area of another ROI with respect to own area.'''
+
+        own_area = self.get_area(units=units)
+        other_area = roi.get_area(units=units)
+        return (other_area - own_area) / own_area
 
     def set_color(self, color):
         '''Set plotting color.'''
