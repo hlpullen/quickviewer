@@ -273,7 +273,10 @@ class PathObject(DataObject):
             for filename in filenames:
                 if is_timestamp(filename):
                     filepath = os.path.join(path, filename)
-                    objs.append(globals()[dtype](path=filepath))
+                    try:
+                        objs.append(globals()[dtype](path=filepath, **kwargs))
+                    except RuntimeError:
+                        pass
 
         # Sort and assign subdir to the created objects
         objs.sort()
@@ -599,7 +602,10 @@ class Image(ArchiveObject):
         ])
         for attr in attrs_to_print:
             out_str += f'\n  {attr} : {getattr(self, attr)}'
-        out_str += f'\n  structs: [{len(self.structs)} * {type(self.structs[0])}]'
+        if len(self.structs):
+            out_str += f'\n  structs: [{len(self.structs)} * {type(self.structs[0])}]'
+        else:
+            out_str += '  structs: []'
         out_str += '\n}'
         return out_str
 
@@ -611,6 +617,30 @@ class Image(ArchiveObject):
         if standardise:
             return self.get_standardised_data()
         return self.data
+
+    def get_voxel_size(self):
+        '''Return voxel sizes in mm in order (x, y, z).'''
+
+        self.load_data()
+        return self.voxel_size
+
+    def get_origin(self):
+        '''Return origin position in mm in order (x, y, z).'''
+
+        self.load_data()
+        return self.origin
+
+    def get_n_voxels(self):
+        '''Return number of voxels in order (x, y, z).'''
+
+        self.load_data()
+        return self.n_voxels
+
+    def get_affine(self):
+        '''Return affine matrix.'''
+
+        self.load_data()
+        return self.affine
 
     def load_data(self, force=False):
         '''Load pixel array from image source.'''
@@ -890,7 +920,7 @@ class Image(ArchiveObject):
                 idx = self.pos_to_idx(centre_pos, _slice_axes[view])
         return idx
 
-    def get_slice(self, view='x-y', sl=None, idx=None, pos=None):
+    def get_slice(self, view='x-y', sl=None, idx=None, pos=None, **kwargs):
         '''Get a slice of the data in the correct orientation for plotting.'''
 
         # Get image slice
@@ -905,7 +935,7 @@ class Image(ArchiveObject):
         return np.transpose(data, transpose)[:, :, idx]
 
     def set_ax(self, view=None, ax=None, gs=None, figsize=_default_figsize,
-               zoom=None, colorbar=False):
+               zoom=None, colorbar=False, **kwargs):
         '''Set up axes for plotting this image, either from a given exes or
         gridspec, or by creating new axes.'''
 
@@ -935,6 +965,38 @@ class Image(ArchiveObject):
 
         self.structs = []
 
+    def get_mpl_kwargs(self, view, mpl_kwargs=None, scale_in_mm=True):
+        '''Get matplotlib kwargs dict including defaults.'''
+
+        if mpl_kwargs is None:
+            mpl_kwargs = {}
+
+        # Set colormap
+        if 'cmap' not in mpl_kwargs:
+            mpl_kwargs['cmap'] = 'gray'
+
+        # Set colour range
+        for i, name in enumerate(['vmin', 'vmax']):
+            if name not in mpl_kwargs:
+                mpl_kwargs[name] = self.default_window[i]
+
+        # Set image extent and aspect ratio
+        extent = self.plot_extent[view]
+        mpl_kwargs['aspect'] = 1
+        x_ax, y_ax = _plot_axes[view]
+        if not scale_in_mm:
+            extent = [
+                self.pos_to_slice(extent[0], x_ax, False),
+                self.pos_to_slice(extent[1], x_ax, False),
+                self.pos_to_slice(extent[2], y_ax, False),
+                self.pos_to_slice(extent[3], y_ax, False)
+            ]
+            mpl_kwargs['aspect'] = abs(self.voxel_size[y_ax] 
+                                       / self.voxel_size[x_ax])
+        mpl_kwargs['extent'] = extent
+
+        return mpl_kwargs
+
     def plot(
         self, 
         view='x-y', 
@@ -945,6 +1007,7 @@ class Image(ArchiveObject):
         ax=None,
         gs=None,
         figsize=_default_figsize,
+        save_as=None,
         zoom=None,
         zoom_centre=None,
         mpl_kwargs=None,
@@ -1115,40 +1178,10 @@ class Image(ArchiveObject):
         idx = self.get_idx(view, sl, idx, pos)
         image_slice = self.get_slice(view, sl=sl, idx=idx, pos=pos)
 
-        # Get colormap
-        mpl_kwargs = {} if mpl_kwargs is None else mpl_kwargs
-        if 'cmap' in mpl_kwargs:
-            cmap = mpl_kwargs.pop('cmap')
-        else:
-            cmap = 'gray'
-        cmap = copy.copy(matplotlib.cm.get_cmap(cmap))
-
-        # Get colour range
-        vmin = mpl_kwargs.pop('vmin', self.default_window[0])
-        vmax = mpl_kwargs.pop('vmax', self.default_window[1])
-
-        # Get image extent and aspect ratio
-        extent = self.plot_extent[view]
-        aspect = 1
-        x_ax, y_ax = _plot_axes[view]
-        if not scale_in_mm:
-            extent = [
-                self.pos_to_slice(extent[0], x_ax, False),
-                self.pos_to_slice(extent[1], x_ax, False),
-                self.pos_to_slice(extent[2], y_ax, False),
-                self.pos_to_slice(extent[3], y_ax, False)
-            ]
-            aspect = abs(self.voxel_size[y_ax] / self.voxel_size[x_ax])
-
         # Plot the slice
         mesh = self.ax.imshow(
             image_slice, 
-            cmap=cmap,
-            extent=extent,
-            aspect=aspect,
-            vmin=vmin,
-            vmax=vmax,
-            **mpl_kwargs
+            **self.get_mpl_kwargs(view, mpl_kwargs, scale_in_mm)
         )
 
         # Plot structure sets
@@ -1193,6 +1226,11 @@ class Image(ArchiveObject):
         if show:
             plt.tight_layout()
             plt.show()
+
+        # Save to file
+        if save_as:
+            self.fig.savefig(save_as)
+            plt.close()
 
     def label_ax(self, view, idx, scale_in_mm=True, no_title=False,
                  no_ylabel=False, annotate_slice=False, major_ticks=None,
@@ -1339,7 +1377,16 @@ class Image(ArchiveObject):
     def get_image_centre(self):
         '''Get position in mm of the centre of the image.'''
 
+        self.load_data()
         return [np.mean(self.lims[i]) for i in range(3)]
+
+    def get_range(self, ax='z'):
+        '''Get range of the scan in mm along a given axis.'''
+
+        i_ax = _axes.index(ax) if ax in _axes else ax
+        origin = self.get_origin()[i_ax]
+        return [origin, origin + (self.n_voxels[i_ax] - 1) 
+                * self.voxel_size[i_ax]]
 
     def get_voxel_coords(self):
         '''Get arrays of voxel coordinates in each direction.'''
@@ -1508,6 +1555,7 @@ class Image(ArchiveObject):
         '''
 
         outname = os.path.expanduser(outname)
+        self.load_data()
 
         # Write to nifti file
         if outname.endswith('.nii') or outname.endswith('.nii.gz'):
@@ -2646,12 +2694,18 @@ def load_dicom(path):
     # Try loading single dicom file
     paths = []
     if os.path.isfile(path):
-        try:
-            ds = pydicom.read_file(path)
-            if ds.get('ImagesInAcquisition', None) == 1:
-                paths = [path]
-        except pydicom.errors.InvalidDicomError:
+        ds = pydicom.read_file(path, force=True)
+
+        # Discard if not a valid dicom file
+        if not hasattr(ds, 'SOPClassUID'):
             return None, None, None, None
+
+        # Assign TransferSyntaxUID if missing
+        if not hasattr(ds, 'TransferSyntaxUID'):
+            ds.file_meta.TransferSyntaxUID = pydicom.uid.ImplicitVRLittleEndian
+
+        if ds.get('ImagesInAcquisition', None) == 1:
+            paths = [path]
 
     # Case where there are multiple dicom files for this image
     if not paths:
@@ -2682,7 +2736,7 @@ def load_dicom(path):
         try:
             
             # Load file and check it matches the others
-            ds = pydicom.read_file(dcm)
+            ds = pydicom.read_file(dcm, force=True)
             if study_uid is None:
                 study_uid = ds.StudyInstanceUID
             if series_num is None:
@@ -2703,6 +2757,8 @@ def load_dicom(path):
                 or ds.ImageOrientationPatient != orientation
                ):
                 continue
+            if not hasattr(ds, 'TransferSyntaxUID'):
+                ds.file_meta.TransferSyntaxUID = pydicom.uid.ImplicitVRLittleEndian
 
             # Get data 
             pos = getattr(ds, 'ImagePositionPatient', [0, 0, 0])
@@ -2926,7 +2982,7 @@ def write_dicom(
                     dcm_path = dcms[0]
             if dcm_path:
                 try:
-                    ds = pydicom.read_file(dcm_path)
+                    ds = pydicom.read_file(dcm_path, force=True)
                 except pydicom.errors.InvalidDicomError:
                     pass
 
@@ -3279,7 +3335,8 @@ class Patient(PathObject):
         self.load_demographics()
         return self.birth_date
 
-    def get_subdir_study_list(self, subdir=''):
+    def get_subdir_studies(self, subdir=''):
+        '''Get list of studies within a given subdirectory.'''
 
         subdir_studies = []
         for study in self.studies:
@@ -3703,7 +3760,7 @@ class Study(ArchiveObject):
             for file in group.files:
 
                 # Create RtStruct
-                rt_struct = RtStruct(file.path, image=im)
+                rt_struct = RtStruct(file.path, image=image)
 
                 # Add to Image
                 image.add_structs(rt_struct)
@@ -3753,3 +3810,72 @@ class Study(ArchiveObject):
                 plan_dose.imageStack += dose.getImageStack()
 
         return plan_dose
+
+
+class ImageComparison:
+    '''Plot comparisons of two images and calculate comparison metrics.'''
+
+    def __init__(self, im1, im2, **kwargs):
+        
+        # Load images
+        self.ims = []
+        for im in [im1, im2]:
+            if issubclass(type(im), Image):
+                self.ims.append(im)
+            else:
+                self.ims.append(Image(im, **kwargs))
+
+    def plot_chequerboard(self, view='x-y', invert=False, n_splits=2, 
+                          mpl_kwargs=None, save_as=None, **kwargs):
+
+        # Get indices of images to plot
+        i1 = int(invert)
+        i2 = 1 - i1
+
+        # Plot background image
+        self.ims[i1].plot(view=view, mpl_kwargs=mpl_kwargs, show=False, 
+                          **kwargs)
+
+        # Create mask for second image
+        im2_slice = self.ims[i2].get_slice(view=view, **kwargs)
+        nx = int(np.ceil(im2_slice.shape[0] / n_splits))
+        ny = int(np.ceil(im2_slice.shape[1] / n_splits))
+        mask = np.kron(
+            [[1, 0] * n_splits, [0, 1] * n_splits] * n_splits, np.ones((nx, ny))
+        )
+        mask = mask[:im2_slice.shape[0], :im2_slice.shape[1]]
+
+        # Plot second image
+        self.ims[i1].ax.imshow(
+            np.ma.masked_where(mask < 0.5, im2_slice),
+            **self.ims[i2].get_mpl_kwargs(view, mpl_kwargs)
+        );
+
+        if save_as:
+            self.ims[0].fig.savefig(save_as)
+            plt.close()
+
+    def plot_overlay(self, view='x-y', invert=False, opacity=0.5, 
+                     mpl_kwargs=None, save_as=None, show=True, **kwargs):
+
+        i1 = int(invert)
+        i2 = 1 - i1
+        cmaps = ['Reds', 'Blues']
+        alphas = [1, opacity]
+
+        # Set axes
+        self.ims[0].set_ax(view=view, **kwargs)
+        ax = self.ims[0].ax
+        ax.set_facecolor('w')
+
+        # Plot images
+        for n, i in enumerate([i1, i2]):
+            im_slice = self.ims[i].get_slice(view=view, **kwargs)
+            mpl_kwargs = self.ims[i].get_mpl_kwargs(view, mpl_kwargs)
+            mpl_kwargs['cmap'] = cmaps[n]
+            mpl_kwargs['alpha'] = alphas[n]
+            ax.imshow(im_slice, **mpl_kwargs)
+
+        if save_as:
+            self.ims[0].fig.savefig(save_as)
+            plt.close()
