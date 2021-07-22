@@ -1751,7 +1751,6 @@ class ROI(Image):
             if isinstance(self.source, str):
                 basename = os.path.basename(self.source).split('.')[0]
                 name = re.sub(r'RTSTRUCT_[MVCT]+_\d+_\d+_\d+', '', basename)
-                name = standard_str(name)
                 self.name = name[0].upper() + name[1:]
             else:
                 self.name = StructDefaults().get_default_struct_name()
@@ -2202,12 +2201,14 @@ class ROI(Image):
                  flatten=False):
         '''Get Dice score, either global or on a given slice.'''
 
+        if view is None:
+            view = 'x-y'
         if sl is None and idx is None and pos is None:
             data1 = self.get_mask()
             data2 = roi.get_mask()
             if flatten:
-                data1 = np.sum(data1, axis=_slice_axes[view])
-                data2 = np.sum(data2, axis=_slice_axes[view])
+                data1 = np.sum(data1, axis=_slice_axes[view]).astype(bool)
+                data2 = np.sum(data2, axis=_slice_axes[view]).astype(bool)
         else:
             data1 = self.get_slice(view, sl, idx, pos)
             data2 = roi.get_slice(view, sl, idx, pos)
@@ -2237,6 +2238,118 @@ class ROI(Image):
         own_area = self.get_area(units=units)
         other_area = roi.get_area(units=units)
         return (other_area - own_area) / own_area
+
+    def get_comparison(
+        self, 
+        roi, 
+        metrics=['dice', 'abs_centroid', 'rel_volume_diff', 'rel_area_diff'],
+        vol_units='mm',
+        area_units='mm',
+        centroid_units='mm',
+        view=None,
+        sl=None,
+        idx=None,
+        pos=None
+    ):
+        '''Get a pandas DataFrame of comparison metrics with another ROI.
+
+        Possible metrics:
+            - 'dice': Dice score, either on a slice (if view and sl/idx/pos
+            are given), or globally.
+            - 'dice_global': Global dice score (note that this is the same as
+            'dice' if no view and sl/idx/pos are given).
+            - 'dice_flattened': Global dice score of flattened ROIs.
+            - 'abs_centroid': Absoutely centroid distance.
+            - 'centroid': Centroid distance vector.
+            - 'rel_volume_diff': Relative volume difference.
+            - 'rel_area_diff': Relative area difference, either on a specific
+            slice or on the central 'x-y' slice of each structure, if no 
+            view and idx/pos/sl are given.
+            - 'volume_ratio': Volume ratio.
+            - 'area_ratio': Area ratio, either on a specific slice or of the
+            central slices of the two ROIs.
+        '''
+
+        # Parse volume and area units
+        vol_units_name = vol_units
+        if vol_units in ['mm', 'mm3']:
+            vol_units = 'mm'
+            vol_units_name = 'mm3'
+        area_units_name = vol_units
+        if area_units in ['mm', 'mm2']:
+            area_units = 'mm'
+            area_units_name = 'mm2'
+
+        # Make dict of property names
+        names = {
+            'dice': f'Dice score',
+            'dice_global': 'Global Dice score',
+            'dice_flattened': 'Flattened Dice score',
+            'abs_centroid': f'Centroid distance ({centroid_units})',
+            'rel_volume_diff': f'Relative volume difference ({vol_units})',
+            'rel_area_diff': f'Relative area difference ({vol_units})',
+            'volume_ratio': f'Volume ratio',
+            'area_ratio': f'Area ratio',
+        }
+        for ax in _axes:
+            names[f'centroid_{ax}'] = f'Centroid {ax} distance ({centroid_units})'
+
+        # Make dict of functions and args for each metric
+        funcs = {
+            'dice': (
+                self.get_dice, {'roi': roi, 'view': view, 'sl': sl, 'idx': idx,
+                                'pos': pos}
+            ),
+            'dice_global': (
+                self.get_dice, {'roi': roi}
+            ),
+            'dice_flattened': (
+                self.get_dice, {'roi': roi, 'flatten': True}
+            ),
+            'abs_centroid': (
+                self.get_centroid_distance, {'roi': roi, 
+                                             'units': centroid_units, 
+                                             'view': view, 'sl': sl, 
+                                             'pos': pos, 'idx': idx}
+            ),
+            'centroid': (
+                self.get_centroid_vector, {'roi': roi, 
+                                           'units': centroid_units, 
+                                           'view': view, 'sl': sl, 
+                                           'pos': pos, 'idx': idx}
+            ),
+            'rel_volume_diff': (
+                self.get_relative_volume_diff, {'roi': roi, 'units': vol_units}
+            ),
+            'rel_area_diff': (
+                self.get_relative_area_diff, {'roi': roi, 'units': area_units}
+            ),
+            'volume_ratio': (
+                self.get_volume_ratio, {'roi': roi}
+            ),
+            'area_ratio': (
+                self.get_area_ratio, {'roi': roi}
+            ),
+        }
+
+        # Make dict of metrics
+        comp = {
+            m: funcs[m][0](**funcs[m][1]) for m in metrics
+        }
+
+        # Split centroid into multiple entries
+        if 'centroid' in comp:
+            centroid_vals = comp.pop('centroid')
+            axes = [0, 1, 2] if len(centroid_vals) == 3 \
+                else _plot_axes[view]
+            for i, i_ax in enumerate(axes):
+                ax = _axes[i_ax]
+                comp[f'centroid_{ax}'] = centroid_vals[i]
+
+        comp_named = {names[m]: c for m, c in comp.items()}
+        name = f'{self.name} vs. {roi.name}' if self.name != roi.name \
+                else self.name
+        return pd.DataFrame(comp_named, index=[name])
 
     def set_color(self, color):
         '''Set plotting color.'''
@@ -2605,7 +2718,7 @@ class RtStruct(ArchiveObject):
                     if i in already_renamed:
                         continue
 
-                    if fnmatch.fnmatch(standard_str(s.name), standard_str(m)):
+                    if fnmatch.fnmatch(s.name.lower(), m.lower()):
                         s.name = name
                         name_matched = True
                         already_renamed.append(i)
@@ -2638,7 +2751,7 @@ class RtStruct(ArchiveObject):
         if to_keep is not None:
             keep = []
             for s in self.structs:
-                if any([fnmatch.fnmatch(standard_str(s.name), standard_str(k))
+                if any([fnmatch.fnmatch(s.name.lower(), k.lower())
                        for k in to_keep]):
                     keep.append(s)
             self.structs = keep
@@ -2646,8 +2759,7 @@ class RtStruct(ArchiveObject):
         if to_remove is not None:
             keep = []
             for s in self.structs:
-                if not any([fnmatch.fnmatch(standard_str(s.name), 
-                                            standard_str(r))
+                if not any([fnmatch.fnmatch(s.name.lower(), r.lower())
                            for r in to_remove]):
                     keep.append(s)
             self.structs = keep
@@ -2736,6 +2848,44 @@ class RtStruct(ArchiveObject):
 
         return pd.concat([s.get_geometry(**kwargs) for s in self.get_structs()])
 
+    def get_comparison(self, other, method='auto', **kwargs):
+        '''Get pandas DataFrame of comparison metrics vs a single ROI or 
+        another RtStruct.'''
+
+        dfs = []
+        if isinstance(other, ROI):
+            dfs = [s.get_comparison(other, **kwargs) for s in self.get_structs()]
+
+        elif isinstance(other, RtStruct):
+            pairs = self.get_comparison_pairs(other, method)
+            dfs = []
+            for roi1, roi2 in pairs:
+                dfs.append(roi1.get_comparison(roi2, **kwargs))
+
+        else:
+            raise TypeError('<other> must be ROI or RtStruct!')
+
+        return pd.concat(dfs)
+
+    def get_comparison_pairs(self, other, method='auto'):
+        '''Get list of ROIs to compare with one another.'''
+
+        # Check for name matches
+        matches = []
+        if method in ['auto', 'named']:
+            matches = [s for s in self.get_struct_names() if s in
+                       other.get_struct_names()]
+            if len(matches) or method == 'named':
+                return [(self.get_struct(name), other.get_struct(name))
+                        for name in matches]
+
+        # Otherwise, pair each structure with every other
+        pairs = []
+        for roi1 in self.get_structs():
+            for roi2 in other.get_structs():
+                pairs.append((roi1, roi2))
+        return pairs
+
     def write(self, outname=None, outdir='.', ext=None, overwrite=False, 
               **kwargs):
         '''Write to a dicom RtStruct file or directory of nifti files.'''
@@ -2791,8 +2941,7 @@ def load_structs_dicom(path, names=None):
         names_to_load = names
     if names_to_load:
         structs = {i: s for i, s in structs.items() if 
-                   any([fnmatch.fnmatch(standard_str(s['name']), 
-                                        standard_str(n))
+                   any([fnmatch.fnmatch(s['name'].lower(), n.lower()) 
                         for n in names_to_load]
                       )
                   }
@@ -2843,17 +2992,6 @@ def get_dicom_sequence(ds=None, basename=''):
             sequence = getattr(ds, attribute)
             break
     return sequence
-
-
-def standard_str(string):
-    '''Convert a string to lowercase and replace all spaces with
-    underscores.'''
-
-    try:
-        return str(string).lower().replace(' ', '_')
-    except AttributeError:
-        return
-
 
 
 def load_nifti(path):
