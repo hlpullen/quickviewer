@@ -2048,15 +2048,50 @@ class ROI(Image):
 
     def get_volume(self, units='mm'):
         '''Get structure volume.'''
-        pass
+        
+        if hasattr(self, 'volume'):
+            return self.volume[units]
+
+        self.create_mask()
+        self.volume = {}
+        self.volume['voxels'] = self.data.astype(bool).sum()
+        self.volume['mm'] = self.volume['voxels'] * abs(np.prod(self.voxel_size))
+        self.volume['ml'] = self.volume['mm'] * (0.1 ** 3)
+        return self.volume[units]
 
     def get_area(self, view='x-y', sl=None, idx=None, pos=None, units='mm'):
         '''Get the area of the structure on a given slice.'''
-        pass
 
-    def get_length(self, units='mm'):
-        '''Get total length of the structure.'''
-        pass
+        if sl is None and idx is None and pos is None:
+            idx = self.get_mid_idx(view)
+        im_slice = self.get_slice(view, sl, idx, pos)
+        area = im_slice.astype(bool).sum()
+        if units == 'mm':
+            x_ax, y_ax = _plot_axes[view]
+            area *= abs(self.voxel_size[x_ax] * self.voxel_size[y_ax])
+        return area
+
+    def get_length(self, units='mm', ax='z'):
+        '''Get total length of the structure along a given axis.'''
+        
+        if hasattr(self, 'length') and ax in self.length:
+            return self.length[ax][units]
+        
+        self.create_mask()
+        if not hasattr(self, 'length'):
+            self.length = {}
+        self.length[ax] = {}
+
+        nonzero = np.argwhere(self.data)
+        vals = nonzero[:, _axes.index(ax)]
+        if len(vals):
+            self.length[ax]['voxels'] = max(vals) - min(vals)
+            self.length[ax]['mm'] = self.length[ax]['voxels'] \
+                    * abs(self.voxel_size[_axes.index(ax)])
+        else:
+            self.length[ax] = {'voxels': 0, 'mm': 0}
+
+        return self.length[ax][units]
 
     def set_color(self, color):
         '''Set plotting color.'''
