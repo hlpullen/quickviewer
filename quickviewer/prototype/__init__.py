@@ -1991,6 +1991,7 @@ class ROI(Image):
     def on_slice(self, view, sl=None, idx=None, pos=None):
         '''Check whether this structure exists on a given slice.'''
 
+        self.create_mask()
         idx = self.get_idx(view, sl, idx, pos)
         return idx in self.get_indices(view)
 
@@ -1999,14 +2000,17 @@ class ROI(Image):
         '''Get centroid position in 2D or 3D.'''
         
         # Get 2D or 3D data from which to calculate centroid
-        if view is not None:
+        if view or sl or idx or pos:
             if sl is None and idx is None and pos is None:
                 idx = self.get_mid_idx(view)
+            if view is None:
+                view = 'x-y'
             if not self.on_slice(view, sl, idx, pos):
                 return [None, None]
             data = self.get_slice(view, sl, idx, pos)
             axes = _plot_axes[view]
         else:
+            self.create_mask()
             data = self.get_data(standardise)
             axes = _axes
 
@@ -2190,6 +2194,8 @@ class ROI(Image):
 
         this_centroid = np.array(self.get_centroid(**kwargs))
         other_centroid = np.array(roi.get_centroid(**kwargs))
+        if None in this_centroid or None in other_centroid:
+            return None, None
         return other_centroid - this_centroid
 
     def get_centroid_distance(self, roi, **kwargs):
@@ -2218,26 +2224,38 @@ class ROI(Image):
     def get_volume_ratio(self, roi):
         '''Get ratio of another ROI's volume with respect to own volume.'''
 
-        return roi.get_volume() / self.get_volume()
+        own_volume = roi.get_volume()
+        other_volume = self.get_volume()
+        if not other_volume:
+            return None
+        return own_volume / other_volume
 
-    def get_area_ratio(self, roi):
+    def get_area_ratio(self, roi, **kwargs):
         '''Get ratio of another ROI's area with respect to own area.'''
 
-        return roi.get_area() / self.get_area()
+        own_area = roi.get_area(**kwargs)
+        other_area = self.get_area(**kwargs)
+        if not other_area:
+            return None
+        return own_area / other_area
 
     def get_relative_volume_diff(self, roi, units='mm'):
         '''Get relative volume of another ROI with respect to own volume.'''
 
         own_volume = self.get_volume(units)
         other_volume = roi.get_volume(units)
-        return (other_volume - own_volume) / own_volume
+        if not own_volume:
+            return None
+        return (own_volume - other_volume) / own_volume
 
-    def get_relative_area_diff(self, roi, units='mm'):
+    def get_relative_area_diff(self, roi, **kwargs):
         '''Get relative area of another ROI with respect to own area.'''
 
-        own_area = self.get_area(units=units)
-        other_area = roi.get_area(units=units)
-        return (other_area - own_area) / own_area
+        own_area = self.get_area(**kwargs)
+        other_area = roi.get_area(**kwargs)
+        if not own_area:
+            return None
+        return (own_area - other_area) / own_area
 
     def get_comparison(
         self, 
@@ -2259,15 +2277,20 @@ class ROI(Image):
             - 'dice_global': Global dice score (note that this is the same as
             'dice' if no view and sl/idx/pos are given).
             - 'dice_flattened': Global dice score of flattened ROIs.
-            - 'abs_centroid': Absoutely centroid distance.
-            - 'centroid': Centroid distance vector.
+            - 'centroid_global': Centroid distance vector.
+            - 'abs_centroid_global': Absolute centroid distance.
+            - 'centroid': Centroid distance vector on slice.
+            - 'abs_centroid': Absolute centroid distance on slice.
             - 'rel_volume_diff': Relative volume difference.
             - 'rel_area_diff': Relative area difference, either on a specific
             slice or on the central 'x-y' slice of each structure, if no 
             view and idx/pos/sl are given.
+            - 'rel_area_diff_central': Relative area difference of central 
+            slice of each ROI.
             - 'volume_ratio': Volume ratio.
             - 'area_ratio': Area ratio, either on a specific slice or of the
             central slices of the two ROIs.
+            - 'area_ratio_central': Area ratio of central slices of each ROI.
         '''
 
         # Parse volume and area units
@@ -2286,13 +2309,19 @@ class ROI(Image):
             'dice_global': 'Global Dice score',
             'dice_flattened': 'Flattened Dice score',
             'abs_centroid': f'Centroid distance ({centroid_units})',
-            'rel_volume_diff': f'Relative volume difference ({vol_units})',
-            'rel_area_diff': f'Relative area difference ({vol_units})',
+            'abs_centroid_global': f'Global centroid distance ({centroid_units})',
+            'rel_volume_diff': f'Relative volume difference ({vol_units_name})',
+            'rel_area_diff': f'Relative area difference ({area_units_name})',
+            'rel_area_diff_central': 
+            f'Central slice relative area difference ({area_units_name})',
             'volume_ratio': f'Volume ratio',
             'area_ratio': f'Area ratio',
+            'area_ratio_central': f'Central slice area ratio'
         }
         for ax in _axes:
             names[f'centroid_{ax}'] = f'Centroid {ax} distance ({centroid_units})'
+            names[f'centroid_global_{ax}'] \
+                    = f'Global centroid {ax} distance ({centroid_units})'
 
         # Make dict of functions and args for each metric
         funcs = {
@@ -2318,16 +2347,33 @@ class ROI(Image):
                                            'view': view, 'sl': sl, 
                                            'pos': pos, 'idx': idx}
             ),
+            'abs_centroid_global': (
+                self.get_centroid_distance, {'roi': roi, 
+                                             'units': centroid_units}
+            ),
+            'centroid_global': (
+                self.get_centroid_vector, {'roi': roi, 
+                                           'units': centroid_units}
+            ),
             'rel_volume_diff': (
                 self.get_relative_volume_diff, {'roi': roi, 'units': vol_units}
             ),
             'rel_area_diff': (
+                self.get_relative_area_diff, {'roi': roi, 'units': area_units,
+                                              'view': view, 'sl': sl,
+                                              'pos': pos, 'idx': idx}
+            ),
+            'rel_area_diff_central': (
                 self.get_relative_area_diff, {'roi': roi, 'units': area_units}
             ),
             'volume_ratio': (
                 self.get_volume_ratio, {'roi': roi}
             ),
             'area_ratio': (
+                self.get_area_ratio, {'roi': roi, 'view': view, 'sl': sl,
+                                      'pos': pos, 'idx': idx}
+            ),
+            'area_ratio_central': (
                 self.get_area_ratio, {'roi': roi}
             ),
         }
@@ -2338,13 +2384,14 @@ class ROI(Image):
         }
 
         # Split centroid into multiple entries
-        if 'centroid' in comp:
-            centroid_vals = comp.pop('centroid')
-            axes = [0, 1, 2] if len(centroid_vals) == 3 \
-                else _plot_axes[view]
-            for i, i_ax in enumerate(axes):
-                ax = _axes[i_ax]
-                comp[f'centroid_{ax}'] = centroid_vals[i]
+        for cname in ['centroid', 'centroid_global']:
+            if cname in comp:
+                centroid_vals = comp.pop(cname)
+                axes = [0, 1, 2] if len(centroid_vals) == 3 \
+                    else _plot_axes[view]
+                for i, i_ax in enumerate(axes):
+                    ax = _axes[i_ax]
+                    comp[f'{cname}_{ax}'] = centroid_vals[i]
 
         comp_named = {names[m]: c for m, c in comp.items()}
         name = f'{self.name} vs. {roi.name}' if self.name != roi.name \
