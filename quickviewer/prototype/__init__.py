@@ -17,13 +17,14 @@ import matplotlib.pyplot as plt
 import nibabel
 import numpy as np
 import os
+import pandas as pd
 import pydicom
 import re
+import shutil
 import skimage.measure
 import tempfile
 import time
 import uuid
-import shutil
 
 
 default_stations = {"0210167": "LA3", "0210292": "LA4"}
@@ -1811,6 +1812,7 @@ class ROI(Image):
         # Load structure mask
         if not len(structs) and self.source is not None:
             Image.__init__(self, self.source, **self.kwargs)
+            self.loaded = True
             self.create_mask()
 
         # Deal with input from dicom
@@ -1830,8 +1832,7 @@ class ROI(Image):
                 self.contours['x-y'][iz] = [
                     [tuple(p[:2]) for p in points] for points in contours
                 ]
-
-        self.loaded = True
+            self.loaded = True
 
     def get_contours(self, view='x-y'):
         '''Get dict of contours in a given orientation.'''
@@ -1897,6 +1898,8 @@ class ROI(Image):
 
         if self.loaded_mask:
             return
+        if not self.loaded:
+            self.load()
 
         # Create mask from x-y contours if needed
         if self.input_contours:
@@ -2001,7 +2004,6 @@ class ROI(Image):
             if sl is None and idx is None and pos is None:
                 idx = self.get_mid_idx(view)
             if not self.on_slice(view, sl, idx, pos):
-                print('not on slice!', view, sl, idx, pos)
                 return [None, None]
             data = self.get_slice(view, sl, idx, pos)
             axes = _plot_axes[view]
@@ -2063,6 +2065,8 @@ class ROI(Image):
     def get_area(self, view='x-y', sl=None, idx=None, pos=None, units='mm'):
         '''Get the area of the structure on a given slice.'''
 
+        if view is None:
+            view = 'x-y'
         if sl is None and idx is None and pos is None:
             idx = self.get_mid_idx(view)
         im_slice = self.get_slice(view, sl, idx, pos)
@@ -2093,6 +2097,94 @@ class ROI(Image):
             self.length[ax] = {'voxels': 0, 'mm': 0}
 
         return self.length[ax][units]
+
+    def get_geometry(
+        self, 
+        metrics=['volume', 'area', 'centroid', 'x_length', 'y_length', 'z_length'],
+        vol_units='mm',
+        area_units='mm',
+        length_units='mm',
+        centroid_units='mm',
+        view=None,
+        sl=None,
+        pos=None,
+        idx=None
+    ):
+        '''Get a pandas DataFrame of the geometric properties listed in 
+        <metrics>.
+
+        Possible metrics:
+            - 'volume': volume of entire structure.
+            - 'area': area either of the central x-y slice, or of a given 
+            view/slice if either sl/pos/idx are given.
+            - 'centroid': centre-of-mass either of the entire structure, or a 
+            given view/slice if either sl/pos/idx are given.
+            - 'centroid_global': centre-of-mass of the entire structure (note 
+            that this is the same as 'centroid' if sl/pos/idx are all None)
+            - 'x_length': structure length along the x axis
+            - 'y_length': structure length along the y axis
+            - 'z_length': structure length along the z axis
+        '''
+
+        # Parse volume and area units
+        vol_units_name = vol_units
+        if vol_units in ['mm', 'mm3']:
+            vol_units = 'mm'
+            vol_units_name = 'mm3'
+        area_units_name = vol_units
+        if area_units in ['mm', 'mm2']:
+            area_units = 'mm'
+            area_units_name = 'mm2'
+
+        # Make dict of property names
+        names = {
+            'volume': f'Volume ({vol_units_name})',
+            'area': f'Area ({area_units_name})',
+        }
+        for ax in _axes:
+            names[f'{ax}_length'] = f'{ax} length ({length_units})'
+            names[f'centroid_{ax}'] = f'Centroid {ax} ({centroid_units})'
+            names[f'centroid_global_{ax}'] = f'Global centroid {ax} ({centroid_units})'
+
+        # Make dict of functions and args for each metric
+        funcs = {
+            'volume': (
+                self.get_volume, {'units': vol_units}
+            ),
+            'area': (
+                self.get_area, {'units': area_units, 'view': view, 'sl': sl, 
+                                'pos': pos, 'idx': idx}
+            ),
+            'centroid': (
+                self.get_centroid, {'units': centroid_units, 'view': view, 
+                                    'sl': sl, 'pos': pos, 'idx': idx}
+            ),
+            'centroid_global': (
+                self.get_centroid, {'units': centroid_units}
+            )
+        }
+        for ax in _axes:
+            funcs[f'{ax}_length'] = (
+                self.get_length, {'ax': ax, 'units': length_units}
+            )
+
+        # Make dict of metrics
+        geom = {
+            m: funcs[m][0](**funcs[m][1]) for m in metrics
+        }
+
+        # Split centroid into multiple entries
+        for cname in ['centroid', 'centroid_global']:
+            if cname in geom:
+                centroid_vals = geom.pop(cname)
+                axes = [0, 1, 2] if len(centroid_vals) == 3 \
+                    else _plot_axes[view]
+                for i, i_ax in enumerate(axes):
+                    ax = _axes[i_ax]
+                    geom[f'{cname}_{ax}'] = centroid_vals[i]
+
+        geom_named = {names[m]: g for m, g in geom.items()}
+        return pd.DataFrame(geom_named, index=[self.name])
 
     def get_centroid_vector(self, roi, **kwargs):
         '''Get centroid displacement vector with respect to another ROI.'''
@@ -2638,6 +2730,11 @@ class RtStruct(ArchiveObject):
         out_str += '\n    '.join(self.get_struct_names())
         out_str += '\n}'
         return out_str
+
+    def get_geometry(self, **kwargs):
+        '''Get pandas DataFrame of geometric properties for all structures.'''
+
+        return pd.concat([s.get_geometry(**kwargs) for s in self.get_structs()])
 
     def write(self, outname=None, outdir='.', ext=None, overwrite=False, 
               **kwargs):
