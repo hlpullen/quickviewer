@@ -1587,7 +1587,7 @@ class Image(ArchiveObject):
                 outdir = outname
 
             # Get header source
-            if header_source is None and isinstance(self.source, str):
+            if header_source is None and self.source_type == 'dicom':
                 header_source = self.source
             data, affine = self.get_dicom_array_and_affine(standardise)
             orientation = self.get_orientation_vector(affine, 'dicom')
@@ -1998,7 +1998,7 @@ class ROI(Image):
         return idx in self.get_indices(view)
 
     def get_centroid(self, view=None, sl=None, idx=None, pos=None, units='mm',
-                     standardise=True):
+                     standardise=True, flatten=False):
         '''Get centroid position in 2D or 3D.'''
         
         # Get 2D or 3D data from which to calculate centroid
@@ -2012,8 +2012,13 @@ class ROI(Image):
             data = self.get_slice(view, sl, idx, pos)
             axes = _plot_axes[view]
         else:
-            self.create_mask()
-            data = self.get_data(standardise)
+            if flatten:
+                if view is None:
+                    view = 'x-y'
+                data = self.get_mask(True, view)
+            else:
+                self.create_mask()
+                data = self.get_data(standardise)
             axes = _axes
 
         # Compute centroid
@@ -2095,7 +2100,7 @@ class ROI(Image):
         nonzero = np.argwhere(self.data)
         vals = nonzero[:, _axes.index(ax)]
         if len(vals):
-            self.length[ax]['voxels'] = max(vals) - min(vals)
+            self.length[ax]['voxels'] = max(vals) + 1 - min(vals)
             self.length[ax]['mm'] = self.length[ax]['voxels'] \
                     * abs(self.voxel_size[_axes.index(ax)])
         else:
@@ -2343,11 +2348,12 @@ class ROI(Image):
             are given), or globally.
             - 'dice_global': Global dice score (note that this is the same as
             'dice' if no view and sl/idx/pos are given).
-            - 'dice_flattened': Global dice score of flattened ROIs.
+            - 'dice_flat': Global dice score of flat ROIs.
             - 'centroid_global': Centroid distance vector.
             - 'abs_centroid_global': Absolute centroid distance.
             - 'centroid': Centroid distance vector on slice.
             - 'abs_centroid': Absolute centroid distance on slice.
+            - 'abs_centroid_flat': Absolute centroid distance on flat ROIs.
             - 'rel_volume_diff': Relative volume difference.
             - 'rel_area_diff': Relative area difference, either on a specific
             slice or on the central 'x-y' slice of each structure, if no 
@@ -2358,6 +2364,14 @@ class ROI(Image):
             - 'area_ratio': Area ratio, either on a specific slice or of the
             central slices of the two ROIs.
             - 'area_ratio_central': Area ratio of central slices of each ROI.
+            - 'mean_surface_distance': Mean surface distance.
+            - 'mean_surface_distance_flat': Mean surface distance of 
+            flat ROIs.
+            - 'rms_surface_distance'
+            - 'rms_surface_distance_flat'
+            - 'hausdorff_distance'
+            - 'hausdorff_distance_flat'
+            
         '''
 
         # Parse volume and area units
@@ -2374,8 +2388,9 @@ class ROI(Image):
         names = {
             'dice': f'Dice score',
             'dice_global': 'Global Dice score',
-            'dice_flattened': 'Flattened Dice score',
+            'dice_flat': 'Flattened Dice score',
             'abs_centroid': f'Centroid distance ({centroid_units})',
+            'abs_centroid_flat': f'Flattened centroid distance ({centroid_units})',
             'abs_centroid_global': f'Global centroid distance ({centroid_units})',
             'rel_volume_diff': f'Relative volume difference ({vol_units_name})',
             'rel_area_diff': f'Relative area difference ({area_units_name})',
@@ -2383,7 +2398,13 @@ class ROI(Image):
             f'Central slice relative area difference ({area_units_name})',
             'volume_ratio': f'Volume ratio',
             'area_ratio': f'Area ratio',
-            'area_ratio_central': f'Central slice area ratio'
+            'area_ratio_central': f'Central slice area ratio',
+            'mean_surface_distance': f'Mean surface distance (mm)',
+            'mean_surface_distance_flat': f'Flattened mean surface distance (mm)',
+            'rms_surface_distance': f'RMS surface distance (mm)',
+            'rms_surface_distance_flat': f'Flattened RMS surface distance (mm)',
+            'hausdorff_distance': f'Hausdorff distance (mm)',
+            'hausdorff_distance_flat': f'Flattened Hausdorff distance (mm)',
         }
         for ax in _axes:
             names[f'centroid_{ax}'] = f'Centroid {ax} distance ({centroid_units})'
@@ -2399,11 +2420,17 @@ class ROI(Image):
             'dice_global': (
                 self.get_dice, {'roi': roi}
             ),
-            'dice_flattened': (
+            'dice_flat': (
                 self.get_dice, {'roi': roi, 'flatten': True}
             ),
             'abs_centroid': (
                 self.get_centroid_distance, {'roi': roi, 
+                                             'units': centroid_units, 
+                                             'view': view, 'sl': sl, 
+                                             'pos': pos, 'idx': idx}
+            ),
+            'abs_centroid_flat': (
+                self.get_centroid_distance, {'roi': roi, 'flatten': True,
                                              'units': centroid_units, 
                                              'view': view, 'sl': sl, 
                                              'pos': pos, 'idx': idx}
@@ -2442,6 +2469,24 @@ class ROI(Image):
             ),
             'area_ratio_central': (
                 self.get_area_ratio, {'roi': roi}
+            ),
+            'mean_surface_distance': (
+                self.get_mean_surface_distance, {'roi': roi},
+            ),
+            'mean_surface_distance_flat': (
+                self.get_mean_surface_distance, {'roi': roi, 'flatten': True},
+            ),
+            'rms_surface_distance': (
+                self.get_rms_surface_distance, {'roi': roi},
+            ),
+            'rms_surface_distance_flat': (
+                self.get_rms_surface_distance, {'roi': roi, 'flatten': True},
+            ),
+            'hausdorff_distance': (
+                self.get_hausdorff_distance, {'roi': roi},
+            ),
+            'hausdorff_distance_flat': (
+                self.get_hausdorff_distance, {'roi': roi, 'flatten': True},
             ),
         }
 

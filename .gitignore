@@ -8,3 +8,4 @@ quickviewer.egg-info/
 *.nii*
 *.dcm
 tests/tmp
+tests/prototype/tmp
