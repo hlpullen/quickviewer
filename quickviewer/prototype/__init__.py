@@ -1839,12 +1839,14 @@ class ROI(Image):
         self.create_contours()
         return self.contours[view]
 
-    def get_mask(self):
+    def get_mask(self, flatten=False, view='x-y'):
         '''Get binary mask.'''
 
         self.load()
         self.create_mask()
-        return self.data
+        if not flatten:
+            return self.data
+        return np.sum(self.data, axis=_slice_axes[view]).astype(bool)
 
     def create_contours(self):
         '''Create contours in all orientations.'''
@@ -2210,11 +2212,8 @@ class ROI(Image):
         if view is None:
             view = 'x-y'
         if sl is None and idx is None and pos is None:
-            data1 = self.get_mask()
-            data2 = roi.get_mask()
-            if flatten:
-                data1 = np.sum(data1, axis=_slice_axes[view]).astype(bool)
-                data2 = np.sum(data2, axis=_slice_axes[view]).astype(bool)
+            data1 = self.get_mask(flatten, view)
+            data2 = roi.get_mask(flatten, view)
         else:
             data1 = self.get_slice(view, sl, idx, pos)
             data2 = roi.get_slice(view, sl, idx, pos)
@@ -2256,6 +2255,74 @@ class ROI(Image):
         if not own_area:
             return None
         return (own_area - other_area) / own_area
+
+    def get_surface_distances(self, roi, view=None, sl=None, idx=None, 
+                              pos=None, connectivity=2, flatten=False):
+        '''Get vector of surface distances between two ROIs.'''
+
+        # Ensure both ROIs are loaded
+        self.load()
+        roi.load()
+
+        # Get binary masks and voxel sizes
+        if flatten and view is None:
+            view = 'x-y'
+        if view or sl or idx or pos:
+            voxel_size = [self.voxel_size[i] for i in _plot_axes[view]]
+            if not flatten:
+                mask1 = self.get_slice(view, sl=sl, idx=idx, pos=pos)
+                mask2 = roi.get_slice(view, sl=sl, idx=idx, pos=pos)
+            else:
+                mask1 = self.get_mask(True, view)
+                mask2 = roi.get_mask(True, view)
+        else:
+            vx, vy, vz = self.voxel_size
+            voxel_size = [vy, vx, vz]
+            mask1 = self.get_mask()
+            mask2 = roi.get_mask()
+
+        # Make structuring element
+        conn2 = morphology.generate_binary_structure(2, connectivity)
+        if mask1.ndim == 2:
+            conn = conn2
+        else:
+            conn = np.zeros((3, 3, 3), dtype=bool)
+            conn[:, :, 1] = conn2
+
+        # Get outer pixel of binary maps
+        surf1 = mask1 ^ morphology.binary_erosion(mask1, conn)
+        surf2 = mask2 ^ morphology.binary_erosion(mask2, conn)
+
+        # Make arrays of distances to surface of each pixel
+        dist1 = morphology.distance_transform_edt(~surf1, voxel_size)
+        dist2 = morphology.distance_transform_edt(~surf2, voxel_size)
+
+        # Make vector containing all distances
+        sds = np.concatenate([np.ravel(dist1[surf2 != 0]), 
+                                       np.ravel(dist2[surf1 != 0])])
+        return sds
+
+    def get_mean_surface_distance(self, roi, **kwargs):
+
+        sds = self.get_surface_distances(roi, **kwargs)
+        return sds.mean()
+
+    def get_rms_surface_distance(self, roi, **kwargs):
+
+        sds = self.get_surface_distances(roi, **kwargs)
+        return np.sqrt((sds ** 2).mean())
+
+    def get_hausdorff_distance(self, roi, **kwargs):
+
+        sds = self.get_surface_distances(roi, **kwargs)
+        return sds.max()
+
+    def get_surface_distance_metrics(self, roi, **kwargs):
+        '''Get the mean surface distance, RMS surface distance, and Hausdorff
+        distance.'''
+
+        sds = self.get_surface_distances(roi, **kwargs)
+        return sds.mean(), np.sqrt((sds ** 2).mean()), sds.max()
 
     def get_comparison(
         self, 
