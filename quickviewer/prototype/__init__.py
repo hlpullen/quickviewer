@@ -2261,8 +2261,9 @@ class ROI(Image):
             return None
         return (own_area - other_area) / own_area
 
-    def get_surface_distances(self, roi, view=None, sl=None, idx=None, 
-                              pos=None, connectivity=2, flatten=False):
+    def get_surface_distances(self, roi, signed=False, view=None, sl=None, 
+                              idx=None, pos=None, connectivity=2, 
+                              flatten=False):
         '''Get vector of surface distances between two ROIs.'''
 
         # Ensure both ROIs are loaded
@@ -2302,6 +2303,11 @@ class ROI(Image):
         dist1 = morphology.distance_transform_edt(~surf1, voxel_size)
         dist2 = morphology.distance_transform_edt(~surf2, voxel_size)
 
+        # Get signed arrays
+        if signed:
+            dist1 = dist1 * ~mask1 - dist1 * mask1
+            dist2 = dist2 * ~mask2 - dist2 * mask2
+
         # Make vector containing all distances
         sds = np.concatenate([np.ravel(dist1[surf2 != 0]), 
                                        np.ravel(dist2[surf1 != 0])])
@@ -2328,6 +2334,19 @@ class ROI(Image):
 
         sds = self.get_surface_distances(roi, **kwargs)
         return sds.mean(), np.sqrt((sds ** 2).mean()), sds.max()
+
+    def plot_surface_distances(self, roi, save_as=None, signed=False, **kwargs):
+        '''Plot histogram of surface distances.'''
+
+        sds = self.get_surface_distances(roi, signed=signed, **kwargs)
+        fig, ax = plt.subplots()
+        ax.hist(sds)
+        xlabel = 'Surface distance (mm)' if not signed \
+                else 'Signed surface distance (mm)'
+        ax.set_xlabel(xlabel)
+        ax.set_ylabel('Number of voxels')
+        if save_as:
+            fig.savefig(save_as)
 
     def get_comparison(
         self, 
