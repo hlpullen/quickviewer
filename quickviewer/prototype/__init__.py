@@ -3100,7 +3100,7 @@ class RtStruct(ArchiveObject):
             os.makedirs(outdir)
 
         for roi1, roi2 in self.get_comparison_pairs(other, method):
-            filename = roi1.get_comparison_name(roi2, True)
+            comp_name = roi1.get_comparison_name(roi2, True)
             outname = os.path.join(outdir, f'{comp_name}.png')
             roi1.plot_surface_distances(roi2, signed=signed, save_as=outname,
                                         **kwargs)
