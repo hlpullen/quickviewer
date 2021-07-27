@@ -2352,6 +2352,7 @@ class ROI(Image):
         self, 
         roi, 
         metrics=['dice', 'abs_centroid', 'rel_volume_diff', 'rel_area_diff'],
+        fancy_names=True,
         vol_units='mm',
         area_units='mm',
         centroid_units='mm',
@@ -2524,10 +2525,23 @@ class ROI(Image):
                     ax = _axes[i_ax]
                     comp[f'{cname}_{ax}'] = centroid_vals[i]
 
-        comp_named = {names[m]: c for m, c in comp.items()}
-        name = f'{self.name} vs. {roi.name}' if self.name != roi.name \
-                else self.name
-        return pd.DataFrame(comp_named, index=[name])
+        if fancy_names:
+            comp = {names[m]: c for m, c in comp.items()}
+        name = self.get_comparison_name(roi)
+        return pd.DataFrame(comp, index=[name])
+
+    def get_comparison_name(self, roi, camelcase=False):
+        '''Get name of comparison between this ROI and another.'''
+
+        if self.name == roi.name:
+            name = self.name
+            if camelcase:
+                return name.replace(' ', '_')
+            return name
+        else:
+            if camelcase:
+                return f'{self.name}_vs_{roi.name}'.replace(' ', '_')
+            return f'{self.name} vs. {roi.name}'
 
     def set_color(self, color):
         '''Set plotting color.'''
@@ -3026,9 +3040,15 @@ class RtStruct(ArchiveObject):
 
         return pd.concat([s.get_geometry(**kwargs) for s in self.get_structs()])
 
-    def get_comparison(self, other, method='auto', **kwargs):
+    def get_comparison(self, other=None, method=None, **kwargs):
         '''Get pandas DataFrame of comparison metrics vs a single ROI or 
         another RtStruct.'''
+
+        # Compare own ROIs if <other> not given
+        if other is None:
+            other = self
+            if method is None:
+                method = 'diff'
 
         dfs = []
         if isinstance(other, ROI):
@@ -3048,6 +3068,9 @@ class RtStruct(ArchiveObject):
     def get_comparison_pairs(self, other, method='auto'):
         '''Get list of ROIs to compare with one another.'''
 
+        if method is None:
+            method = 'auto'
+
         # Check for name matches
         matches = []
         if method in ['auto', 'named']:
@@ -3062,7 +3085,25 @@ class RtStruct(ArchiveObject):
         for roi1 in self.get_structs():
             for roi2 in other.get_structs():
                 pairs.append((roi1, roi2))
+
+        # Remove matching names if needed
+        if method == 'diff':
+            pairs = [p for p in pairs if p[0].name != p[1].name]
+
         return pairs
+
+    def plot_surface_distances(self, other, outdir='.', signed=False, 
+                               method='auto', **kwargs):
+        '''Plot surface distances for all ROI pairs.'''
+
+        if not os.path.exists(outdir):
+            os.makedirs(outdir)
+
+        for roi1, roi2 in self.get_comparison_pairs(other, method):
+            filename = roi1.get_comparison_name(roi2, True)
+            outname = os.path.join(outdir, f'{comp_name}.png')
+            roi1.plot_surface_distances(roi2, signed=signed, save_as=outname,
+                                        **kwargs)
 
     def write(self, outname=None, outdir='.', ext=None, overwrite=False, 
               **kwargs):
