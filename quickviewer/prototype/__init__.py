@@ -1655,6 +1655,9 @@ class StructDefaults:
     def get_default_struct_color(self):
         '''Get a default structure color.'''
 
+        if StructDefaults.instance.n_colors_used \
+           >= len(StructDefaults.instance.colors):
+            return np.random.rand(3)
         color = StructDefaults.instance.colors[
             StructDefaults.instance.n_colors_used]
         StructDefaults.instance.n_colors_used += 1
@@ -2566,6 +2569,7 @@ class ROI(Image):
         mask_kwargs=None,
         zoom=None,
         zoom_centre=None,
+        color=None,
         **kwargs
     ):
         '''Plot this structure as either a mask or a contour.'''
@@ -2573,6 +2577,8 @@ class ROI(Image):
         show_centroid = 'centroid' in plot_type
         if zoom and zoom_centre is None:
             zoom_centre = self.get_zoom_centre(view)
+        if color is None:
+            color = self.color
 
         # Plot a mask
         if plot_type == 'mask':
@@ -2583,7 +2589,7 @@ class ROI(Image):
         elif plot_type in ['contour', 'centroid']:
             self.plot_contour(view, sl, idx, pos, contour_kwargs, linewidth,
                               centroid=show_centroid, zoom=zoom, 
-                              zoom_centre=zoom_centre,
+                              zoom_centre=zoom_centre, color=color,
                               **kwargs)
 
         # Plot transparent mask + contour
@@ -2595,7 +2601,7 @@ class ROI(Image):
             kwargs['include_image'] = False
             self.plot_contour(view, sl, idx, pos, contour_kwargs, linewidth,
                               centroid=show_centroid, zoom=zoom, 
-                              zoom_centre=zoom_centre,
+                              zoom_centre=zoom_centre, color=color,
                               **kwargs)
 
         else:
@@ -2615,6 +2621,7 @@ class ROI(Image):
         include_image=False,
         zoom=None,
         zoom_centre=None,
+        color=None,
         **kwargs
     ):
         '''Plot the structure as a mask.'''
@@ -2631,7 +2638,7 @@ class ROI(Image):
         norm = matplotlib.colors.Normalize()
         cmap = matplotlib.cm.hsv
         s_colors = cmap(norm(mask_slice))
-        s_colors[mask_slice > 0, :] = self.color
+        s_colors[mask_slice > 0, :] = color
         s_colors[mask_slice == 0, :] = (0, 0,  0, 0)
 
         # Get plotting arguments
@@ -2665,6 +2672,7 @@ class ROI(Image):
         include_image=False,
         zoom=None,
         zoom_centre=None,
+        color=None,
         **kwargs
     ):
         '''Plot the structure as a contour.'''
@@ -2682,7 +2690,7 @@ class ROI(Image):
         self.set_ax(view, ax, gs, figsize)
 
         contour_kwargs = {} if contour_kwargs is None else contour_kwargs
-        contour_kwargs.setdefault('color', self.color)
+        contour_kwargs.setdefault('color', color)
         contour_kwargs.setdefault('linewidth', linewidth)
 
         # Plot
@@ -3044,17 +3052,11 @@ class RtStruct(ArchiveObject):
         '''Get pandas DataFrame of comparison metrics vs a single ROI or 
         another RtStruct.'''
 
-        # Compare own ROIs if <other> not given
-        if other is None:
-            other = self
-            if method is None:
-                method = 'diff'
-
         dfs = []
         if isinstance(other, ROI):
             dfs = [s.get_comparison(other, **kwargs) for s in self.get_structs()]
 
-        elif isinstance(other, RtStruct):
+        elif isinstance(other, RtStruct) or other is None:
             pairs = self.get_comparison_pairs(other, method)
             dfs = []
             for roi1, roi2 in pairs:
@@ -3065,10 +3067,14 @@ class RtStruct(ArchiveObject):
 
         return pd.concat(dfs)
 
-    def get_comparison_pairs(self, other, method='auto'):
+    def get_comparison_pairs(self, other=None, method=None):
         '''Get list of ROIs to compare with one another.'''
 
-        if method is None:
+        if other is None:
+            other = self
+            if method is None:
+                method = 'diff'
+        elif method is None:
             method = 'auto'
 
         # Check for name matches
@@ -3092,7 +3098,43 @@ class RtStruct(ArchiveObject):
 
         return pairs
 
-    def plot_surface_distances(self, other, outdir='.', signed=False, 
+    def plot_comparisons(self, other=None, method=None, outdir=None, 
+                         legend=True, **kwargs):
+        '''Plot comparison pairs.'''
+
+        if outdir and not os.path.exists(outdir):
+            os.makedirs(outdir)
+
+        for roi1, roi2 in self.get_comparison_pairs(other, method):
+
+            if roi1.color == roi2.color:
+                roi2_color = StructDefaults().get_default_struct_color()
+            else:
+                roi2_color = roi2.color
+
+            roi1.plot(**kwargs)
+            roi2.plot(ax=roi1.ax, color=roi2.color, **kwargs)
+            roi1.ax.set_title(roi1.get_comparison_name(roi2))
+
+            if legend:
+                if other is not None:
+                    roi1_name = self.name
+                    roi2_name = other.name
+                else:
+                    roi1_name = roi1.name
+                    roi2_name = roi2.name
+                handles = [
+                    mpatches.Patch(color=roi1.color, label=roi1_name),
+                    mpatches.Patch(color=roi2_color, label=roi2_name)
+                ]
+                roi1.ax.legend(handles=handles, framealpha=1, 
+                               facecolor='white', loc='lower left')
+            if outdir:
+                comp_name = roi1.get_comparison_name(roi2, True)
+                outname = os.path.join(outdir, f'{comp_name}.png')
+                roi1.fig.savefig(outname)
+
+    def plot_surface_distances(self, other, outdir=None, signed=False, 
                                method='auto', **kwargs):
         '''Plot surface distances for all ROI pairs.'''
 
@@ -3101,7 +3143,10 @@ class RtStruct(ArchiveObject):
 
         for roi1, roi2 in self.get_comparison_pairs(other, method):
             comp_name = roi1.get_comparison_name(roi2, True)
-            outname = os.path.join(outdir, f'{comp_name}.png')
+            if outdir:
+                outname = os.path.join(outdir, f'{comp_name}.png')
+            else:
+                outname = None
             roi1.plot_surface_distances(roi2, signed=signed, save_as=outname,
                                         **kwargs)
 
