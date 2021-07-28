@@ -2360,6 +2360,7 @@ class ROI(Image):
         ax.set_xlabel(xlabel)
         ax.set_ylabel('Number of voxels')
         if save_as:
+            plt.tight_layout()
             fig.savefig(save_as)
 
     def get_comparison(
@@ -3145,6 +3146,7 @@ class RtStruct(ArchiveObject):
             if outdir:
                 comp_name = roi1.get_comparison_name(roi2, True)
                 outname = os.path.join(outdir, f'{comp_name}.png')
+                plt.tight_layout()
                 roi1.fig.savefig(outname)
 
     def plot_surface_distances(self, other, outdir=None, signed=False, 
