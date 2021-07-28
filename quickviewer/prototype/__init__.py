@@ -1990,8 +1990,11 @@ class ROI(Image):
 
     def get_mid_idx(self, view='x-y', slice_num=False):
         '''Get central slice index of this structure in a given orientation.'''
-        
-        return round(np.mean(self.get_indices(view, slice_num=slice_num)))
+
+        indices = self.get_indices(view, slice_num=slice_num) 
+        if not len(indices):
+            return None
+        return round(np.mean(indices))
 
     def on_slice(self, view, sl=None, idx=None, pos=None):
         '''Check whether this structure exists on a given slice.'''
@@ -2026,6 +2029,11 @@ class ROI(Image):
 
         # Compute centroid
         non_zero = np.argwhere(data)
+        if not len(non_zero):
+            if data.ndim == 2:
+                return None, None
+            else:
+                return None, None, None
         centroid_rowcol = list(non_zero.mean(0))
         centroid = [centroid_rowcol[1], centroid_rowcol[0]] \
                 + centroid_rowcol[2:] 
@@ -2211,7 +2219,10 @@ class ROI(Image):
     def get_centroid_distance(self, roi, **kwargs):
         '''Get absolute centroid distance.'''
 
-        return np.linalg.norm(self.get_centroid_vector(roi, **kwargs))
+        centroid = self.get_centroid_vector(roi, **kwargs)
+        if None in centroid:
+            return None
+        return np.linalg.norm(centroid)
 
     def get_dice(self, roi, view='x-y', sl=None, idx=None, pos=None, 
                  flatten=False):
@@ -2522,6 +2533,8 @@ class ROI(Image):
         for cname in ['centroid', 'centroid_global']:
             if cname in comp:
                 centroid_vals = comp.pop(cname)
+                if view is None:
+                    view = 'x-y'
                 axes = [0, 1, 2] if len(centroid_vals) == 3 \
                     else _plot_axes[view]
                 for i, i_ax in enumerate(axes):
