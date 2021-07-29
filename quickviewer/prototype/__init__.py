@@ -27,7 +27,7 @@ import time
 import uuid
 
 
-default_stations = {"0210167": "LA3", "0210292": "LA4"}
+default_stations = {'0210167': 'LA3', '0210292': 'LA4'}
 
 default_opts = {}
 default_opts['print_depth'] = 0
@@ -171,7 +171,7 @@ class DataObject:
                         value_string = '['
                         for i, item in enumerate(items):
                             item_string = item.__repr__(depth=(depth - 1))
-                            comma = "," if (i + 1 < n) else ''
+                            comma = ',' if (i + 1 < n) else ''
                             value_string = \
                                 f'{value_string} {item_string}{comma}'
                         value_string = f'{value_string}]'
@@ -921,7 +921,8 @@ class Image(ArchiveObject):
                 idx = self.pos_to_idx(centre_pos, _slice_axes[view])
         return idx
 
-    def get_slice(self, view='x-y', sl=None, idx=None, pos=None, **kwargs):
+    def get_slice(self, view='x-y', sl=None, idx=None, pos=None, flatten=False, 
+                  **kwargs):
         '''Get a slice of the data in the correct orientation for plotting.'''
 
         # Get image slice
@@ -932,8 +933,11 @@ class Image(ArchiveObject):
             'x-z': (1, 2, 0)
         }[view]
         list(_plot_axes[view]) + [_slice_axes[view]]
-        data = self.get_standardised_data()
-        return np.transpose(data, transpose)[:, :, idx]
+        data = np.transpose(self.get_standardised_data(), transpose)
+        if flatten:
+            return np.sum(data, axis=2)
+        else:
+            return data[:, :, idx]
 
     def set_ax(self, view=None, ax=None, gs=None, figsize=_default_figsize,
                zoom=None, colorbar=False, **kwargs):
@@ -1026,7 +1030,8 @@ class Image(ArchiveObject):
         struct_legend=False,
         struct_kwargs={},
         centre_on_struct=None,
-        legend_loc='lower left'
+        legend_loc='lower left',
+        flatten=False
     ):
         '''Plot a 2D slice of the image.
 
@@ -1177,7 +1182,8 @@ class Image(ArchiveObject):
 
         # Get image slice
         idx = self.get_idx(view, sl, idx, pos)
-        image_slice = self.get_slice(view, sl=sl, idx=idx, pos=pos)
+        image_slice = self.get_slice(view, sl=sl, idx=idx, pos=pos, 
+                                     flatten=flatten)
 
         # Plot the slice
         mesh = self.ax.imshow(
@@ -1842,14 +1848,15 @@ class ROI(Image):
         self.create_contours()
         return self.contours[view]
 
-    def get_mask(self, flatten=False, view='x-y'):
+    def get_mask(self, view='x-y', flatten=False):
         '''Get binary mask.'''
 
         self.load()
         self.create_mask()
         if not flatten:
             return self.data
-        return np.sum(self.data, axis=_slice_axes[view]).astype(bool)
+        return np.sum(self.get_standardised_data(), 
+                      axis=_slice_axes[view]).astype(bool)
 
     def create_contours(self):
         '''Create contours in all orientations.'''
@@ -1877,25 +1884,32 @@ class ROI(Image):
                 if mask_slice.max() < 0.5:
                     continue 
 
-                # Convert mask array to contour(s)
-                contours = skimage.measure.find_contours(
-                    mask_slice, 0.5, 'low', 'low')
-                if not contours:
-                    continue
-
-                # Convert indices to positions in mm
-                x_ax, y_ax = _plot_axes[view]
-                points = []
-                for contour in contours:
-                    contour_points = []
-                    for ix, iy in contour:
-                        px = self.idx_to_pos(ix, x_ax)
-                        py = self.idx_to_pos(iy, y_ax)
-                        contour_points.append((px, py))
-                    points.append(contour_points)
-                self.contours[view][iz] = points
+                points = self.mask_to_contours(mask_slice, view)
+                if points:
+                    self.contours[view][iz] = points
 
         self.loaded_contours = True
+
+    def mask_to_contours(self, mask, view, invert=False):
+        '''Create contours from a mask.'''
+
+        contours = skimage.measure.find_contours(
+            mask, 0.5, 'low', 'low')
+
+        # Convert indices to positions in mm
+        x_ax, y_ax = _plot_axes[view]
+        points = []
+        for contour in contours:
+            contour_points = []
+            for ix, iy in contour:
+                px = self.idx_to_pos(ix, x_ax)
+                py = self.idx_to_pos(iy, y_ax)
+                if invert:
+                    px, py = py, px
+                contour_points.append((px, py))
+            points.append(contour_points)
+
+        return points
 
     def create_mask(self):
         '''Create binary mask.'''
@@ -1972,7 +1986,7 @@ class ROI(Image):
     def get_slice(self, *args, **kwargs):
 
         self.create_mask()
-        return Image.get_slice(self, *args, **kwargs)
+        return Image.get_slice(self, *args, **kwargs).astype(bool)
 
     def get_indices(self, view='x-y', slice_num=False):
         '''Get list of slice indices on which this structure exists. If 
@@ -2021,7 +2035,7 @@ class ROI(Image):
             if flatten:
                 if view is None:
                     view = 'x-y'
-                data = self.get_mask(True, view)
+                data = self.get_mask(view, flatten=True)
             else:
                 self.create_mask()
                 data = self.get_data(standardise)
@@ -2231,8 +2245,8 @@ class ROI(Image):
         if view is None:
             view = 'x-y'
         if sl is None and idx is None and pos is None:
-            data1 = self.get_mask(flatten, view)
-            data2 = roi.get_mask(flatten, view)
+            data1 = self.get_mask(view, flatten)
+            data2 = roi.get_mask(view, flatten)
         else:
             data1 = self.get_slice(view, sl, idx, pos)
             data2 = roi.get_slice(view, sl, idx, pos)
@@ -2636,6 +2650,7 @@ class ROI(Image):
         zoom=None,
         zoom_centre=None,
         color=None,
+        flatten=False,
         **kwargs
     ):
         '''Plot the structure as a mask.'''
@@ -2646,12 +2661,14 @@ class ROI(Image):
             idx = self.get_idx(view, sl, idx, pos)
         self.create_mask()
         self.set_ax(view, ax, gs, figsize)
-        mask_slice = self.get_slice(view, idx=idx)
+        mask_slice = self.get_slice(view, idx=idx, flatten=flatten)
 
         # Make colormap
         norm = matplotlib.colors.Normalize()
         cmap = matplotlib.cm.hsv
         s_colors = cmap(norm(mask_slice))
+        if color is None:
+            color = self.color
         s_colors[mask_slice > 0, :] = color
         s_colors[mask_slice == 0, :] = (0, 0,  0, 0)
 
@@ -2687,6 +2704,7 @@ class ROI(Image):
         zoom=None,
         zoom_centre=None,
         color=None,
+        flatten=False,
         **kwargs
     ):
         '''Plot the structure as a contour.'''
@@ -2707,10 +2725,19 @@ class ROI(Image):
         contour_kwargs.setdefault('color', color)
         contour_kwargs.setdefault('linewidth', linewidth)
 
-        # Plot
+        # Plot underlying image
         if include_image:
             self.image.plot(view, idx=idx, ax=self.ax, show=False)
-        for points in self.contours[view][idx]:
+
+        # Get contour points
+        if flatten:
+            mask = self.get_slice(view, idx=idx, flatten=True)
+            contours = self.mask_to_contours(mask, view, invert=True)
+        else:
+            contours = self.contours[view][idx]
+
+        # Plot contour
+        for points in contours:
             points_x = [p[0] for p in points]
             points_y = [p[1] for p in points]
             points_x.append(points_x[0])
@@ -2724,13 +2751,45 @@ class ROI(Image):
 
         # Plot centroid point
         if centroid:
-            self.ax.plot(*self.get_centroid(view, sl, idx, pos), '+',
-                         **contour_kwargs)
+            self.ax.plot(
+                *self.get_centroid(view, sl, idx, pos, flatten=flatten), '+',
+                **contour_kwargs)
 
         # Adjust axes
         self.ax.set_aspect('equal')
         self.label_ax(view, idx, **kwargs)
         self.zoom_ax(view, zoom, zoom_centre)
+
+    def plot_comparison(self, other, legend=True, save_as=None, names=None, 
+                        **kwargs):
+        '''Plot comparison with another ROI.'''
+
+        if self.color == other.color:
+            roi2_color = StructDefaults().get_default_struct_color()
+        else:
+            roi2_color = other.color
+
+        self.plot(**kwargs)
+        other.plot(ax=self.ax, color=roi2_color, **kwargs)
+        self.ax.set_title(self.get_comparison_name(other))
+
+        if legend:
+            if names:
+                roi1_name = names[0]
+                roi2_name = names[1]
+            else:
+                roi1_name = self.name
+                roi2_name = other.name
+            handles = [
+                mpatches.Patch(color=self.color, label=roi1_name),
+                mpatches.Patch(color=roi2_color, label=roi2_name)
+            ]
+            self.ax.legend(handles=handles, framealpha=1, 
+                           facecolor='white', loc='lower left')
+
+        if save_as:
+            plt.tight_layout()
+            self.fig.savefig(save_as)
 
     def get_zoom_centre(self, view):
         '''Get coordinates to zoom in on this structure.'''
@@ -2837,7 +2896,6 @@ class RtStruct(ArchiveObject):
         '''Load structures from sources. If None, will load from own 
         self.sources.'''
 
-
         if self.loaded and not force and sources is None:
             return
 
@@ -2857,7 +2915,7 @@ class RtStruct(ArchiveObject):
 
         for source in sources_expanded:
 
-            if source.startswith('.') or source.endswith('.txt'):
+            if os.path.basename(source).startswith('.') or source.endswith('.txt'):
                 continue
             if os.path.isdir(source):
                 continue
@@ -3034,11 +3092,11 @@ class RtStruct(ArchiveObject):
         return {s.name: s for s in self.structs}
 
     def get_struct(self, name):
-        """Get a structure with a specific name."""
+        '''Get a structure with a specific name.'''
 
         structs = self.get_struct_dict()
         if name not in structs:
-            print(f"Structure {name} not found!")
+            print(f'Structure {name} not found!')
             return
         return structs[name]
 
@@ -3121,33 +3179,17 @@ class RtStruct(ArchiveObject):
 
         for roi1, roi2 in self.get_comparison_pairs(other, method):
 
-            if roi1.color == roi2.color:
-                roi2_color = StructDefaults().get_default_struct_color()
-            else:
-                roi2_color = roi2.color
-
-            roi1.plot(**kwargs)
-            roi2.plot(ax=roi1.ax, color=roi2.color, **kwargs)
-            roi1.ax.set_title(roi1.get_comparison_name(roi2))
-
-            if legend:
-                if other is not None:
-                    roi1_name = self.name
-                    roi2_name = other.name
-                else:
-                    roi1_name = roi1.name
-                    roi2_name = roi2.name
-                handles = [
-                    mpatches.Patch(color=roi1.color, label=roi1_name),
-                    mpatches.Patch(color=roi2_color, label=roi2_name)
-                ]
-                roi1.ax.legend(handles=handles, framealpha=1, 
-                               facecolor='white', loc='lower left')
+            outname=None
             if outdir:
                 comp_name = roi1.get_comparison_name(roi2, True)
                 outname = os.path.join(outdir, f'{comp_name}.png')
-                plt.tight_layout()
-                roi1.fig.savefig(outname)
+
+            names = None
+            if roi1.name == roi2.name:
+                names = [self.name, other.name]
+
+            roi1.plot_comparison(roi2, legend=legend, save_as=outname,
+                                 names=names, **kwargs)
 
     def plot_surface_distances(self, other, outdir=None, signed=False, 
                                method='auto', **kwargs):
@@ -3637,12 +3679,12 @@ def create_dicom(orientation=None, patient_id=None, modality=None,
     # Populate required values for file meta information
     file_meta = FileMetaDataset()
     file_meta.MediaStorageSOPClassUID = '1.2.840.10008.5.1.4.1.1.2'
-    file_meta.MediaStorageSOPInstanceUID = "1.2.3"
-    file_meta.ImplementationClassUID = "1.2.3.4"
+    file_meta.MediaStorageSOPInstanceUID = '1.2.3'
+    file_meta.ImplementationClassUID = '1.2.3.4'
     file_meta.TransferSyntaxUID = pydicom.uid.ExplicitVRLittleEndian
 
     # Create the FileDataset instance
-    ds = FileDataset(filename, {}, file_meta=file_meta, preamble=b"\x00" * 128)
+    ds = FileDataset(filename, {}, file_meta=file_meta, preamble=b'\x00' * 128)
 
     # Add data elements
     ds.PatientID = patient_id if patient_id is not None else '123456'
