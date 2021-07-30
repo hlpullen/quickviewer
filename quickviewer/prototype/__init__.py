@@ -1288,7 +1288,7 @@ class Image(ArchiveObject):
     def zoom_ax(self, view, zoom=None, zoom_centre=None):
         '''Zoom in on axes if needed.'''
 
-        if not zoom:
+        if not zoom or isinstance(zoom, str):
             return
         zoom = to_three(zoom)
         x_ax, y_ax = _plot_axes[view]
@@ -2770,7 +2770,14 @@ class ROI(Image):
             roi2_color = other.color
 
         self.plot(**kwargs)
-        other.plot(ax=self.ax, color=roi2_color, **kwargs)
+        if kwargs is None:
+            kwargs = {}
+        else:
+            kwargs = kwargs.copy()
+        kwargs['ax'] = self.ax
+        kwargs['color'] = roi2_color
+        kwargs['include_image'] = False
+        other.plot(**kwargs)
         self.ax.set_title(self.get_comparison_name(other))
 
         if legend:
