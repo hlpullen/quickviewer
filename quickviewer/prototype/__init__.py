@@ -2307,8 +2307,8 @@ class ROI(Image):
                 mask1 = self.get_slice(view, sl=sl, idx=idx, pos=pos)
                 mask2 = roi.get_slice(view, sl=sl, idx=idx, pos=pos)
             else:
-                mask1 = self.get_mask(True, view)
-                mask2 = roi.get_mask(True, view)
+                mask1 = self.get_mask(view, True)
+                mask2 = roi.get_mask(view, True)
         else:
             vx, vy, vz = self.voxel_size
             voxel_size = [vy, vx, vz]
