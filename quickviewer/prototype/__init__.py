@@ -2441,6 +2441,8 @@ class ROI(Image):
             - 'mean_surface_distance': Mean surface distance.
             - 'mean_surface_distance_flat': Mean surface distance of 
             flat ROIs.
+            - 'mean_surface_distance_signed_flat': Mean signed surface 
+            distance of flat ROIs.
             - 'rms_surface_distance'
             - 'rms_surface_distance_flat'
             - 'hausdorff_distance'
@@ -2477,6 +2479,7 @@ class ROI(Image):
             'area_ratio_flat': f'Flattened area ratio',
             'mean_surface_distance': f'Mean surface distance (mm)',
             'mean_surface_distance_flat': f'Flattened mean surface distance (mm)',
+            'mean_surface_distance_signed_flat': f'Flattened mean signed surface distance (mm)',
             'rms_surface_distance': f'RMS surface distance (mm)',
             'rms_surface_distance_flat': f'Flattened RMS surface distance (mm)',
             'hausdorff_distance': f'Hausdorff distance (mm)',
@@ -2559,6 +2562,10 @@ class ROI(Image):
             ),
             'mean_surface_distance_flat': (
                 self.get_mean_surface_distance, {'roi': roi, 'flatten': True},
+            ),
+            'mean_surface_distance_signed_flat': (
+                self.get_mean_surface_distance, {'roi': roi, 'flatten': True,
+                                                 'signed': True},
             ),
             'rms_surface_distance': (
                 self.get_rms_surface_distance, {'roi': roi},
