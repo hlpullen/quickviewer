@@ -92,6 +92,10 @@ def test_relative_volume_diff():
 def test_relative_area_diff():
     assert cube1.get_relative_area_diff(cube2) == 0
 
+def test_area_diff():
+    assert cube1.get_area_diff(cube2) == 0
+    assert cube1.get_area_diff(cube2, flatten=True) == 0
+
 def test_mean_surface_distance():
     assert cube1.get_mean_surface_distance(cube2) == 1
     assert cube2.get_mean_surface_distance(cube1) \

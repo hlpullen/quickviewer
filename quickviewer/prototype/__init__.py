@@ -2097,14 +2097,15 @@ class ROI(Image):
         self.volume['ml'] = self.volume['mm'] * (0.1 ** 3)
         return self.volume[units]
 
-    def get_area(self, view='x-y', sl=None, idx=None, pos=None, units='mm'):
+    def get_area(self, view='x-y', sl=None, idx=None, pos=None, units='mm',
+                 flatten=False):
         '''Get the area of the structure on a given slice.'''
 
         if view is None:
             view = 'x-y'
         if sl is None and idx is None and pos is None:
             idx = self.get_mid_idx(view)
-        im_slice = self.get_slice(view, sl, idx, pos)
+        im_slice = self.get_slice(view, sl, idx, pos, flatten=flatten)
         area = im_slice.astype(bool).sum()
         if units == 'mm':
             x_ax, y_ax = _plot_axes[view]
@@ -2280,12 +2281,21 @@ class ROI(Image):
             return None
         return (own_volume - other_volume) / own_volume
 
+    def get_area_diff(self, roi, **kwargs):
+        '''Get absolute area difference between two ROIs.'''
+
+        own_area = self.get_area(**kwargs)
+        other_area = roi.get_area(**kwargs)
+        if not own_area or not other_area:
+            return None
+        return own_area - other_area
+
     def get_relative_area_diff(self, roi, **kwargs):
         '''Get relative area of another ROI with respect to own area.'''
 
         own_area = self.get_area(**kwargs)
         other_area = roi.get_area(**kwargs)
-        if not own_area:
+        if not own_area or not other_area:
             return None
         return (own_area - other_area) / own_area
 
@@ -2297,6 +2307,10 @@ class ROI(Image):
         # Ensure both ROIs are loaded
         self.load()
         roi.load()
+
+        # Check whether ROIs are empty
+        if not np.any(self.get_mask()) or not np.any(roi.get_mask()):
+            return
 
         # Get binary masks and voxel sizes
         if flatten and view is None:
@@ -2344,16 +2358,22 @@ class ROI(Image):
     def get_mean_surface_distance(self, roi, **kwargs):
 
         sds = self.get_surface_distances(roi, **kwargs)
+        if sds is None:
+            return
         return sds.mean()
 
     def get_rms_surface_distance(self, roi, **kwargs):
 
         sds = self.get_surface_distances(roi, **kwargs)
+        if sds is None:
+            return
         return np.sqrt((sds ** 2).mean())
 
     def get_hausdorff_distance(self, roi, **kwargs):
 
         sds = self.get_surface_distances(roi, **kwargs)
+        if sds is None:
+            return
         return sds.max()
 
     def get_surface_distance_metrics(self, roi, **kwargs):
@@ -2361,6 +2381,8 @@ class ROI(Image):
         distance.'''
 
         sds = self.get_surface_distances(roi, **kwargs)
+        if sds is None:
+            return
         return sds.mean(), np.sqrt((sds ** 2).mean()), sds.max()
 
     def plot_surface_distances(self, roi, save_as=None, signed=False, **kwargs):
@@ -2404,15 +2426,18 @@ class ROI(Image):
             - 'abs_centroid': Absolute centroid distance on slice.
             - 'abs_centroid_flat': Absolute centroid distance on flat ROIs.
             - 'rel_volume_diff': Relative volume difference.
+            - 'area_diff': Absolute area difference.
             - 'rel_area_diff': Relative area difference, either on a specific
             slice or on the central 'x-y' slice of each structure, if no 
             view and idx/pos/sl are given.
-            - 'rel_area_diff_central': Relative area difference of central 
-            slice of each ROI.
+            - 'rel_area_diff_flat': Relative area difference of projections of 
+            each ROI.
+            - 'area_diff_flat': Absolute area difference of projections of 
+            each ROI.
             - 'volume_ratio': Volume ratio.
             - 'area_ratio': Area ratio, either on a specific slice or of the
             central slices of the two ROIs.
-            - 'area_ratio_central': Area ratio of central slices of each ROI.
+            - 'area_ratio_flat': Area ratio of projections of each ROI.
             - 'mean_surface_distance': Mean surface distance.
             - 'mean_surface_distance_flat': Mean surface distance of 
             flat ROIs.
@@ -2442,12 +2467,14 @@ class ROI(Image):
             'abs_centroid_flat': f'Flattened centroid distance ({centroid_units})',
             'abs_centroid_global': f'Global centroid distance ({centroid_units})',
             'rel_volume_diff': f'Relative volume difference ({vol_units_name})',
+            'area_diff': f'Area difference ({area_units_name})',
+            'area_diff_flat': f'Flattened area difference ({area_units_name})',
             'rel_area_diff': f'Relative area difference ({area_units_name})',
-            'rel_area_diff_central': 
-            f'Central slice relative area difference ({area_units_name})',
+            'rel_area_diff_flat': 
+            f'Flattened relative area difference ({area_units_name})',
             'volume_ratio': f'Volume ratio',
             'area_ratio': f'Area ratio',
-            'area_ratio_central': f'Central slice area ratio',
+            'area_ratio_flat': f'Flattened area ratio',
             'mean_surface_distance': f'Mean surface distance (mm)',
             'mean_surface_distance_flat': f'Flattened mean surface distance (mm)',
             'rms_surface_distance': f'RMS surface distance (mm)',
@@ -2506,8 +2533,9 @@ class ROI(Image):
                                               'view': view, 'sl': sl,
                                               'pos': pos, 'idx': idx}
             ),
-            'rel_area_diff_central': (
-                self.get_relative_area_diff, {'roi': roi, 'units': area_units}
+            'rel_area_diff_flat': (
+                self.get_relative_area_diff, {'roi': roi, 'units': area_units,
+                                              'flat': True}
             ),
             'volume_ratio': (
                 self.get_volume_ratio, {'roi': roi}
@@ -2516,8 +2544,15 @@ class ROI(Image):
                 self.get_area_ratio, {'roi': roi, 'view': view, 'sl': sl,
                                       'pos': pos, 'idx': idx}
             ),
-            'area_ratio_central': (
-                self.get_area_ratio, {'roi': roi}
+            'area_ratio_flat': (
+                self.get_area_ratio, {'roi': roi, 'flatten': True}
+            ),
+            'area_diff': (
+                self.get_area_diff, {'roi': roi, 'view': view, 'sl': sl,
+                                     'pos': pos, 'idx': idx}
+            ),
+            'area_diff_flat': (
+                self.get_area_diff, {'roi': roi, 'flatten': True}
             ),
             'mean_surface_distance': (
                 self.get_mean_surface_distance, {'roi': roi},
