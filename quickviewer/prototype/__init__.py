@@ -2389,6 +2389,8 @@ class ROI(Image):
         '''Plot histogram of surface distances.'''
 
         sds = self.get_surface_distances(roi, signed=signed, **kwargs)
+        if sds is None:
+            return
         fig, ax = plt.subplots()
         ax.hist(sds)
         xlabel = 'Surface distance (mm)' if not signed \
@@ -2427,12 +2429,12 @@ class ROI(Image):
             - 'abs_centroid_flat': Absolute centroid distance on flat ROIs.
             - 'rel_volume_diff': Relative volume difference.
             - 'area_diff': Absolute area difference.
+            - 'area_diff_flat': Absolute area difference of projections of 
+            each ROI.
             - 'rel_area_diff': Relative area difference, either on a specific
             slice or on the central 'x-y' slice of each structure, if no 
             view and idx/pos/sl are given.
             - 'rel_area_diff_flat': Relative area difference of projections of 
-            each ROI.
-            - 'area_diff_flat': Absolute area difference of projections of 
             each ROI.
             - 'volume_ratio': Volume ratio.
             - 'area_ratio': Area ratio, either on a specific slice or of the
