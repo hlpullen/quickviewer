@@ -861,8 +861,8 @@ class Image(ArchiveObject):
             to_resample = self
             match_to = image
         else:
-            own_vz = self.voxel_size[2]
-            other_vz = image.voxel_size[2]
+            own_vz = self.get_voxel_size()[2]
+            other_vz = image.get_voxel_size()[2]
             if own_vz == other_vz:
                 print('Voxel sizes already match! No resampling applied.')
                 return
