@@ -3,6 +3,7 @@
 from matplotlib.ticker import MultipleLocator, AutoMinorLocator, FormatStrFormatter
 from pydicom.dataset import Dataset, FileDataset, FileMetaDataset
 from scipy.ndimage import morphology
+from scipy import interpolate
 from shapely import geometry
 import copy
 import datetime
@@ -693,7 +694,7 @@ class Image(ArchiveObject):
         if self.downsampling:
             self.downsample(self.downsampling)
         else:
-            self.set_geometry()
+            self.set_geometry(force=force)
 
         # Set default grayscale range
         if window_width and window_centre:
@@ -775,6 +776,79 @@ class Image(ArchiveObject):
         # Get standard voxel sizes and origin
         self.svoxel_size = list(np.diag(self.saffine))[:-1]
         self.sorigin = list(self.saffine[:-1, -1])
+
+    def resample(self, voxel_size):
+        '''Resample image to have particular voxel sizes.'''
+
+        # Parse input voxel sizes
+        self.load_data()
+        parsed = []
+        for i, vx in enumerate(voxel_size):
+            if vx is None:
+                parsed.append(self.voxel_size[i])
+            elif self.voxel_size[i] * vx < 0:
+                parsed.append(-vx)
+            else:
+                parsed.append(vx)
+        voxel_size = parsed
+
+        # Make interpolant
+        old_coords = [
+            np.arange(self.origin[i], 
+                      self.origin[i] + self.n_voxels[i] * self.voxel_size[i],
+                      self.voxel_size[i]
+                     ) 
+            for i in range(3)
+        ]
+        for i in range(len(old_coords)):
+            if old_coords[i][0] > old_coords[i][-1]:
+                old_coords[i] = old_coords[i][::-1]
+        interpolant = interpolate.RegularGridInterpolator(
+            old_coords, self.get_data(), method='linear', bounds_error=False,
+            fill_value=self.get_min())
+        
+        # Calculate new number of voxels
+        n_voxels = [
+            int(np.round(abs(self.get_image_length(i) / voxel_size[i])))
+            for i in range(3)
+        ]
+        voxel_size = [np.sign(voxel_size[i]) * self.get_image_length(i) / 
+                      n_voxels[i] for i in range(3)]
+        shape = [n_voxels[1], n_voxels[0], n_voxels[2]]
+        origin = [
+            self.origin[i] - self.voxel_size[i] / 2 + voxel_size[i] / 2
+            for i in range(3)
+        ]
+
+        # Interpolate to new coordinates
+        new_coords = [
+            np.arange(
+                origin[i], origin[i] + n_voxels[i] * voxel_size[i],
+                voxel_size[i]
+            )
+            for i in range(3)
+        ]
+        stack = np.vstack(np.meshgrid(*new_coords, indexing='ij'))
+        points = stack.reshape(3, -1).T.reshape(*shape, 3)
+        self.data = interpolant(points)[::-1, :, :]
+
+        # Reset properties
+        self.origin = [
+            self.origin[i] - self.voxel_size[i] / 2 + voxel_size[i] / 2
+            for i in range(3)
+        ]
+        self.n_voxels = n_voxels
+        self.voxel_size = voxel_size
+        self.affine = None
+        self.set_geometry(force=True)
+
+    def get_min(self):
+        '''Get minimum value of data array.'''
+
+        if not hasattr(self, 'min_val'):
+            self.load_data()
+            self.min_val = self.data.min()
+        return self.min_val
 
     def get_orientation_codes(self, affine=None, source_type=None):
         '''Get image orientation codes in order (row, column, slice) for
@@ -863,7 +937,7 @@ class Image(ArchiveObject):
                 machine = stations[station]
         return machine
 
-    def set_geometry(self):
+    def set_geometry(self, force=False):
         '''Set geometric properties.'''
 
         # Set affine matrix, voxel sizes, and origin
@@ -891,7 +965,7 @@ class Image(ArchiveObject):
         ]
 
         # Set axis limits for standardised plotting
-        self.standardise_data()
+        self.standardise_data(force=force)
         self.lims = [
             (self.sorigin[i], 
              self.sorigin[i] + (self.n_voxels[i] - 1) * self.svoxel_size[i])
@@ -1395,6 +1469,12 @@ class Image(ArchiveObject):
         return [origin, origin + (self.n_voxels[i_ax] - 1) 
                 * self.voxel_size[i_ax]]
 
+    def get_image_length(self, ax='z'):
+        '''Get total length of image.'''
+
+        i_ax = _axes.index(ax) if ax in _axes else ax
+        return abs(self.n_voxels[i_ax] * self.voxel_size[i_ax])
+
     def get_voxel_coords(self):
         '''Get arrays of voxel coordinates in each direction.'''
 
@@ -1607,11 +1687,15 @@ class Image(ArchiveObject):
         if not hasattr(self, 'coords'):
 
             # Make coordinates
-            coords_1d = {}
-            for i, ax in enumerate(_axes):
-                coords_1d[ax] = np.arange(*self.lims[i], self.voxel_size[i])
-            X, Y, Z = np.meshgrid(coords_1['x'], coords_1d['y'], 
-                                  coords_1d['z'])
+            coords_1d = [
+                np.arange(
+                    self.origin[i], 
+                    self.origin[i] + self.n_voxels[i] * self.voxel_size[i],
+                    self.voxel_size[i]
+                )
+                for i in range(3)
+            ]
+            X, Y, Z = np.meshgrid(*coords_1d)
 
             # Set coords
             self.coords = (X, Y, Z)
