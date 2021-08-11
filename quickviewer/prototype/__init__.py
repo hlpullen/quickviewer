@@ -2108,6 +2108,17 @@ class ROI(Image):
                 self.empty = not np.any(self.data)
             self.loaded_mask = True
 
+    def resample(self, *args, **kwargs):
+        self.create_mask()
+        Image.resample(self, *args, **kwargs)
+
+    def match_voxel_size(self, other, *args, **kwargs):
+        
+        if isinstance(other, ROI):
+            other.create_mask()
+        self.create_mask()
+        Image.match_voxel_size(self, other, *args, **kwargs)
+
     def get_slice(self, *args, **kwargs):
 
         self.create_mask()
