@@ -210,3 +210,21 @@ def test_array_to_dcm():
     assert np.all(im.affine == im_dcm.affine)
     assert np.all(im.data == im_dcm.data)
 
+def test_resampling():
+    '''Test z axis voxel size resampling.'''
+
+    # Create inital image
+    init_shape = [100, 100, 30]
+    init_voxel_size = [1, 1, 5]
+    im1 = Image(np.random.rand(*init_shape), voxel_size=init_voxel_size)
+    im2 = Image(np.random.rand(*init_shape), voxel_size=init_voxel_size)
+
+    # Resample
+    im2.resample((None, None, init_voxel_size[2] / 2))
+    assert im2.voxel_size[2] == init_voxel_size[2] / 2
+    assert im2.data.shape[2] == init_shape[2] * 2
+
+    # Resample to original shape and check data is approximately the same
+    im2.resample(init_voxel_size)
+    assert [abs(int(i)) for i in im2.voxel_size] == init_voxel_size
+    assert list(im2.get_data().shape) == init_shape

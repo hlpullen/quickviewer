@@ -794,10 +794,11 @@ class Image(ArchiveObject):
 
         # Make interpolant
         old_coords = [
-            np.arange(self.origin[i], 
-                      self.origin[i] + self.n_voxels[i] * self.voxel_size[i],
-                      self.voxel_size[i]
-                     ) 
+            np.linspace(self.origin[i], 
+                        self.origin[i] 
+                        + (self.n_voxels[i] - 1) * self.voxel_size[i],
+                        self.n_voxels[i]
+                       ) 
             for i in range(3)
         ]
         for i in range(len(old_coords)):
@@ -822,9 +823,10 @@ class Image(ArchiveObject):
 
         # Interpolate to new coordinates
         new_coords = [
-            np.arange(
-                origin[i], origin[i] + n_voxels[i] * voxel_size[i],
-                voxel_size[i]
+            np.linspace(
+                origin[i], 
+                origin[i] + (n_voxels[i] - 1) * voxel_size[i],
+                n_voxels[i]
             )
             for i in range(3)
         ]
@@ -842,11 +844,44 @@ class Image(ArchiveObject):
         self.affine = None
         self.set_geometry(force=True)
 
-    def match_voxel_size(self, image):
-        '''Resample to match z-axis voxel size with that of another image.'''
+    def match_voxel_size(self, image, method='self'):
+        '''Resample to match z-axis voxel size with that of another Image 
+        object.
 
-        voxel_size = [None, None, image.get_voxel_size()[2]]
-        self.resample(voxel_size)
+        Available methods:
+            - self: match own z voxel size to that of <image>.
+            - coarse: resample the image with the smaller z voxels to match 
+            that of the image with larger z voxels.
+            - fine: resample the image with the larger z voxels to match
+            that of the image with smaller z voxels.
+        '''
+
+        # Determine which image should be resampled
+        if method == 'self':
+            to_resample = self
+            match_to = image
+        else:
+            own_vz = self.voxel_size[2]
+            other_vz = image.voxel_size[2]
+            if own_vz == other_vz:
+                print('Voxel sizes already match! No resampling applied.')
+                return
+            if method == 'coarse':
+                to_resample = self if own_vz < other_vz else image
+                match_to = self if own_vz > other_vz else image
+            elif method == 'fine':
+                to_resample = self if own_vz > other_vz else image
+                match_to = self if own_vz < other_vz else image
+            else:
+                raise RuntimeError(f'Unrecognised resampling option: {method}')
+
+        # Perform resampling
+        voxel_size = [None, None, match_to.get_voxel_size()[2]]
+        init_vz = to_resample.voxel_size[2]
+        init_nz = int(to_resample.n_voxels[2])
+        to_resample.resample(voxel_size)
+        print(f'Resampled z axis from {init_nz} x {init_vz:.3f} mm -> '
+              f'{int(to_resample.n_voxels[2])} x {to_resample.voxel_size[2]:.3f} mm')
 
     def get_min(self):
         '''Get minimum value of data array.'''
