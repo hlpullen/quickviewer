@@ -3091,6 +3091,10 @@ class RtStruct(ArchiveObject):
 
         for source in sources_expanded:
 
+            if isinstance(source, ROI):
+                self.structs.append(source)
+                continue
+
             if os.path.basename(source).startswith('.') or source.endswith('.txt'):
                 continue
             if os.path.isdir(source):
@@ -3224,7 +3228,11 @@ class RtStruct(ArchiveObject):
         '''Add a single structure with  optional kwargs.'''
 
         self.sources.append(source)
-        self.structs.append(ROI(source, **kwargs))
+        if isinstance(source, ROI):
+            roi = source
+        else:
+            roi = ROI(source, **kwargs)
+        self.structs.append(roi)
 
     def copy(self, name=None, names=None, to_keep=None, to_remove=None,
              keep_renamed_only=False):
