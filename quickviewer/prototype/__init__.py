@@ -842,6 +842,12 @@ class Image(ArchiveObject):
         self.affine = None
         self.set_geometry(force=True)
 
+    def match_voxel_size(self, image):
+        '''Resample to match z-axis voxel size with that of another image.'''
+
+        voxel_size = [None, None, image.get_voxel_size()[2]]
+        self.resample(voxel_size)
+
     def get_min(self):
         '''Get minimum value of data array.'''
 
