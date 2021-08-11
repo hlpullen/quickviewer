@@ -2676,7 +2676,7 @@ class ROI(Image):
             ),
             'rel_area_diff_flat': (
                 self.get_relative_area_diff, {'roi': roi, 'units': area_units,
-                                              'flat': True}
+                                              'flatten': True}
             ),
             'volume_ratio': (
                 self.get_volume_ratio, {'roi': roi}
