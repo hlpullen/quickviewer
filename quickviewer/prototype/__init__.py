@@ -1066,11 +1066,17 @@ class Image(ArchiveObject):
             self.ax = ax
             self.fig = ax.figure
         else:
-            figsize = to_inches(figsize)
-            aspect = self.get_plot_aspect_ratio(
-                view, zoom, colorbar, figsize
-            )
-            self.fig = plt.figure(figsize=(figsize * aspect, figsize))
+            if figsize is None:
+                figsize = _default_figsize
+            if is_list(figsize):
+                fig_tuple = figsize
+            else:
+                figsize = to_inches(figsize)
+                aspect = self.get_plot_aspect_ratio(
+                    view, zoom, colorbar, figsize
+                )
+                fig_tuple = (figsize * aspect, figsize)
+            self.fig = plt.figure(figsize=fig_tuple)
             self.ax = self.fig.add_subplot()
 
     def add_structs(self, structure_set):
@@ -2879,7 +2885,7 @@ class ROI(Image):
         show=True,
         ax=None,
         gs=None,
-        figsize=_default_figsize,
+        figsize=None,
         include_image=False,
         zoom=None,
         zoom_centre=None,
@@ -2899,6 +2905,10 @@ class ROI(Image):
             idx = self.get_idx(view, sl, idx, pos)
         if not self.on_slice(view, idx=idx):
             return
+        if figsize is None:
+            x_ax, y_ax = _plot_axes[view]
+            aspect = self.get_length(ax=_axes[x_ax]) / self.get_length(ax=_axes[y_ax])
+            figsize = (aspect * _default_figsize, _default_figsize)
         self.set_ax(view, ax, gs, figsize)
 
         contour_kwargs = {} if contour_kwargs is None else contour_kwargs
