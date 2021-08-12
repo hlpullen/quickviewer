@@ -1356,7 +1356,7 @@ class Image(ArchiveObject):
 
     def label_ax(self, view, idx, scale_in_mm=True, no_title=False,
                  no_ylabel=False, annotate_slice=False, major_ticks=None,
-                 minor_ticks=None, ticks_all_sides=False):
+                 minor_ticks=None, ticks_all_sides=False, **kwargs):
 
         x_ax, y_ax = _plot_axes[view]
 
