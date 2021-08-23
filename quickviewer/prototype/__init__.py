@@ -2077,7 +2077,7 @@ class ROI(Image):
                                                           return_int=False)
 
                     # Create polygon
-                    polygon = geometry.Polygon(points_idx)
+                    polygon = geometry.Polygon(np.unique(points_idx, axis=0))
 
                     # Get polygon's bounding box
                     ix1, iy1, ix2, iy2 = [int(xy) for xy in polygon.bounds]
