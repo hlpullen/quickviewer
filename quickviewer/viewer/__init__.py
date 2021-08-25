@@ -1409,7 +1409,7 @@ class SingleViewer:
         init_view="x-y",
         init_sl=None,
         init_pos=None,
-        hu=(-300, 200),
+        hu=[-300, 200],
         hu_width=500,
         hu_limits=None,
         hu_step=None,
@@ -1495,13 +1495,17 @@ class SingleViewer:
                 else:
                     self.hu_limits = (self.im.data.min(), self.im.data.max())
             else:
-                self.hu_limits = (-2000, 2000)
+                self.hu_limits = [-2000, 2000]
         elif hu_limits == "auto":
             self.hu_limits = (self.im.data.min(), self.im.data.max())
         if hu_step is None:
             self.hu_step = (
                 1 if abs(self.hu_limits[1] - self.hu_limits[0]) >= 10 else 0.1
             )
+        if self.hu[0] < self.hu_limits[0]:
+            self.hu_limits[0] = self.hu[0]
+        if self.hu[1] > self.hu_limits[1]:
+            self.hu_limits[1] = self.hu[1]
 
         # Other settings
         self.in_notebook = in_notebook()
